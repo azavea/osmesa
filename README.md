@@ -6,6 +6,8 @@ __NOTE__ This repo is pre-alpha and under active development. Contact the author
 
 ## Components
 
+![Architecture](architecture.svg)
+
 ### Ingest
 
 Use [osm2orc](https://github.com/mojodna/osm2orc) to convert `pbf` files to `ORC` files.
@@ -31,19 +33,19 @@ relation-id -> geometry
 There is a polling service that watches for diffs and updates the GeoMesa instance accordingly.
 This service will also be able to throw augmented diffs on a queue for consumption by [planet-stream](https://github.com/developmentseed/planet-stream).
 
-### Query Service
+### Query API
 
 This service will be an akka-http service running on an instance with an HBase read-only master, which
 can be used to query the GeoMesa instance on S3. This will only be able to queries of a size that will
 be based on the resources available to this instance or cluster.
 
-### Analytics
+### Global Analytics
 
 Spark batch jobs will be able to run on ephemeral clusters for analytics, either scheduled or ad-hoc.
 
 GeoMesa SparkSQL will also be available for analytics.
 
-### Generating Vector Tiles
+### VectorTile Generation
 
 VectorPipe will be able to transform an RDD of Features that is pulled out of GeoMesa into Vector Tiles
 with an appropriate schema.
@@ -52,7 +54,9 @@ with an appropriate schema.
 
 You'll need to publish local artifacts for VectorPipe, GeoTrellis and GeoMesa.
 
-_TODO_: Development setup that allows you to:
+### TODO
+
+Development setup that allows you to:
 - Create a local ingest of OSMFeature and Geometry features out of ORC into GeoMesa
 - Use GeoServer to view results
 - Dockerized setup of all components
