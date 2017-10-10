@@ -1,14 +1,16 @@
 ## OSMesa
 
-This project is a stack for working with OSM and other vector data sources in GeoMesa.
+This project is a stack for working with OSM and other vector data sources in GeoMesa. It is build to allow for large scale batch analytic jobs to run on the latest OSM data, updated with minutely replication files.
+
+__NOTE__ This repo is pre-alpha and under active development. Contact the authors if you are interested in helping out or using this project.
 
 ## Components
 
 ### Ingest
 
-Use `osm2orc` to convert `pbf` files to `ORC` files.
+Use [osm2orc](https://github.com/mojodna/osm2orc) to convert `pbf` files to `ORC` files.
 
-Use osmesa-import to import ORC file into GeoMesa instance.
+Use osmesa-ingest to ingest ORC file into the GeoMesa instance.
 The GeoMesa instance will be based on HBase, with it's storage on S3.
 VectorPipe will be used to generate the feature data from OSM elements.
 The ingest will be run as a Spark job.
@@ -16,6 +18,8 @@ The ingest will be run as a Spark job.
 The ingest will create the following key/value tables:
 
 node-id -> metadata
+node-id -> way-id
+node-id -> relation-id
 way-id -> metadata
 relation-id -> metadata
 changeset-id -> metadata
@@ -25,7 +29,7 @@ relation-id -> geometry
 ### Update
 
 There is a polling service that watches for diffs and updates the GeoMesa instance accordingly.
-This service will also be able to throw augmented diffs on a queue for consumption by `planet-stream`.
+This service will also be able to throw augmented diffs on a queue for consumption by [planet-stream](https://github.com/developmentseed/planet-stream).
 
 ### Query Service
 
@@ -46,13 +50,10 @@ with an appropriate schema.
 
 ## Development
 
-Use https://github.com/lossyrob/cloud-local/tree/feature/vm-hbase to build a vagrant box.
-
 You'll need to publish local artifacts for VectorPipe, GeoTrellis and GeoMesa.
 
-
-
-### Local development ingest setup
-
-- Create a local ingest of OSMFeature and Geometry features into GeoWave.
+_TODO_: Development setup that allows you to:
+- Create a local ingest of OSMFeature and Geometry features out of ORC into GeoMesa
 - Use GeoServer to view results
+- Dockerized setup of all components
+- Terraform-based deployment scripts for running setup in AWS
