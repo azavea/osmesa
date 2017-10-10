@@ -1,0 +1,23 @@
+[
+    {
+        "Name": "OSMesa ingst",
+        "Type": "CUSTOM_JAR",
+        "Jar": "command-runner.jar",
+        "Args": [
+            "spark-submit",
+            "--class","osmesa.Ingest",
+            "--master","yarn",
+            "--deploy-mode","cluster",
+            "--driver-memory","5120M",
+            "--driver-cores","3",
+            "--executor-memory","5120M",
+            "--executor-cores","3",
+            "--conf","spark.dynamicAllocation.enabled=true",
+            "s3://osmesa/jars/vp-io-test-assembly-rde-1.0.0.jar",
+            "--orc","s3://osmesa/orc/europe/finland.orc",
+            "--bucket","osmesa",
+            "--key","orc-catalog",
+            "--layer","finland-avt"
+        ]
+    }
+]

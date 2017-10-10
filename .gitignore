@@ -1,0 +1,57 @@
+# Operating System Files #
+
+*.DS_Store
+Thumbs.db
+
+# Build Files #
+
+bin
+target
+build/
+.gradle
+
+# Eclipse Project Files #
+
+.classpath
+.project
+.settings
+
+# Vagrant
+
+.vagrant
+
+# Terraform
+deployment/terraform/.terraform
+*.tfvars
+*.tfstate
+*.tfplan
+
+# Ansible
+deployment/ansible/roles/azavea.*
+
+# Node and Webpack
+node_modules/
+npm-debug.log
+index.html
+pgw.communitymapping*.js
+pgw.communitymapping*.js.map
+vendor.bundle.js
+dist/
+
+
+# IntelliJ IDEA Files #
+
+*.iml
+*.ipr
+*.iws
+*.idea
+
+# macOS
+.DS_Store
+
+# Emacs #
+
+.ensime
+\#*#
+*~
+.#*
