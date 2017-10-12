@@ -1,5 +1,7 @@
 ## OSMesa
 
+[![Join the chat at https://gitter.im/osmesa/Lobby](https://badges.gitter.im/osmesa/Lobby.svg)](https://gitter.im/osmesa/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 This project is a stack for working with OSM and other vector data sources in GeoMesa. It is build to allow for large scale batch analytic jobs to run on the latest OSM data, updated with minutely replication files.
 
 __NOTE__ This repo is pre-alpha and under active development. Contact the authors if you are interested in helping out or using this project.
