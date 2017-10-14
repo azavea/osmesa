@@ -1,0 +1,35 @@
+sudo: required
+language: bash
+services:
+- docker
+
+env:
+  global:
+  - ORG=${TRAVIS_REPO_SLUG%/*}
+  - REPO=${TRAVIS_REPO_SLUG##*-}
+  - TAG=${TRAVIS_TAG:-${TRAVIS_COMMIT:0:7}}
+
+install:
+- make -e build
+
+script:
+- make -e test
+
+before_deploy:
+- docker login -p "${QUAY_PASSWORD}" -u "${QUAY_USER}" quay.io
+
+deploy:
+- provider: script
+  script: make -e publish
+  skip_cleanup: true
+  on:
+    branch: master
+- provider: script
+  script: make -e publish
+  skip_cleanup: true
+  on:
+    tags: true
+
+notifications:
+  slack:
+    secure: 1FvaXFWHHoTHisPTA9Mgd/msSQefF5Ocd8jVIQCGnKYs9/wLnlBsUhZ4DzXPmPjdaFw/fVJ8uy/TkVxqaCLempzOsTxa+LbUabcHqWhCBoLqBh3Ado/wUwKDpF47eD5a5dmWtw3aNXyKl649cAGZq7vrDO5YwNScpbfz8FTEd4w/IlHGnIp0eqHvZSmXcyn2uGWdoG2iLrgLrb1GPN0UlgHE9yGsPeYBdTaDqYABCGJlrgANJYZD4rzowX/5oPRjT/RlHExwIDyL6uZ3tU/IcShZH+RMnitlhLxODpsEanDpbdyENo0UBat29ZV8bLJXVhn9h5V3g0ZnOLGcXemi2gxrOiF9R4H4F+li33nO1LAmzy0jhT7YWvBTEwAf6gHHXMGcbLrQ5etoGz3ZAqu3GfnUuS8rcLMcXdfksNxsR9/dxK0slxKQt2FQsLWnFtvSyljq0W7trinHUi07H4Tn5h2AeXlTltRGpBJPHJ7TBkMHp2L4aGfo94i4dbGFtPY0JWlU/pt+cGgLlRRHr/57QhN+VGYp/eh55FRFgasBS/fN+T+D0nllTBf7pkJOqKIz3eC3g0ODU6Q+bHo/PXNpnKO6XaFnVPcxVLh7K0RTieJROHTuP0J54QCWf0wwnP/PzdPKgNogLae6Z7z10spfdNEz8r+fISvwb95GTaX4WXQ=

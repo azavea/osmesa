@@ -18,10 +18,13 @@ Vagrant.configure(2) do |config|
   # UIs
   # Accumulo: http://localhost:50095
   # Hadoop DFS: http://localhost:50070
+  # HBase UI: http://localhost:8080
   # Job Tracker: http://localhost:8088
   # Zeppelin: http://localhost:5771
   config.vm.network :forwarded_port, guest: 50095, host: 50095
-  config.vm.network :forwarded_port, guest: 50070, host: 8088
+  config.vm.network :forwarded_port, guest: 50070, host: 50070
+  config.vm.network :forwarded_port, guest: 8080, host: 8080
+  config.vm.network :forwarded_port, guest: 8088, host: 8088
   config.vm.network :forwarded_port, guest: 5771, host: 5771
 
   # HBase
@@ -29,7 +32,6 @@ Vagrant.configure(2) do |config|
   config.vm.network :forwarded_port, guest: 60010, host: 60010
 
 
-  # Change working directory to /vagrant upon session start.
   config.vm.provision "shell", inline: <<SCRIPT
     if ! grep -q "cd /vagrant" "/home/vagrant/.bashrc"; then
       echo "cd /vagrant" >> "/home/vagrant/.bashrc"
@@ -37,7 +39,7 @@ Vagrant.configure(2) do |config|
 SCRIPT
 
   config.vm.provision "ansible" do |ansible|
-    ansible.playbook = "ansible/osmesa.yml"
-    ansible.galaxy_role_file = "ansible/roles.yml"
+    ansible.playbook = "deployment/ansible/osmesa.yml"
+    ansible.galaxy_role_file = "deployment/ansible/roles.yml"
   end
 end

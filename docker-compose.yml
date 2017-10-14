@@ -1,0 +1,73 @@
+version: '3'
+services:
+  hdfs-name:
+    image: quay.io/azavea/osmesa-hdfs:latest
+    build:
+      context: ./services/hdfs
+      dockerfile: Dockerfile
+    command: name
+    environment:
+      HADOOP_MASTER_ADDRESS: hdfs-name
+    ports:
+      - 50070:50070
+      - 8088:8088
+  hdfs-data:
+    image: quay.io/azavea/osmesa-hdfs:latest
+    build:
+      context: ./services/hdfs
+      dockerfile: Dockerfile
+    command: data
+    environment:
+      HADOOP_MASTER_ADDRESS: hdfs-name
+    depends_on:
+      - hdfs-name
+  zookeeper:
+    image: quay.io/azavea/osmesa-zookeeper:latest
+    build:
+      context: ./services/zookeeper
+      dockerfile: Dockerfile
+    ports:
+      - 2181:2181
+  hbase-master:
+    image: quay.io/azavea/osmesa-hbase:latest
+    build:
+      context: ./services/hbase
+      dockerfile: Dockerfile
+    command: master
+    ports:
+      - 8085:8085
+      - 9090:9090
+      - 9095:9095
+      - 16000:16000
+      - 16010:16010
+      - 16201:16201
+      - 16301:16301
+    depends_on:
+      - hdfs-name
+      - hdfs-data
+      - zookeeper
+  hbase-regionserver:
+    image: quay.io/azavea/osmesa-hbase:latest
+    build:
+      context: ./services/hbase
+      dockerfile: Dockerfile
+    command: regionserver
+    depends_on:
+      - hdfs-name
+      - hdfs-data
+      - hbase-master
+      - zookeeper
+  hbase-rest:
+    image: quay.io/azavea/osmesa-hbase:latest
+    build:
+      context: ./services/hbase
+      dockerfile: Dockerfile
+    command: rest
+    ports:
+      - 8080:8080
+    depends_on:
+      - hdfs-name
+      - hdfs-data
+      - zookeeper
+      - hbase-master
+      - hbase-regionserver
