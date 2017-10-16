@@ -58,7 +58,8 @@ RUN set -x \
   && chgrp root /opt/tomcat/webapps/geoserver/WEB-INF/lib/*
 
 COPY server.xml /opt/tomcat/conf/server.xml
-RUN ln -s /opt/hbase/conf/hbase-site.xml /opt/tomcat/webapps/geoserver/WEB-INF/classes/hbase-site.xml
+RUN mkdir -p /opt/tomcat/webapps/geoserver/WEB-INF/classes/
+RUN cp /opt/hbase/conf/hbase-site.xml /opt/tomcat/webapps/geoserver/WEB-INF/classes/hbase-site.xml
 VOLUME ["/opt/tomcat/webapps/geoserver/data"]
 EXPOSE 9090
 CMD ["/opt/tomcat/bin/catalina.sh", "run"]
