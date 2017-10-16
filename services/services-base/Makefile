@@ -1,4 +1,4 @@
-IMG  := quay.io/azavea/osmesa-base:latest
+IMG  := quay.io/azavea/osmesa-base
 TAG := "latest"
 
 build: dockerfile

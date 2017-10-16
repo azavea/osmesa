@@ -79,8 +79,18 @@ The first steps are to build some unpublished binaries:
 
 First thing to is to [build and install GeoMesa](https://github.com/locationtech/geomesa#building-from-source).
 You can run `mvn clean install -T8 -am -DskipTests` on a clone of GeoMesa to accomplish this.
-Once you do that, move the `geomesa-hbase-dist` installed in your local maven repository
-(e.g. `~/.m2/repository/org/locationtech/geomesa/geomesa-hbase-dist_2.11/1.4.0-SNAPSHOT/geomesa-hbase-dist_2.11-1.4.0-SNAPSHOT-bin.tar.gz`) to `services/hbase/geomesa-dist.tar.gz`
+
+_Note:__ - Until https://github.com/locationtech/geomesa/pull/1751 is merged, you'll have to patch that into master.
+
+__IMPORTANT__: Next, move the `geomesa-hbase-dist` installed in your local maven repository. Move it to both these locations:
+
+- `services/hbase/geomesa-hbase-dist.tar.gz`
+- `services/geoserver/geomesa-hbase-dist.tar.gz`
+
+For instance, running this if you built GeoMesa and installed locally:
+- `cp ~/.m2/repository/org/locationtech/geomesa/geomesa-hbase-dist_2.11/1.4.0-SNAPSHOT/geomesa-hbase-dist_2.11-1.4.0-SNAPSHOT-bin.tar.gz services/hbase/geomesa-hbase-dist.tar.gz`
+- `cp ~/.m2/repository/org/locationtech/geomesa/geomesa-hbase-dist_2.11/1.4.0-SNAPSHOT/geomesa-hbase-dist_2.11-1.4.0-SNAPSHOT-bin.tar.gz services/geoserver/geomesa-hbase-dist.tar.gz`
+
 
 You'll also need the local maven repository to build the scala code in this project; this means that if you
 have Vagrant syncing your `~/.m2` folder, you can build directly on your machine, but if
@@ -165,6 +175,17 @@ Below is a description of the various docker-compose files and scripts to run sp
 | `docker-compose.update.yml`     | Container that runs the OSMesa update service         |
 | `docker-compose.query.yml`      | Container that runs the OSMesa query service          |
 | `scripts/spark.sh`              | Runs a container for a test spark job                 |
+
+### GeoServer
+
+To view data in GeoServer, go to http://localhost:9090/geoserver/web, login with `admin`:`geoserver`, click 'Stores' in the left gutter, then 'Add new store', then HBase (GeoMesa). Use the following parameters:
+
+instanceId = accumulo
+zookeepers = zookeeper
+user = root
+password = GisPwd
+tableName = example (from the ingest command above)
+Click 'save'. You should see the 'example-csv' layer available to publish.
 
 #### Docker commands
 

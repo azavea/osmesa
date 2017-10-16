@@ -19,6 +19,11 @@ then
     then
         usage
     else
+        # Build the base image
+        pushd ./services/services-base
+        make build
+        popd
+
         # Build services containers.
         docker-compose \
             -f docker-compose.services.yml \

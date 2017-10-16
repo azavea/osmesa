@@ -1,9 +1,13 @@
-FROM quay.io/azavea/osmesa-geoserver
+FROM quay.io/azavea/osmesa-hbase
+
+ARG HADOOP_VERSION
+ARG ZOOKEEPER_VERSION
+ARG HBASE_VERSION
+
+ENV GEOSERVER_VERSION 2.9.4
 
 ENV ACCUMULO_VERSION ${ACCUMULO_VERSION}
 ENV THRIFT_VERSION ${THRIFT_VERSION}
-ENV HADOOP_VERSION 2.7.3
-ENV GEOSERVER_VERSION 2.9.4
 ENV GEOMESA_VERSION ${GEOMESA_VERSION}
 ENV TOMCAT_VERSION 8.0.35
 ENV CATALINA_OPTS "-Xmx8g -XX:MaxPermSize=512M -Duser.timezone=UTC -server -Djava.awt.headless=true"
@@ -30,51 +34,31 @@ RUN set -x \
   && unzip -j /tmp/geoserver-wps.zip -d /opt/tomcat/webapps/geoserver/WEB-INF/lib/ \
   && rm -rf /tmp/geoserver-wps.zip
 
-# Install geomesa distribution
-COPY .cache/geomesa-accumulo-dist_2.11-${GEOMESA_VERSION}-bin.tar.gz /tmp
+ENV TOMCAT_LIBS /opt/tomcat/webapps/geoserver/WEB-INF/lib/
 
-RUN set -x \
-  && cd /opt \
-  && tar zxvf /tmp/geomesa-accumulo-dist_2.11-${GEOMESA_VERSION}-bin.tar.gz \
-  && ln -s geomesa-accumulo_2.11-${GEOMESA_VERSION} geomesa
-
-
-# Install GeoMesa Accumulo DataStore
-RUN set -x \
-    && cd /opt/tomcat/webapps/geoserver/WEB-INF/lib/ \
-    && tar zxvf /opt/geomesa/dist/gs-plugins/geomesa-accumulo-gs-plugin_2.11-${GEOMESA_VERSION}-install.tar.gz
-
-# Install GeoMesa Accumulo BlobStore
-RUN set -x \
-    && cd /opt/tomcat/webapps/geoserver/WEB-INF/lib/ \
-    && tar zxvf /opt/geomesa/dist/gs-plugins/geomesa-blobstore-gs-plugin_2.11-${GEOMESA_VERSION}-install.tar.gz
-
-# Install GeoMesa Stream Store
-RUN set -x \
-    && cd /opt/tomcat/webapps/geoserver/WEB-INF/lib/ \
-    && tar zxvf /opt/geomesa/dist/gs-plugins/geomesa-stream-gs-plugin_2.11-${GEOMESA_VERSION}-install.tar.gz
-
-# Install GeoMesa GeoJson Support
-RUN set -x \
-    && cd /opt/tomcat/webapps/geoserver/WEB-INF/lib/ \
-    && tar zxvf /opt/geomesa/dist/gs-plugins/geomesa-geojson-gs-plugin_2.11-${GEOMESA_VERSION}-install.tar.gz
-
-# Install GeoMesa Process Jar
-RUN set -x \
-    && cd /opt/tomcat/webapps/geoserver/WEB-INF/lib/ \
-    && cp /opt/geomesa/dist/gs-plugins/geomesa-process-wps_2.11-${GEOMESA_VERSION}.jar .
-
-# Install Hadoop and Accumulo specific jars
-RUN set -x \
-    && /opt/geomesa/bin/install-hadoop-accumulo.sh /opt/tomcat/webapps/geoserver/WEB-INF/lib -a ${ACCUMULO_VERSION} -h ${HADOOP_VERSION} -t ${THRIFT_VERSION}
-RUN set -x \
-    && rm /opt/tomcat/webapps/geoserver/WEB-INF/lib/guava-11.*.jar
+# Install geomesa HBase distribution
+COPY geomesa-hbase-dist.tar.gz /root/geomesa-hbase-dist.tar.gz
+RUN mkdir -p /tmp/dist && \
+    tar -xf /root/geomesa-hbase-dist.tar.gz -C /tmp/dist && \
+    PLUGIN_TAR=$(find /tmp/dist -name "*gs-plugin*.tar.gz") && \
+    tar -xf $PLUGIN_TAR -C /tmp/dist && \
+    PLUGIN_JAR=$(find /tmp/dist -name "*gs-plugin*.jar") && \
+    mv $PLUGIN_JAR $TOMCAT_LIBS && \
+    WPS_JAR=$(find /tmp/dist -name "*process-wps*.jar") && \
+    mv $WPS_JAR $TOMCAT_LIBS && \
+    INSTALL_HADOOP=$(find /tmp/dist -name "*install-hadoop.sh") && \
+    $INSTALL_HADOOP $TOMCAT_LIBS -h $HADOOP_VERSION -z $ZOOKEEPER_VERSION && \
+    INSTALL_HBASE=$(find /tmp/dist -name "*install-hbase.sh") && \
+    $INSTALL_HBASE $TOMCAT_LIBS -h $HBASE_VERSION && \
+    rm -r /tmp/dist && \
+    rm /root/geomesa-hbase-dist.tar.gz
 
 RUN set -x \
   && chown root /opt/tomcat/webapps/geoserver/WEB-INF/lib/* \
   && chgrp root /opt/tomcat/webapps/geoserver/WEB-INF/lib/*
 
 COPY server.xml /opt/tomcat/conf/server.xml
+RUN ln -s /opt/hbase/conf/hbase-site.xml /opt/tomcat/webapps/geoserver/WEB-INF/classes/hbase-site.xml
 VOLUME ["/opt/tomcat/webapps/geoserver/data"]
 EXPOSE 9090
 CMD ["/opt/tomcat/bin/catalina.sh", "run"]

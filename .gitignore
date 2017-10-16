@@ -1,5 +1,6 @@
 # GeoMesa Dist (to be copied in) #
-services/hbase/geomesa-dist.tar.gz
+services/hbase/geomesa-hbase-dist.tar.gz
+services/geoserver/geomesa-hbase-dist.tar.gz
 
 # Operating System Files #
 

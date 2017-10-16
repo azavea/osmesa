@@ -16,13 +16,13 @@ RUN set -x && \
     curl -# http://apache.mirrors.tds.net/hbase/$HBASE_VERSION/hbase-$HBASE_VERSION-bin.tar.gz | tar -xz -C ${HBASE_HOME} --strip-components=1
 
 COPY ./fs /
-COPY geomesa-dist.tar.gz /root/geomesa-dist.tar.gz
+COPY geomesa-hbase-dist.tar.gz /root/geomesa-hbase-dist.tar.gz
 RUN mkdir -p /tmp/jar && \
-    tar -xf /root/geomesa-dist.tar.gz -C /tmp/jar && \
+    tar -xf /root/geomesa-hbase-dist.tar.gz -C /tmp/jar && \
     JAR=$(find /tmp/jar -name "*distributed-runtime*.jar") && \
     mv $JAR /opt/hbase/lib/geomesa-dist.jar && \
     rm -r /tmp/jar && \
-    rm /root/geomesa-dist.tar.gz
+    rm /root/geomesa-hbase-dist.tar.gz
 
 # Stargate  8080  / 8085
 # Thrift    9090  / 9095

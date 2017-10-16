@@ -34,6 +34,8 @@ Vagrant.configure(2) do |config|
   config.vm.network :forwarded_port, guest: 16010, host: 16010
   config.vm.network :forwarded_port, guest: 16030, host: 16030
 
+  # GeoServer
+  config.vm.network :forwarded_port, guest: 9090, host: 9090
 
   config.vm.provision "shell", inline: <<SCRIPT
     if ! grep -q "cd /vagrant" "/home/vagrant/.bashrc"; then
