@@ -82,11 +82,11 @@ vagrant ssh
 
 ### Ports
 
-| Service            | Port                            |
-| ------------------ | ------------------------------- |
-| __TODO__           | [`4567`](http://localhost:4567) |
+| Service            | Port                               |
+| ------------------ | ---------------------------------- |
+| HBase UI           | [`16010`](http://localhost:16010/) |
 
-### Testing
+### Testing (TODO)
 
 ```
 ./scripts/test.sh
@@ -96,7 +96,7 @@ vagrant ssh
 
 | Name           | Description                                                   |
 | -------------- | ------------------------------------------------------------- |
-| `cibuild.sh`   | Build project for CI                                          |
+| `cibuild.sh`   | Build project for CI (TODO)                                   |
 | `clean.sh`     | Free disk space by cleaning up dangling Docker images         |
 | `console.sh`   | Run interactive shell inside application container            |
 | `lint.sh`      | Lint source code                                              |
@@ -105,7 +105,28 @@ vagrant ssh
 | `test.sh`      | Run unit tests                                                |
 | `update.sh`    | Build Docker images                                           |
 
-### Docker
+### Docker setup [TODO: Does this make sense?]
+
+![Docker Dev setup](docker-dev.svg)
+
+The development environment contains a number of docker-compose files which are used to
+run local development versions of the various services that a deployment environment would have,
+as  the update/query containers.
+Spark jobs will be run by scripts, and bring up a docker container that connects to the default network.
+The docker-compose.services.yml is the only one that brings up a docker network, which is named
+`osmesa_default`. All other containers need to connect to this network in order to communicate
+with the other components.
+
+Below is a description of the various docker-compose files and scripts to run spark jobs:
+
+| Name                            | Description                                           |
+| ------------------------------- | ----------------------------------------------------- |
+| `docker-compose.services.yml`   | Development services, including GeoMesa-enabled HBase |
+| `docker-compose.update.yml`     | Container that runs the OSMesa update service         |
+| `docker-compose.query.yml`      | Container that runs the OSMesa query service          |
+| `scripts/spark.sh`              | Runs a container for a test spark job                 |
+
+#### Docker commands
 
 Here is a list of useful commands that you can run inside the VM.
 

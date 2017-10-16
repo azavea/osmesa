@@ -9,7 +9,7 @@ fi
 function usage() {
     echo -n "Usage: $(basename "$0")
 
-Starts servers using docker-compose.
+Starts serverices using docker-compose.
 "
 }
 
@@ -19,6 +19,6 @@ then
     then
         usage
     else
-        docker-compose -f docker-compose.yml up
+        docker-compose -f docker-compose.services.yml up
     fi
 fi

@@ -5,7 +5,7 @@ source /sbin/hdfs-lib.sh
 function hbase_instance_exists() {
   local INSTANCE=$1
   local ZOOKEEPERS=$2
-  local LS=$(zookeeper-client -server $ZOOKEEPERS ls /hbase/instances/$INSTANCE 2>&1 > /dev/null)
+  local LS=$(zookeeper-client -server $ZOOKEEPERS ls /hbase/master/$INSTANCE 2>&1 > /dev/null)
   if [[ $LS == *"does not exist"* ]]; then
     return 1
   else
@@ -17,7 +17,7 @@ function wait_until_hbase_is_available() {
   local INSTANCE=$1
   local ZOOKEEPERS=$2
   wait_until_hdfs_is_available
-  with_backoff hbase_hbase_exists $INSTANCE $ZOOKEEPERS
+  with_backoff hbase_instance_exists $INSTANCE $ZOOKEEPERS
 }
 
 function zookeeper_is_available(){

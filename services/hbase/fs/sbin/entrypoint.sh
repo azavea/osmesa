@@ -6,7 +6,7 @@ set -euo pipefail
 source /sbin/hbase-lib.sh
 
 : ${ZOOKEEPERS:=zookeeper}
-: ${INSTANCE_NAME:=hbase}
+: ${INSTANCE_NAME:=hbase-master}
 : ${HADOOP_MASTER_ADDRESS:=hdfs-name}
 
 template $HADOOP_CONF_DIR/core-site.xml
@@ -74,4 +74,5 @@ else
     *)
       exec "$@"
   esac
+  echo "ENDING!"
 fi

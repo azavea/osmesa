@@ -12,6 +12,7 @@ libraryDependencies ++= Seq(
   gtSpark,
   gtVector,
   gtVectorTile,
+  vectorpip,
   cats,
   scalactic,
   scalatest
@@ -44,4 +45,3 @@ assemblyMergeStrategy in assembly := {
   case "META-INF/ECLIPSEF.RSA" | "META-INF/ECLIPSEF.SF" => MergeStrategy.discard
   case _ => MergeStrategy.first
 }
-

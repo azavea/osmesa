@@ -2,6 +2,9 @@
 
 set -eo pipefail
 
+# Delete data directory on each startup
+rm -rf ${ZOOKEEPER_DATA}/*
+
 ID=${ZOOKEEPER_ID:-0}
 echo $ID > ${ZOOKEEPER_DATA}/myid
 

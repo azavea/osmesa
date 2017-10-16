@@ -19,9 +19,9 @@ then
     then
         usage
     else
-        # Build containers.
+        # Build services containers.
         docker-compose \
-            -f docker-compose.yml \
+            -f docker-compose.services.yml \
             build
     fi
 fi
