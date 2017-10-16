@@ -57,6 +57,14 @@ with an appropriate schema.
 
 ## Development
 
+Development of OSMesa happens via Docker containers run inside of a Vagrant machine.
+While this is a complex setup, it allows us full control over the development environment,
+and how it maps to the deployment environment.
+
+__Note__: If you might have permissions issues with Docker writing to the host machine
+(some OS's do), you might want to remove the `config.vm.synced_folder` lines in the
+`Vagrantfile` and simply copy up credentials to the VM/let the VM have it's own Ivy cache, etc.
+
 ### Requirements
 
 * Vagrant 1.8+
@@ -65,19 +73,51 @@ with an appropriate schema.
 
 ### Getting Started
 
-Install the application and all required dependencies.
+The first steps are to build some unpublished binaries:
+
+#### Build GeoMesa and make hbase-dist binaries available
+
+First thing to is to [build and install GeoMesa](https://github.com/locationtech/geomesa#building-from-source).
+You can run `mvn clean install -T8 -am -DskipTests` on a clone of GeoMesa to accomplish this.
+Once you do that, move the `geomesa-hbase-dist` installed in your local maven repository
+(e.g. `~/.m2/repository/org/locationtech/geomesa/geomesa-hbase-dist_2.11/1.4.0-SNAPSHOT/geomesa-hbase-dist_2.11-1.4.0-SNAPSHOT-bin.tar.gz`) to `services/hbase/geomesa-dist.tar.gz`
+
+You'll also need the local maven repository to build the scala code in this project; this means that if you
+have Vagrant syncing your `~/.m2` folder, you can build directly on your machine, but if
+you have disabled that syncing you'll have to build and install it inside of the Vagrant box.
+
+#### Build the latest GeoTrellis
+
+The same thing as above applies here: if Vagrant is syncing to the host `~/.ivy2`, you can publish
+local binaries on the host machine; otherwise you'll have to publish-local from the Vagrant box.
+
+- Clone https://github.com/locationtech/geotrellis
+- `cd geotrellis`
+- `scripts/publish-local.sh`
+
+This one requires that SBT be locally installed.
+
+_TODO:_ Should we bake all these in a docker container to make it easier?
+
+#### Build the latest VectorPipe
+
+- Clone https://github.com/geotrellis/vectorpipe
+- `cd vectorpipe`
+- `sbt publish-local`
+
+### Building and running project services
 
 ```sh
 ./scripts/setup.sh
 ```
 
-Rebuild Docker images and run application.
+Rebuild Docker images and run the services.
 
 ```sh
 vagrant up
 vagrant ssh
 ./scripts/update.sh
-./scripts/server.sh
+./scripts/services.sh
 ```
 
 ### Ports

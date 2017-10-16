@@ -23,5 +23,10 @@ then
         docker-compose \
             -f docker-compose.services.yml \
             build
+
+        # Build sbt container.
+        docker-compose \
+            -f docker-compose.sbt.yml \
+            build
     fi
 fi

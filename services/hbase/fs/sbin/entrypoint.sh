@@ -8,33 +8,12 @@ source /sbin/hbase-lib.sh
 : ${ZOOKEEPERS:=zookeeper}
 : ${INSTANCE_NAME:=hbase-master}
 : ${HADOOP_MASTER_ADDRESS:=hdfs-name}
+: ${GEOMESA_VERSION:=1.3.3}
 
 template $HADOOP_CONF_DIR/core-site.xml
 template $HADOOP_CONF_DIR/hdfs-site.xml
 
-# # shell breaks and doesn't run zookeeper without this
-# rm -rf $HBASE_HOME/logs
-# mkdir -p $HBASE_HOME/logs
-
-# hbase zookeeper > logzoo.log 2>&1 &
-# hbase regionserver start > logregion.log 2>&1 &
-
-# hbase master start --localRegionServers=0
-
-# tries to run zookeepers.sh distributed via SSH, run zookeeper manually instead now
-# RUN sed -i 's/# export HBASE_MANAGES_ZK=true/export HBASE_MANAGES_ZK=true/' /hbase/conf/hbase-env.sh
-#$HBASE_HOME/bin/hbase zookeeper &>$HBASE_HOME/logs/zookeeper.log &
-#$HBASE_HOME/bin/start-hbase.sh
-#$HBASE_HOME/bin/hbase-daemon.sh start rest
-#$HBASE_HOME/bin/hbase-daemon.sh start thrift
-# /hbase/bin/hbase-daemon.sh start thrift2
-# /hbase/bin/hbase shell
-# /hbase/bin/stop-hbase.sh
-# pkill -f -i zookeeper
-
-#tail -f ${HBASE_HOME}/logs/*.{log,out}
-
-# # The first argument determines this container's role in the accumulo cluster
+# The first argument determines this container's role in the hbase cluster
 ROLE=${1:-}
 if [ -z $ROLE ]; then
   echo "Select the role for this container with the docker cmd 'master', 'regionserver', 'rest'"
@@ -66,9 +45,14 @@ else
       #   fi
       # fi
 
-      # if [[ $ROLE != "master" ]]; then
-      #   with_backoff hbase_instance_exists $INSTANCE_NAME $ZOOKEEPERS || exit 1
-      # fi
+      if [[ $ROLE == "master" ]]; then
+          if geomesa_jars_installed $HADOOP_MASTER_ADDRESS; then
+              echo "GeoMesa JAR installed!"
+          else
+              echo "Installing GeoMesa JAR"
+              put_geomesa_jar $HADOOP_MASTER_ADDRESS;
+          fi
+      fi
 
       exec runuser -p -u $USER $HBASE_HOME/bin/hbase -- $ROLE start;;
     *)

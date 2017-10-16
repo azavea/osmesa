@@ -1,3 +1,6 @@
+# GeoMesa Dist (to be copied in) #
+services/hbase/geomesa-dist.tar.gz
+
 # Operating System Files #
 
 *.DS_Store
