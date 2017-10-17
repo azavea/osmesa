@@ -20,6 +20,7 @@ then
         usage
     else
         vagrant up --provision
+        vagrant ssh -c "cd /vagrant && ./scripts/download-test-data.sh"
         vagrant ssh -c "cd /vagrant && ./scripts/update.sh"
     fi
 fi

@@ -71,15 +71,3 @@ services:
     depends_on:
       - hbase-master
       - hbase-regionserver
-  geoserver:
-    build:
-      context: ./services/geoserver
-      dockerfile: Dockerfile
-      args:
-        - HADOOP_VERSION=2.7.3
-        - ZOOKEEPER_VERSION=3.4.8
-        - HBASE_VERSION=1.3.1
-    ports:
-      - 9090:9090
-    depends_on:
-      - hbase-master

@@ -149,13 +149,14 @@ vagrant ssh
 | `cibuild.sh`   | Build project for CI (TODO)                                   |
 | `clean.sh`     | Free disk space by cleaning up dangling Docker images         |
 | `console.sh`   | Run interactive shell inside application container            |
-| `lint.sh`      | Lint source code                                              |
-| `server.sh`    | Run Docker Compose services                                   |
+| `geoserver.sh` | Run GeoServer in the dev network                              |
+| `sbt.sh`       | Run an sbt console in the Spark container in the dev network  |
+| `services.sh`  | Run Docker Compose services                                   |
 | `setup.sh`     | Provision Vagrant VM and run `update.sh`                      |
-| `test.sh`      | Run unit tests                                                |
+| `test.sh`      | Run unit tests       (TODO)                                   |
 | `update.sh`    | Build Docker images                                           |
 
-### Docker setup [TODO: Does this make sense?]
+### Docker setup
 
 ![Docker Dev setup](docker-dev.svg)
 
@@ -172,20 +173,29 @@ Below is a description of the various docker-compose files and scripts to run sp
 | Name                            | Description                                           |
 | ------------------------------- | ----------------------------------------------------- |
 | `docker-compose.services.yml`   | Development services, including GeoMesa-enabled HBase |
-| `docker-compose.update.yml`     | Container that runs the OSMesa update service         |
-| `docker-compose.query.yml`      | Container that runs the OSMesa query service          |
-| `scripts/spark.sh`              | Runs a container for a test spark job                 |
+| `docker-compose.geoserver.yml`  | Brings up a GeoServer instance in dev network         |
+| `docker-compose.sbt.yml`        | Runs a sbt console in the spark-enabled container     |
+| `docker-compose.update.yml`     | Container that runs the OSMesa update service [TODO]  |
+| `docker-compose.query.yml`      | Container that runs the OSMesa query service  [TODO]  |
 
 ### GeoServer
 
-To view data in GeoServer, go to http://localhost:9090/geoserver/web, login with `admin`:`geoserver`, click 'Stores' in the left gutter, then 'Add new store', then HBase (GeoMesa). Use the following parameters:
+GeoServer runs outside of the normal docker-compose.services.yml, because it tends to take up a lot
+of memory, so if you don't need to run it it won't eat up all your resources.
 
-instanceId = accumulo
-zookeepers = zookeeper
-user = root
-password = GisPwd
-tableName = example (from the ingest command above)
-Click 'save'. You should see the 'example-csv' layer available to publish.
+To run, use `script/geoserver.sh` when the `scripts/services.sh` services are already running.
+To view data in GeoServer, go to this address:
+
+[http://localhost:9090/geoserver/web](http://localhost:9090/geoserver/web)
+
+Login with `admin`:`geoserver`
+
+To add an HBase layer:
+- click 'Stores' in the left gutter
+- then 'Add new store'
+- then HBase (GeoMesa).
+
+Click 'save'. You should now be able to add GeoMesa layers from HBase.
 
 #### Docker commands
 
