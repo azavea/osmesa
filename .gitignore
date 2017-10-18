@@ -2,6 +2,11 @@
 services/hbase/geomesa-hbase-dist.tar.gz
 services/geoserver/geomesa-hbase-dist.tar.gz
 
+metastore_db
+
+# Test Data #
+src/test-data
+
 # Operating System Files #
 
 *.DS_Store

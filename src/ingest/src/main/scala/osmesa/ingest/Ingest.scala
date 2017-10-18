@@ -19,6 +19,8 @@ import vectorpipe.util.LayerMetadata
 import cats.implicits._
 import com.monovore.decline._
 
+import spray.json._
+
 import org.geotools.data.DataStore
 
 object Util {
@@ -38,7 +40,7 @@ object Util {
         "userId" -> JsString(m.userId),
         "changeSet" -> JsNumber(m.changeSet),
         "version" -> JsNumber(m.version),
-        "timestamp" -> JsString(m.timestamp),
+        "timestamp" -> JsString(m.timestamp.toString),
         "visible" -> JsBoolean(m.visible)
       )
   }
@@ -50,24 +52,11 @@ object Util {
         "tags" -> d.tagMap.toJson
       )
   }
-
-  implicit def treeJsonWriter[T:JsonWriter]: JsonWriter[Tree[T]] =
-    new JsonWriter[Tree[T]] {
-      def write(t: Tree[T]): JsValue =
-        if(t.children.isEmpty) { t.root.toJson }
-        else {
-          JsObject(
-            "root" -> t.root.toJson,
-            "children" -> JsArray(t.children.map(write):_*)
-          )
-        }
-    }
-
   val s3Client: S3Client = S3Client.DEFAULT
 
   def logClipFail(e: Extent, f: osm.OSMFeature): Unit = {
     val txt = f.toGeoJson
-    val fid = f.data.root.meta.id
+    val fid = f.data.meta.id
     val gType =
       f.geom match {
         case gc: GeometryCollection => "gc"
@@ -144,50 +133,49 @@ object IngestApp extends CommandApp(
       val targetDf = df//.repartition(1000)
 
       // Test log clip fail
-      val ff = Feature(Point(1,1), vectorpipe.util.Tree(osm.ElementData(osm.ElementMeta(1L, "Asdf", "asdf", 2L, 3L, "asdf", true), Map(), None), Seq(vectorpipe.util.Tree(osm.ElementData(osm.ElementMeta(2L, "Asdf", "asdf", 2L, 3L, "asdf", true), Map(), None), Seq()))))
+      val ff = Feature(Point(1,1), osm.ElementData(osm.ElementMeta(1L, "Asdf", "asdf", 2L, 3L, 32423423L, true), Map()))
 
       Util.logClipFail(Extent(0, 0, 1, 1), ff)
 
+      val (ns, ws, rs) = osm.fromDataFrame(targetDf)
 
-      osm.fromDataFrame(targetDf) match {
-        case Left(e) => println(e)
-        case Right((ns,ws,rs)) => {
-          val numPartitions = 10000
-          val nodePartitioner = new HashPartitioner(numPartitions)
-          val wayPartitioner = new HashPartitioner(numPartitions)
+      val numPartitions = 10000
+      val nodePartitioner = new HashPartitioner(numPartitions)
+      val wayPartitioner = new HashPartitioner(numPartitions)
 
-          /* Reproject nodes */
-          val reprojectedNodes =
-            ns.partitionBy(nodePartitioner).mapPartitions({ partition =>
-              val transform = Transform(LatLng, WebMercator)
-              partition.map { case (nodeId, node) =>
-                val (lon, lat) = transform(node.lon, node.lat)
-                (nodeId, node.copy(lon = lon, lat = lat))
-              }
-            }, preservesPartitioning = true)
+      /* Reproject nodes */
+      val reprojectedNodes =
+        ns.partitionBy(nodePartitioner).mapPartitions({ partition =>
+          val transform = Transform(LatLng, WebMercator)
+          partition.map { case (nodeId, node) =>
+            val (lon, lat) = transform(node.lon, node.lat)
+            (nodeId, node.copy(lon = lon, lat = lat))
+          }
+        }, preservesPartitioning = true)
 
-          /* Assumes that OSM ORC is in LatLng */
-          val feats: RDD[osm.OSMFeature] =
-            osm.toFeatures(reprojectedNodes, ws.partitionBy(wayPartitioner), rs)
+      /* Assumes that OSM ORC is in LatLng */
+      val feats: RDD[osm.OSMFeature] =
+        // osm.toFeatures(VectorPipe.logToLog4j, reprojectedNodes, ws.partitionBy(wayPartitioner), rs)
+        osm.toFeatures(VectorPipe.logToLog4j, reprojectedNodes.map(_._2), ws.partitionBy(wayPartitioner).map(_._2), rs.map(_._2))
 
-          /* Associated each Feature with a SpatialKey */
-          val fgrid: RDD[(SpatialKey, Iterable[osm.OSMFeature])] =
-            VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats, new HashPartitioner(numPartitions))
+      /* Associated each Feature with a SpatialKey */
+      val fgrid: RDD[(SpatialKey, Iterable[osm.OSMFeature])] =
+        //        VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats, new HashPartitioner(numPartitions))
+        //        VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats)
+        VectorPipe.toGrid(Clip.byHybrid, VectorPipe.logToLog4j, layout, feats)
 
-          /* Create the VectorTiles */
-          val tiles: RDD[(SpatialKey, VectorTile)] =
-            VectorPipe.toVectorTile(Collate.byAnalytics, layout, fgrid).cache()
+      /* Create the VectorTiles */
+      val tiles: RDD[(SpatialKey, VectorTile)] =
+        VectorPipe.toVectorTile(Collate.byOSM, layout, fgrid).cache()
 
-          val bounds: KeyBounds[SpatialKey] =
-            tiles.map({ case (key, _) => KeyBounds(key, key) }).reduce(_ combine _)
+      val bounds: KeyBounds[SpatialKey] =
+        tiles.map({ case (key, _) => KeyBounds(key, key) }).reduce(_ combine _)
 
-          /* Construct metadata for the Layer */
-          val meta = LayerMetadata(layout, bounds)
+      /* Construct metadata for the Layer */
+      val meta = LayerMetadata(layout, bounds)
 
-          /* Write the tiles */
-          writer.write(LayerId(layer, 14), ContextRDD(tiles, meta), ZCurveKeyIndexMethod)
-        }
-      }
+      /* Write the tiles */
+      writer.write(LayerId(layer, 14), ContextRDD(tiles, meta), ZCurveKeyIndexMethod)
 
       ss.stop()
 

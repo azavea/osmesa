@@ -2,6 +2,9 @@ import Dependencies._
 
 name := "osmesa-ingest"
 
+dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
+dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
+dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
 libraryDependencies ++= Seq(
   decline,
@@ -15,6 +18,7 @@ libraryDependencies ++= Seq(
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
   geomesaHbaseDatastore,
+  "org.apache.spark"            %% "spark-hive"            % "2.2.0" % "provided",
   // "org.locationtech.geomesa" % "geomesa-security_2.11" % Version.geomesa,
   // "org.locationtech.geomesa" % "geomesa-feature-common_2.11" % Version.geomesa,
   // "org.locationtech.geomesa" % "geomesa-utils_2.11" % Version.geomesa,
@@ -29,6 +33,10 @@ libraryDependencies ++= Seq(
   scalactic,
   scalatest
 )
+
+fork in Test := true
+
+javaOptions ++= Seq("-Xmx5G")
 
 initialCommands in console :=
   """
