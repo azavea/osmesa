@@ -80,8 +80,6 @@ The first steps are to build some unpublished binaries:
 First thing to is to [build and install GeoMesa](https://github.com/locationtech/geomesa#building-from-source).
 You can run `mvn clean install -T8 -am -DskipTests` on a clone of GeoMesa to accomplish this.
 
-_Note:__ - Until https://github.com/locationtech/geomesa/pull/1751 is merged, you'll have to patch that into master.
-
 __IMPORTANT__: Next, move the `geomesa-hbase-dist` installed in your local maven repository. Move it to both these locations:
 
 - `services/hbase/geomesa-hbase-dist.tar.gz`
