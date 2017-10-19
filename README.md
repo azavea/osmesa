@@ -71,11 +71,43 @@ __Note__: If you might have permissions issues with Docker writing to the host m
 * VirtualBox 4.3
 * Ansible 2.1+
 
-### Getting Started
+## Getting Started
 
-The first steps are to build some unpublished binaries:
+OSMesa is developed via docker containers, that are run within a Vagrant machine. To bring up
+and provision the vagrant machine, download test data, and build docker containers, simply
+run this on your machine in the root directory:
 
-#### Build GeoMesa and make hbase-dist binaries available
+```sh
+./scripts/setup.sh
+```
+
+Now you should be able to log into the vagrant box via
+
+```sh
+vagrant ssh
+```
+
+### Building and locally publishing GeoMesa, GeoTrellis, and VectorPipe
+
+You need to build the latest and greatest of GeoTrellis, GeoMesa and VectorPipe to work with OSMesa.
+You can do this through the VM, or outside of the VM if you want to publish things on your own machine.
+
+#### Building inside of the VM
+
+Inside of the VM, run:
+
+```sh
+./scripts/publish-local.sh all
+```
+
+And wait a bit for everything to build.
+
+#### Building manually
+
+You can build each project on your machine; you may want to do this if you already develop on any of
+the other projects, or want more control.
+
+##### Build GeoMesa and make hbase-dist binaries available
 
 First thing to is to [build and install GeoMesa](https://github.com/locationtech/geomesa#building-from-source).
 You can run `mvn clean install -T8 -am -DskipTests` on a clone of GeoMesa to accomplish this.
@@ -94,7 +126,7 @@ You'll also need the local maven repository to build the scala code in this proj
 have Vagrant syncing your `~/.m2` folder, you can build directly on your machine, but if
 you have disabled that syncing you'll have to build and install it inside of the Vagrant box.
 
-#### Build the latest GeoTrellis
+##### Build the latest GeoTrellis
 
 The same thing as above applies here: if Vagrant is syncing to the host `~/.ivy2`, you can publish
 local binaries on the host machine; otherwise you'll have to publish-local from the Vagrant box.
@@ -107,17 +139,13 @@ This one requires that SBT be locally installed.
 
 _TODO:_ Should we bake all these in a docker container to make it easier?
 
-#### Build the latest VectorPipe
+##### Build the latest VectorPipe
 
 - Clone https://github.com/geotrellis/vectorpipe
 - `cd vectorpipe`
 - `sbt publish-local`
 
 ### Building and running project services
-
-```sh
-./scripts/setup.sh
-```
 
 Rebuild Docker images and run the services.
 
@@ -133,6 +161,7 @@ vagrant ssh
 | Service            | Port                               |
 | ------------------ | ---------------------------------- |
 | HBase UI           | [`16010`](http://localhost:16010/) |
+(TODO)
 
 ### Testing (TODO)
 
@@ -176,7 +205,7 @@ Below is a description of the various docker-compose files and scripts to run sp
 | `docker-compose.update.yml`     | Container that runs the OSMesa update service [TODO]  |
 | `docker-compose.query.yml`      | Container that runs the OSMesa query service  [TODO]  |
 
-### GeoServer
+#### GeoServer
 
 GeoServer runs outside of the normal docker-compose.services.yml, because it tends to take up a lot
 of memory, so if you don't need to run it it won't eat up all your resources.
@@ -195,10 +224,6 @@ To add an HBase layer:
 
 Click 'save'. You should now be able to add GeoMesa layers from HBase.
 
-### TODO
+### Running on AWS
 
-Development setup that allows you to:
-- Create a local ingest of OSMFeature and Geometry features out of ORC into GeoMesa
-- Use GeoServer to view results
-- Dockerized setup of all components
-- Terraform-based deployment scripts for running setup in AWS
+#### Run a Zeppelin notebook for Global Analytics

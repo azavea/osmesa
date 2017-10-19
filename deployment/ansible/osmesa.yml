@@ -10,6 +10,9 @@
     - { role: "azavea.ntp" }
     - { role: "azavea.python-security" }
     - { role: "azavea.java" }
+    - { role: "azavea.git" }
+    - { role: "azavea.terraform", terraform_version: "0.10.7"  }
+    - { role: "tecris.maven" }
     - { role: "osmesa.aws-cli" }
     - { role: "osmesa.docker" }
     - { role: "osmesa.shellcheck" }
