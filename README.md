@@ -195,26 +195,6 @@ To add an HBase layer:
 
 Click 'save'. You should now be able to add GeoMesa layers from HBase.
 
-#### Docker commands
-
-Here is a list of useful commands that you can run inside the VM.
-
-- `docker images` will show you a list of all your VM's installed images
-- `docker rmi <IMAGE-NAME>` will delete the specified image
-- `docker run -it usace-program-analysis-react /bin/sh` will log you into the `usace-program-analysis-react` image's shell
-- `docker-compose up` will build and start containers according to the instructions in `docker-compose.yml` file
-- `docker-compose ps` will show you a list of running containers
-- `docker-compose down` will halt these running containers
-- `docker-compose build` will rebuild all containers listed in the `docker-compose.yml` file
-- `docker-compose build react` will rebuild only the react container per instructions listed in `docker-compose.yml`
-- `docker-compose exec <SERVICE> /bin/sh` where `<SERVICE>` is a service name specified in `docker-compose.yml` will open a shell to a currently running container.
-
-See the
-[docker](https://docs.docker.com/engine/reference/commandline/) and
-[docker-compose](https://docs.docker.com/compose/reference/overview/)
- command line reference guides for more information.
-
-
 ### TODO
 
 Development setup that allows you to:
