@@ -4,8 +4,8 @@ name := "osmesa-common"
 
 
 libraryDependencies ++= Seq(
-//  gtGeomesa exclude("com.google.protobuf", "protobuf-java") exclude("org.locationtech.geomesa", "geomesa-accumulo-datastore"),
-  gtGeotools exclude("com.google.protobuf", "protobuf-java"),
+  gtGeotools
+    exclude("com.google.protobuf", "protobuf-java"),
   jaiCore,
   gtVector,
   cats,

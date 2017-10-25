@@ -1,6 +1,6 @@
 version: '3'
 services:
-  sbt:
+  cli:
     image: quay.io/azavea/osmesa-sbt:latest
     build:
       context: ./src

@@ -75,5 +75,7 @@ dist/
 *~
 .#*
 
-geomesa-hbase-dist*.tar.gz
+# Data files
 *.orc
+*.tar.gz
+*.log

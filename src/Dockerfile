@@ -19,4 +19,4 @@ RUN mkdir -p /opt/src
 
 WORKDIR /opt/src
 
-ENTRYPOINT /opt/sbin/entrypoint.sh
+CMD ["./sbt"]

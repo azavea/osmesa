@@ -12,5 +12,4 @@ source /sbin/hbase-lib.sh
 template $HADOOP_CONF_DIR/core-site.xml
 template $HADOOP_CONF_DIR/hdfs-site.xml
 
-cd /opt/src
-./sbt $@
+exec "$@"

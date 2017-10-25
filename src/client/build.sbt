@@ -1,6 +1,6 @@
 import Dependencies._
 
-name := "osmesa-ingest"
+name := "osmesa-client"
 
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
@@ -8,17 +8,15 @@ dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.
 
 libraryDependencies ++= Seq(
   decline,
-  hive % "provided",
-  "com.google.protobuf" % "protobuf-java" % "2.5.0",
-  sparkHive % "provided",
+  hive,
   protobuf,
   gmHBaseStore,
   kryo,
   snakeyaml,
   cats,
-  hbaseClient % "provided",
-  hbaseCommon % "provided",
-  hbaseServer % "provided",
+  hbaseClient,
+  hbaseCommon,
+  hbaseServer,
   scalactic,
   scalatest,
   gtGeotools
@@ -44,7 +42,7 @@ initialCommands in console :=
   """
   """
 
-assemblyJarName in assembly := "osmesa-ingest.jar"
+assemblyJarName in assembly := "osmesa-client.jar"
 
 assemblyShadeRules in assembly := {
   val shadePackage = "com.azavea.shaded.demo"
@@ -60,7 +58,7 @@ assemblyShadeRules in assembly := {
   )
 }
 
-val meta = raw"""META.INF(.)*""".r
+val meta = """META.INF(.)*""".r
 assemblyMergeStrategy in assembly := {
   case s if s.startsWith("META-INF/services") => MergeStrategy.concat
   case PathList("javax", "servlet", xs @ _*) => MergeStrategy.first

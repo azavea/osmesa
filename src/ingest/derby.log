@@ -1,0 +1,13 @@
+----------------------------------------------------------------
+Tue Oct 24 17:40:36 UTC 2017:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.10.2.0 - (1582446): instance a816c00e-015f-4f78-c5b2-00000a49fea8 
+on database directory /opt/src/ingest/metastore_db with class loader org.apache.spark.sql.hive.client.IsolatedClientLoader$$anon$1@409986fe 
+Loaded from file:/root/.ivy2/cache/org.apache.derby/derby/jars/derby-10.10.2.0.jar
+java.vendor=Oracle Corporation
+java.runtime.version=1.8.0_131-b11
+user.dir=/opt/src/ingest
+os.name=Linux
+os.arch=amd64
+os.version=3.13.0-39-generic
+derby.system.home=null
+Database Class Loader started - derby.database.classpath=''
