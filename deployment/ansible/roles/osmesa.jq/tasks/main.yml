@@ -1,0 +1,4 @@
+---
+- name: Installing jq
+  apt: pkg="jq"
+       state=present

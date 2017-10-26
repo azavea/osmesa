@@ -10,6 +10,10 @@ third_party_sources
 # Test Data #
 src/test-data
 
+# AWS #
+
+*.pem
+
 # Operating System Files #
 
 *.DS_Store
@@ -34,9 +38,12 @@ build/
 
 # Terraform
 deployment/terraform/.terraform
+deployment/terraform/terraform.tfvars
 *.tfvars
 *.tfstate
 *.tfplan
+*.tfstate.backup
+.terraform
 
 # Ansible
 deployment/ansible/roles/azavea.*
