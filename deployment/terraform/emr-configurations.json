@@ -2,7 +2,7 @@
    {
      "Classification": "hbase-site",
      "Properties": {
-       "hbase.rootdir": "s3://osmesa/hbase-root"
+       "hbase.rootdir": "${var.s3_hbase_root_uri}"
      }
    },
    {

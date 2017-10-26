@@ -17,3 +17,4 @@
     - { role: "osmesa.docker" }
     - { role: "osmesa.shellcheck" }
     - { role: "osmesa.env" }
+    - { role: "osmesa.jq" }
