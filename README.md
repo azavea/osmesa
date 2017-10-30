@@ -11,7 +11,12 @@ __NOTE__ This repo is pre-alpha and under active development. Contact the author
 
 ### OSMesa Store
 
-The center of it all is a GeoMesa-enabled instance of HBase, backed by the Amazon S3 object store, that will store all Open Street Map and other
+The center of it all is a GeoMesa-enabled instance of HBase, backed by the Amazon S3 object store, that will store all Open Street Map and other vector source data. The OSMesa store will contain a number of tables, some of which are not GeoMesa enabled (e.g. direct copies of the `planet_history` and `planet_latest` tables from ORC but up-to-date with replication files), and others will be derived tables to service specific analytic calculations.
+
+The current philosophy here is to ignore storage concerns, duplicate data as needed, and make new tables
+if it will make queries faster. This design philosophy might reach it's limit and we'll have to change
+direction, but for the beginning of this project, we should try and feel the pain of too-much-data-stored
+and minimize the pain of query-taking-a-long-time.
 
 ### Ingest
 
@@ -210,7 +215,7 @@ Below is a description of the various docker-compose files and scripts to run sp
 GeoServer runs outside of the normal docker-compose.services.yml, because it tends to take up a lot
 of memory, so if you don't need to run it it won't eat up all your resources.
 
-To run, use `script/geoserver.sh` when the `scripts/services.sh` services are already running.
+To run, use `scripts/geoserver.sh` when the `scripts/services.sh` services are already running.
 To view data in GeoServer, go to this address:
 
 [http://localhost:9090/geoserver/web](http://localhost:9090/geoserver/web)

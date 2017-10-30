@@ -39,8 +39,8 @@ then
             help|*)           usage; exit 1 ;;
         esac
 
-        mkdir -p ./third_party_sources
-        pushd third_party_sources
+        mkdir -p $HOME/third_party_sources
+        pushd $HOME/third_party_sources
 
         if [ -n "$PUBLISH_GEOTRELLIS" ]; then
             if [ ! -d "geotrellis" ]; then
@@ -61,13 +61,13 @@ then
             pushd geomesa
 
             git pull
-#            mvn clean install -T8 -am -Dmaven.test.skip;
+            mvn clean install -T8 -am -Dmaven.test.skip;
 
             popd
 
             # Bring the hbase-dist tarball to the proper locations
-            cp ~/.m2/repository/org/locationtech/geomesa/geomesa-hbase-dist_2.11/1.4.0-SNAPSHOT/geomesa-hbase-dist_2.11-1.4.0-SNAPSHOT-bin.tar.gz services/hbase/geomesa-hbase-dist.tar.gz
-            cp ~/.m2/repository/org/locationtech/geomesa/geomesa-hbase-dist_2.11/1.4.0-SNAPSHOT/geomesa-hbase-dist_2.11-1.4.0-SNAPSHOT-bin.tar.gz services/geoserver/geomesa-hbase-dist.tar.gz
+            cp ~/.m2/repository/org/locationtech/geomesa/geomesa-hbase-dist_2.11/1.4.0-SNAPSHOT/geomesa-hbase-dist_2.11-1.4.0-SNAPSHOT-bin.tar.gz ../services/hbase/geomesa-hbase-dist.tar.gz
+            cp ~/.m2/repository/org/locationtech/geomesa/geomesa-hbase-dist_2.11/1.4.0-SNAPSHOT/geomesa-hbase-dist_2.11-1.4.0-SNAPSHOT-bin.tar.gz ../services/geoserver/geomesa-hbase-dist.tar.gz
         fi
 
         if [ -n "$PUBLISH_VECTORPIPE" ]; then
@@ -79,7 +79,7 @@ then
             git pull
             wget -O sbt $SBT_SCRIPT
             chmod a+x sbt
-            ./sbt publish-local
+            ./sbt publishLocal
 
             popd
         fi
