@@ -1,0 +1,31 @@
+version: '2'
+services:
+    hdfs-name:
+        image: quay.io/geomesa/hdfs:latest
+        command: name
+        environment:
+          HADOOP_MASTER_ADDRESS: hdfs-name
+        ports:
+          - 50070:50070
+        # volumes:
+        #   - '/data/gt/hdfs:/data/hdfs'
+    hdfs-sname:
+        image: quay.io/geomesa/hdfs:latest
+        command: sname
+        environment:
+          HADOOP_MASTER_ADDRESS: hdfs-name
+        ports:
+          - 50090:50090
+        depends_on:
+          - hdfs-name
+        # volumes:
+        #   - '/data/gt/hdfs:/data/hdfs'
+    hdfs-data:
+        image: quay.io/geomesa/hdfs:latest
+        command: data
+        environment:
+          HADOOP_MASTER_ADDRESS: hdfs-name
+        depends_on:
+          - hdfs-name
+        # volumes:
+        #  - '/data/gt/hdfs:/data/hdfs'

@@ -1,3 +1,15 @@
+# GeoMesa Dist (to be copied in) #
+services/hbase/geomesa-hbase-dist.tar.gz
+services/geoserver/geomesa-hbase-dist.tar.gz
+
+# Project generated files #
+
+metastore_db
+third_party_sources
+
+# Test Data #
+src/test-data
+
 # Operating System Files #
 
 *.DS_Store
