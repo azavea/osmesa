@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+  <property>
+    <name>hbase.cluster.distributed</name>
+    <value>true</value>
+  </property>
+   <property>
+      <name>hbase.rootdir</name>
+      <value>hdfs://hdfs-name/HBase/HFiles</value>
+   </property>
+   <property>
+     <name>hbase.zookeeper.quorum</name>
+     <value>zookeeper</value>
+   </property>
+   <property>
+     <name>hbase.dynamic.jars.dir</name>
+     <value>${hbase.rootdir}/lib</value>
+     <description>
+      The directory from which the custom filter JARs can be loaded
+      dynamically by the region server without the need to restart. However,
+      an already loaded filter/co-processor class would not be un-loaded. See
+      HBASE-1936 for more details.
+
+      Does not apply to coprocessors.
+    </description>
+   </property>
+   <property>
+    <name>hbase.coprocessor.user.region.classes</name>
+    <value>org.locationtech.geomesa.hbase.coprocessor.GeoMesaCoprocessor</value>
+  </property>
+</configuration>
