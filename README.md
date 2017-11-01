@@ -320,6 +320,7 @@ brew install coreutils
 alias readlink=greadlink
 ```
 
+You'll need to modify the Zeppelin config to include the uploaded `osmesa-analytics.jar`.
 
 __TODO__
 

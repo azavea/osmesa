@@ -1,36 +1,3 @@
-# data "template_file" "emr_configurations" {
-#   template = "${file("../emr-configurations.json")}"
-# }
-
-# module "emr" {
-#   source = "github.com/azavea/terraform-aws-emr-cluster?ref=0.1.0"
-
-#   # TODO: Make vars
-#   name          = "Osmesa Analytics"
-#   vpc_id        = "${aws_vpc.dataproc.id}"
-#   release_label = "emr-5.8.0"
-
-#   applications = [
-#     "Hadoop",
-#     "Ganglia",
-#     "Spark",
-#     "Zeppelin",
-#   ]
-
-#   configurations  = "${data.template_file.emr_configurations.rendered}"
-#   key_name        = "${var.aws_key_name}"
-#   subnet_id       = "${element(aws_subnet.public.*.id, 0)}"
-#   instance_groups = "${var.emr_instance_groups}"
-#   bootstrap_name  = "runif"
-#   bootstrap_uri   = "s3://elasticmapreduce/bootstrap-actions/run-if"
-#   bootstrap_args  = ["instance.isMaster=true", "echo running on master node"]
-#   log_uri         = "${var.emr_log_uri}"
-
-#   project     = "${var.project}"
-#   environment = "${var.environment}"
-# }
-
-# `aws_emr_cluster` is built-in to Terraform. We name ours `emrSparkCluster`.
 resource "aws_emr_cluster" "emrSparkCluster" {
   name          = "Osmesa Analytics"
   release_label = "emr-5.8.0"            # 2017 August

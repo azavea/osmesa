@@ -6,8 +6,6 @@ if [[ -n "${OSMESA_DEBUG}" ]]; then
     set -x
 fi
 
-set -u
-
 DIR="$(dirname "$0")"
 
 source ${DIR}/util/realpath.sh
@@ -25,7 +23,7 @@ Interact with the analytics cluster. You must first deploy the analytics cluster
 
 Options:
         shell
-        put-jar
+        put-zeppelin-code
         upload-code
         run-job
         start-zeppelin
@@ -98,6 +96,7 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
                 ;;
             *)
                 echo "We don't have command ${1}";
+                usage;
                 exit 1
                 ;;
         esac
