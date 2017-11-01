@@ -9,6 +9,3 @@ variable "s3_uri" { }
 
 # The hbase root for s3
 variable "s3_hbase_root_uri" { }
-
-# Subnet to launch EMR cluster into
-variable analytics_subnet_id { }
