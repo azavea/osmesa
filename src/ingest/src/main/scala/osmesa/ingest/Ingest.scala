@@ -90,7 +90,7 @@ object IngestApp extends CommandApp(
     val layerO = Opts.option[String]("layer", help = "Name of the output Layer")
     val localF = Opts.flag("local", help = "Is this to be run locally, not on EMR?").orFalse
 
-    (orcO |@| bucketO |@| prefixO |@| layerO |@| localF).map { (orc, bucket, prefix, layer, local) =>
+    (orcO, bucketO, prefixO, layerO, localF).mapN { (orc, bucket, prefix, layer, local) =>
 
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
