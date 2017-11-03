@@ -2,7 +2,7 @@ package osmesa.common
 
 import geotrellis.vector._
 import geotrellis.geotools._
-import geotrellis.geomesa.geotools._
+// import geotrellis.geomesa.geotools._
 import org.scalatest._
 import org.geotools.feature.simple.SimpleFeatureImpl
 
@@ -64,6 +64,7 @@ class FeatureBijectionSpec extends FunSpec with Matchers {
   val point = Point(1, 2)
   val feature = Feature(point, ElementData(ElementMeta(1, "user123", "userId123", 123, 12345, "some time", true), Map("someTag" -> "someValue")))
 
+  /*
   describe("Feature/SimpleFeature conversion") {
     it("should convert from GT feature to simplefeature") {
       feature.toSimpleFeature("testFeature") shouldBe a [SimpleFeatureImpl]
@@ -73,7 +74,7 @@ class FeatureBijectionSpec extends FunSpec with Matchers {
       val simple = feature.toSimpleFeature("testFeature")
       val feat = SimpleFeatureToFeature(simple)
       Feature(feat.geom, mapToElementData(feat.data)) shouldBe (feature)
-
     }
   }
+   */
 }
