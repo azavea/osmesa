@@ -37,7 +37,7 @@ object Util {
       JsObject(
         "id" -> JsNumber(m.id),
         "user" -> JsString(m.user),
-        "userId" -> JsString(m.userId),
+        "userId" -> JsNumber(m.userId),
         "changeSet" -> JsNumber(m.changeSet),
         "version" -> JsNumber(m.version),
         "timestamp" -> JsString(m.timestamp.toString),
@@ -130,7 +130,7 @@ object IngestApp extends CommandApp(
       val targetDf = df//.repartition(1000)
 
       // Test log clip fail
-      val ff = Feature(Point(1,1), osm.ElementData(osm.ElementMeta(1L, "Asdf", "asdf", 2L, 3L, 32423423L, true), Map()))
+      val ff = Feature(Point(1,1), osm.ElementData(osm.ElementMeta(1L, "Asdf", 12345, 2L, 3L, 32423423L, true), Map()))
 
       Util.logClipFail(Extent(0, 0, 1, 1), ff)
 
