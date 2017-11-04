@@ -22,8 +22,6 @@ libraryDependencies ++= Seq(
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
   // geomesaHbaseDatastore,
-  sparkHive % "provided",
-  sparkSql % "provided",
   cats,
   hbaseClient % "provided",
   hbaseCommon % "provided",
@@ -32,6 +30,9 @@ libraryDependencies ++= Seq(
   scalatest,
   "com.madhukaraphatak" %% "java-sizeof" % "0.1"
 )
+
+/* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */
+fork in run := true
 
 fork in Test := true
 
