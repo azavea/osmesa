@@ -20,16 +20,11 @@ lazy val commonSettings = Seq(
     "-Ypatmat-exhaust-depth", "100"
   ),
   resolvers ++= Seq(
-    Resolver.sonatypeRepo("snapshots"),
     Resolver.bintrayRepo("lonelyplanet", "maven"),
     Resolver.bintrayRepo("kwark", "maven"), // Required for Slick 3.1.1.2, see https://github.com/azavea/raster-foundry/pull/1576
     Resolver.bintrayRepo("bkirwi", "maven"), // Required for `decline` dependency
-    Resolver.mavenLocal,
     "locationtech-releases" at "https://repo.locationtech.org/content/repositories/releases/",
     "locationtech-snapshots" at "https://repo.locationtech.org/content/repositories/snapshots/",
-    "boundlessgeo" at "http://repo.boundlessgeo.com/main/",
-    "geosolutions" at "http://maven.geo-solutions.it/",
-    "osgeo" at "http://download.osgeo.org/webdav/geotools/"
   ),
   shellPrompt := { s => Project.extract(s).currentProject.id + " > " }
 )
