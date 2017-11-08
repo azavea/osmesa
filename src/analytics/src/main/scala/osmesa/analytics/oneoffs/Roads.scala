@@ -4,7 +4,8 @@ import scala.util.{Try, Success, Failure}
 
 import cats.implicits._
 import com.monovore.decline._
-import geotrellis.vector.{Feature, Line}
+import geotrellis.vector.{Feature, Line, Point}
+import geotrellis.util.Haversine
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
@@ -20,7 +21,7 @@ import vectorpipe._
 object Roads extends CommandApp(
 
   name   = "road-changes",
-  header = "How many kilometers of roads changed?",
+  header = "How many kilometres of roads changed?",
   main   = {
 
     val orcO = Opts.option[String]("orc", help = "Location of the ORC file to process.")
@@ -44,7 +45,7 @@ object Roads extends CommandApp(
 
       (Try(ss.read.orc(orc)) >>= Analysis.roads) match {
         case Failure(e) => println(e)
-        case Success(d) => println(s"${d} kilometers of roads were changed.")
+        case Success(d) => println(s"${d} kilometres of roads were changed.")
       }
 
       ss.stop()
@@ -62,7 +63,16 @@ object Analysis {
     "living_street", "road"
   )
 
-  /** How many kilometers of road changed in all the Ways present in the given DataFrame? */
+  /** How long is a Line, in metres? */
+  private[this] def metres(line: Line): Double = {
+    val ps: Array[Point] = line.points // TODO Wasteful.
+    val head: Point = ps.head
+    val last: Point = ps.last
+
+    Haversine(head.x, head.y, last.x, last.y)
+  }
+
+  /** How many kilometres of road changed in all the Ways present in the given DataFrame? */
   def roads(data: DataFrame)(implicit ss: SparkSession): Try[Double] = {
 
     Try(osm.fromDataFrame(data)).map { case (nodes, ways, relations) =>
@@ -75,11 +85,8 @@ object Analysis {
        */
       val lines: RDD[Feature[Line, osm.ElementData]] = osm.toLines(nodes, roadsOnly)
 
-      // println(s"ROADS: ${roadsOnly.count}")
-      // println(s"LINES: ${lines.count}")
-
       // TODO You can probably be smarter and reassociate the Ways first.
-      lines.aggregate(0d)({ _ + _.geom.length }, { _ + _ })
+      lines.aggregate(0d)({ _ + metres(_) }, { _ + _ })
     }
   }
 
