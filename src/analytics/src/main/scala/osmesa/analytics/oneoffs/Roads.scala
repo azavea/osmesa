@@ -11,6 +11,12 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import vectorpipe._
 
+// --- //
+
+/* To run:
+ run --orc "/home/colin/code/azavea/vectorpipe/data/isle-of-man.orc"
+ */
+
 object Roads extends CommandApp(
 
   name   = "road-changes",
@@ -49,12 +55,28 @@ object Roads extends CommandApp(
 
 object Analysis {
 
+  /* The highway (road) types we care about. There are technically more than these. */
+  val highways: Set[String] = Set(
+    "motorway", "trunk", "motorway_link", "trunk_link", "primary", "secondary", "tertiary",
+    "primary_link", "secondary_link", "tertiary_link", "service", "residential", "unclassified",
+    "living_street", "road"
+  )
+
   /** How many kilometers of road changed in all the Ways present in the given DataFrame? */
   def roads(data: DataFrame)(implicit ss: SparkSession): Try[Double] = {
 
     Try(osm.fromDataFrame(data)).map { case (nodes, ways, relations) =>
-      val roadsOnly: RDD[(Long, osm.Way)] = ways.filter(_._2.data.tagMap.contains("road"))
+      val roadsOnly: RDD[(Long, osm.Way)] =
+        ways.filter(_._2.data.tagMap.get("highway").map(highways.contains(_)).getOrElse(false))
+
+      /* We expect this `lines` value to have more entries than `roadsOnly`,
+       * since a new Line should be created for every Way change, but also for every
+       * Node change in between.
+       */
       val lines: RDD[Feature[Line, osm.ElementData]] = osm.toLines(nodes, roadsOnly)
+
+      // println(s"ROADS: ${roadsOnly.count}")
+      // println(s"LINES: ${lines.count}")
 
       // TODO You can probably be smarter and reassociate the Ways first.
       lines.aggregate(0d)({ _ + _.geom.length }, { _ + _ })
