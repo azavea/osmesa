@@ -54,3 +54,12 @@ lazy val analytics =
   project
     .settings(commonSettings: _*)
     .dependsOn(common)
+
+/* Run with
+      jmh:run -t 1 -f 1 -wi 5 -i 5 .*Bench.*
+ */
+lazy val bench =
+  project.in(file("bench"))
+    .settings(commonSettings)
+    .dependsOn(analytics)
+    .enablePlugins(JmhPlugin)
