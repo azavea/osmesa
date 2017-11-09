@@ -43,7 +43,7 @@ object Roads extends CommandApp(
       /* Silence the damn INFO logger */
       Logger.getRootLogger().setLevel(Level.ERROR)
 
-      (Try(ss.read.orc(orc)) >>= Analysis.roads) match {
+      (Try(ss.read.orc(orc)) >>= Analysis.newRoads) match {
         case Failure(e) => println(e)
         case Success(d) => println(s"${d} kilometres of roads were changed.")
       }
@@ -83,6 +83,26 @@ object Analysis {
        * Node change in between.
        */
       val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.toLines(nodes, roadsOnly)
+
+      // TODO You can probably be smarter and reassociate the Ways first.
+      lines.aggregate(0d)({ _ + metres(_) }, { _ + _ })
+    }
+  }
+
+  /** How many kilometres of new roads were created? */
+  def newRoads(data: DataFrame)(implicit ss: SparkSession): Try[Double] = {
+
+    Try(osm.fromDataFrame(data)).map { case (nodes, ways, relations) =>
+      val roadsOnly: RDD[(Long, osm.Way)] =
+        ways.filter(_._2.meta.tags.get("highway").map(highways.contains(_)).getOrElse(false))
+
+      /* Ways that only have 1 version, implying that they were recently created. */
+      val news: RDD[(Long, osm.Way)] =
+        roadsOnly.groupByKey
+          .filter { case (_, iter) => iter.size === 1 }
+          .map { case (l, ws) => (l, ws.head) }
+
+      val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.toLines(nodes, news)
 
       // TODO You can probably be smarter and reassociate the Ways first.
       lines.aggregate(0d)({ _ + metres(_) }, { _ + _ })
