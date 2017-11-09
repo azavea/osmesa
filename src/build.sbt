@@ -50,6 +50,7 @@ lazy val ingest = project
   .settings(commonSettings: _*)
   .dependsOn(common)
 
-// run --orc s3://vectortiles/orc/europe/andorra.orc --bucket vectortiles --key orc-catalog --layer andorra --local
-// run --orc /home/colin/code/playground/scala/orc/ireland.orc --bucket vectortiles --key orc-catalog --layer ireland --local
-// run --orc /home/colin/code/azavea/vp-io-test/georgia.orc --bucket vectortiles --key orc-catalog --layer georgia --local
+lazy val analytics =
+  project
+    .settings(commonSettings: _*)
+    .dependsOn(common)

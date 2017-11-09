@@ -1,5 +1,5 @@
 ifndef CLUSTER_ID
-CLUSTER_ID=$(shell cat deploy/terraform.tfstate | jq -r ".modules[].outputs.emrID.value")
+CLUSTER_ID=$(shell cat deployment/terraform/analytics/terraform.tfstate | jq -r ".modules[].outputs.emrID.value")
 endif
 ifndef KEY_PAIR_FILE
 KEY_PAIR_FILE=${HOME}/geotrellis-emr.pem
@@ -8,12 +8,6 @@ endif
 S3_PATH=s3://osmesa
 
 ASSEMBLY_PATH := ingest/target/scala-2.11/osmesa-ingest.jar
-
-create-cluster:
-	cd deploy && terraform apply
-
-destroy-cluster:
-	cd deploy && terraform destroy
 
 upload-code:
 	aws s3 cp ${ASSEMBLY_PATH} ${S3_PATH}/jars/vp-io-test-assembly-rde-1.0.0.jar

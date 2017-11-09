@@ -1,15 +1,19 @@
 import Dependencies._
 
-name := "osmesa-ingest"
+name := "osmesa-analytics"
 
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
+// dependencyOverrides += "org.json4s" % "json4s-jackson" % "3.2.11"
+// dependencyOverrides += "org.json4s" % "json4s-core" % "3.2.11"
+// dependencyOverrides += "org.json4s" % "json4s-ast" % "3.2.11"
+
+
 libraryDependencies ++= Seq(
   decline,
   hive % "provided",
-  //gtGeomesa exclude("com.google.protobuf", "protobuf-java"),
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
   gtS3 exclude("com.google.protobuf", "protobuf-java"),
   gtSpark exclude("com.google.protobuf", "protobuf-java"),
@@ -17,14 +21,16 @@ libraryDependencies ++= Seq(
   gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
-  geomesaHbaseDatastore,
+  // geomesaHbaseDatastore,
   sparkHive % "provided",
+  sparkSql % "provided",
   cats,
   hbaseClient % "provided",
   hbaseCommon % "provided",
   hbaseServer % "provided",
   scalactic,
-  scalatest
+  scalatest,
+  "com.madhukaraphatak" %% "java-sizeof" % "0.1"
 )
 
 fork in Test := true
@@ -35,7 +41,7 @@ initialCommands in console :=
   """
   """
 
-assemblyJarName in assembly := "osmesa-ingest.jar"
+assemblyJarName in assembly := "osmesa-analytics.jar"
 
 assemblyShadeRules in assembly := {
   val shadePackage = "com.azavea.shaded.demo"
@@ -56,9 +62,7 @@ assemblyMergeStrategy in assembly := {
   case "reference.conf" | "application.conf"  => MergeStrategy.concat
   case "META-INF/MANIFEST.MF" | "META-INF\\MANIFEST.MF" => MergeStrategy.discard
   case "META-INF/ECLIPSEF.RSA" | "META-INF/ECLIPSEF.SF" => MergeStrategy.discard
-  case "META-INF/ECLIPSE_.RSA" | "META-INF/ECLIPSE_.SF" => MergeStrategy.discard
-  case s if s.startsWith("META-INF/") && s.endsWith("SF") => MergeStrategy.discard
-  case s if s.startsWith("META-INF/") && s.endsWith("RSA") => MergeStrategy.discard
-  case s if s.startsWith("META-INF/") && s.endsWith("DSA") => MergeStrategy.discard
   case _ => MergeStrategy.first
 }
+
+assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
