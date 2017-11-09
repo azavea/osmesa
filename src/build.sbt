@@ -25,6 +25,8 @@ lazy val commonSettings = Seq(
     Resolver.bintrayRepo("bkirwi", "maven"), // Required for `decline` dependency
     "locationtech-releases" at "https://repo.locationtech.org/content/repositories/releases/",
     "locationtech-snapshots" at "https://repo.locationtech.org/content/repositories/snapshots/",
+    "geosolutions" at "http://maven.geo-solutions.it/",
+    "osgeo" at "http://download.osgeo.org/webdav/geotools/"
   ),
   shellPrompt := { s => Project.extract(s).currentProject.id + " > " }
 )
