@@ -76,13 +76,13 @@ object Analysis {
 
     Try(osm.fromDataFrame(data)).map { case (nodes, ways, relations) =>
       val roadsOnly: RDD[(Long, osm.Way)] =
-        ways.filter(_._2.data.tagMap.get("highway").map(highways.contains(_)).getOrElse(false))
+        ways.filter(_._2.meta.tags.get("highway").map(highways.contains(_)).getOrElse(false))
 
       /* We expect this `lines` value to have more entries than `roadsOnly`,
        * since a new Line should be created for every Way change, but also for every
        * Node change in between.
        */
-      val lines: RDD[Feature[Line, osm.ElementData]] = osm.toLines(nodes, roadsOnly)
+      val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.toLines(nodes, roadsOnly)
 
       // TODO You can probably be smarter and reassociate the Ways first.
       lines.aggregate(0d)({ _ + metres(_) }, { _ + _ })

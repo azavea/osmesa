@@ -32,31 +32,25 @@ object Util {
   import geotrellis.spark.io.s3.S3Client
   import com.amazonaws.services.s3.model.{ObjectMetadata, AmazonS3Exception}
 
-  implicit object ElementMetaWriter  extends JsonWriter[ElementMeta] {
+  implicit object ElementMetaWriter extends JsonWriter[ElementMeta] {
     def write(m: ElementMeta): JsValue =
       JsObject(
         "id" -> JsNumber(m.id),
         "user" -> JsString(m.user),
-        "userId" -> JsNumber(m.userId),
-        "changeSet" -> JsNumber(m.changeSet),
+        "uid" -> JsNumber(m.uid),
+        "changeset" -> JsNumber(m.changeset),
         "version" -> JsNumber(m.version),
         "timestamp" -> JsString(m.timestamp.toString),
-        "visible" -> JsBoolean(m.visible)
+        "visible" -> JsBoolean(m.visible),
+        "tags" -> m.tags.toJson
       )
   }
 
-  implicit object ElementDataWriter  extends JsonWriter[ElementData] {
-    def write(d: ElementData): JsValue =
-      JsObject(
-        "meta" -> d.meta.toJson,
-        "tags" -> d.tagMap.toJson
-      )
-  }
   val s3Client: S3Client = S3Client.DEFAULT
 
   def logClipFail(e: Extent, f: osm.OSMFeature): Unit = {
     val txt = f.toGeoJson
-    val fid = f.data.meta.id
+    val fid = f.data.id
     val gType =
       f.geom match {
         case gc: GeometryCollection => "gc"
@@ -130,7 +124,7 @@ object IngestApp extends CommandApp(
       val targetDf = df//.repartition(1000)
 
       // Test log clip fail
-      val ff = Feature(Point(1,1), osm.ElementData(osm.ElementMeta(1L, "Asdf", 12345, 2L, 3L, 32423423L, true), Map()))
+      val ff = Feature(Point(1,1), osm.ElementMeta(1L, "Asdf", 12345, 2L, 3L, 32423423L, true, Map()))
 
       Util.logClipFail(Extent(0, 0, 1, 1), ff)
 
