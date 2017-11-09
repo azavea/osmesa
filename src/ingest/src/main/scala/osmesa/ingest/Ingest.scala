@@ -111,9 +111,6 @@ object IngestApp extends CommandApp(
       /* Silence the damn INFO logger */
       Logger.getRootLogger().setLevel(Level.ERROR)
 
-      /* Necessary for locally reading ORC files off S3 */
-      if (local) useS3(ss)
-
       /* For writing a compressed Tile Layer */
       val writer = S3LayerWriter(S3AttributeStore(bucket, prefix))
       // val writer = FileLayerWriter(FileAttributeStore("/home/colin/tiles/"))

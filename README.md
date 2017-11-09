@@ -231,4 +231,100 @@ Click 'save'. You should now be able to add GeoMesa layers from HBase.
 
 ### Running on AWS
 
+#### Preparing
+
+You will need to do a couple of things before running anything on AWS:
+
+##### Configuring the 'osmesa' profile in aws-cli
+
+Create a profile with the name `osmesa` for the aws cli. This can happen on the host machine
+or in the vagrant box. Run:
+
+```sh
+aws configure --profile osmesa
+```
+
+and put in the appropriate credentials, and defaults for the rest of the options.
+
+##### Set up the terraform variables
+
+OSMesa requires some knowledge of your AWS setup, including the S3 bucket it
+will upload configuration, code and logs, as well as place the HBase backend files.
+These need to be set in the terraform variable file. Modify the file at
+`deployment/terraform/terraform.tfvars.template` to reflect your setup, and
+save it as `deployment/terraform/terraform.tfvars`.
+
 #### Run a Zeppelin notebook for Global Analytics
+
+You'll need to fill out your terraform options.
+You can cp the `deployment/terraform/terraform.tfvars.template` to
+`deployment/terraform/terraform.tfvars` and fill out with the appropriate
+settings.
+
+You can either keep that file there, or move it to s3 to the `OSMESA_SETTINGS_BUCKET`,
+in case you want to set them for a staging or deployment environment and share across
+your team.
+
+Then to create the cluster:
+
+```sh
+scripts/infra.sh plan --analytics
+scripts/infra.sh apply --analytics
+```
+
+Note: if there is an error in creating the EMR cluster, it might self-terminate. In that case
+your terraform state will be out of date, and you'll get an error message similar to
+`Error reading EMR cluster: InvalidRequestException: Cluster id 'j-9ODZP19VWSJI' is not valid.`
+If this is the case, remove the terraform state at `deployment/terraform/analytics/terraform.tfstate`
+and rerun.
+
+After the cluster is created, you will be able to use the `scripts/analytics-cluster.sh` to interact
+with the cluster.
+
+You'll need to have built the `osmesa-analytics.jar` assembly jar. To do so, run
+
+```sh
+scripts/sbt.sh
+> project analytics
+> assembly
+> exit
+```
+
+_Note: This can be slow in the VM; you may want to build it on the host machine instead_
+
+You'll need to the appropriately named `pem` file (named the same as the key pair name)
+in the root directory of osmesa clone.
+
+After the assembly is baked, you can run
+
+```sh
+scripts/analytics-cluster.sh put-zeppelin-code
+```
+
+This will upload the jar to a place Zeppelin can find it, and upload some notebooks.
+
+Now, you should be able to go to the EMR console in AWS, find your cluster, and start up
+Zeppelin. You'll to set up foxy proxy in your browser, and proxy the master in order
+to access Zeppelin. To do so, __run this on the host machine (not the vm)__:
+
+```sh
+scripts/analytics-cluster.sh proxy
+```
+
+to run the proxy connection.
+
+_Note_: If you're on a Mac, you'll have to have the GNU readlink installed and aliased:
+```
+brew install coreutils
+# In .bashrc
+alias readlink=greadlink
+```
+
+You'll need to modify the Zeppelin config to include the uploaded `osmesa-analytics.jar`.
+
+__TODO__
+
+- Make jq ansible role.
+- use EMR module?
+- How do we proxy
+- Test this setup look like on a blank AWS account
