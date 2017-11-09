@@ -91,7 +91,7 @@ object OrcLatestIngestTest {
   def isRoad(feature: OSMFeature): Boolean =
     feature.geom match {
       case _: Line =>
-        feature.data.tagMap.get("highway") match {
+        feature.data.tags.get("highway") match {
           case Some(t) if ROAD_TAGS.contains(t) => true
           case _ => false
         }
@@ -145,12 +145,12 @@ object OrcLatestIngestTest {
 
         part.filter(isRoad).foreach { feature =>
           val sft = createSimpleFeatureType(simpleFeatureTypeName)
-          val simpleFeature = SimpleFeatureBuilder.build(sft,  Array[Object](), feature.data.meta.id.toString)
+          val simpleFeature = SimpleFeatureBuilder.build(sft,  Array[Object](), feature.data.id.toString)
           simpleFeature.getUserData().put(Hints.USE_PROVIDED_FID, java.lang.Boolean.TRUE)
 
-          simpleFeature.setAttribute("userId", feature.data.meta.userId)
-          simpleFeature.setAttribute("createdate", new DateTime(feature.data.meta.timestamp.toEpochMilli))
-          simpleFeature.setAttribute("tags", feature.data.tagMap.map { case (k, v) => s"$k=$v" }.mkString(";"))
+          simpleFeature.setAttribute("uid", feature.data.uid)
+          simpleFeature.setAttribute("createdate", new DateTime(feature.data.timestamp.toEpochMilli))
+          simpleFeature.setAttribute("tags", feature.data.tags.map { case (k, v) => s"$k=$v" }.mkString(";"))
           simpleFeature.setAttribute("geom", feature.geom.jtsGeom)
 
           featureCollection.add(simpleFeature)
