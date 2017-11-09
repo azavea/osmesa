@@ -43,9 +43,9 @@ object Roads extends CommandApp(
       /* Silence the damn INFO logger */
       Logger.getRootLogger().setLevel(Level.ERROR)
 
-      (Try(ss.read.orc(orc)) >>= Analysis.newRoads) match {
+      (Try(ss.read.orc(orc)) >>= Analysis.newRoadsByUser) match {
         case Failure(e) => println(e)
-        case Success(d) => println(s"${d} kilometres of roads were changed.")
+        case Success(d) => d.foreach(pair => println(pair.show))
       }
 
       ss.stop()
@@ -71,41 +71,25 @@ object Analysis {
     pairs.foldLeft(0d) { case (acc, (p,c)) => acc + Haversine(p.x, p.y, c.x, c.y) }
   }
 
-  /** How many kilometres of road changed in all the Ways present in the given DataFrame? */
-  def roads(data: DataFrame)(implicit ss: SparkSession): Try[Double] = {
+  /* Lengths of new roads created by each user */
+  def newRoadsByUser(data: DataFrame)(implicit ss: SparkSession): Try[RDD[(Long, Double)]] = {
 
     Try(osm.fromDataFrame(data)).map { case (nodes, ways, relations) =>
       val roadsOnly: RDD[(Long, osm.Way)] =
         ways.filter(_._2.meta.tags.get("highway").map(highways.contains(_)).getOrElse(false))
 
-      /* We expect this `lines` value to have more entries than `roadsOnly`,
-       * since a new Line should be created for every Way change, but also for every
-       * Node change in between.
-       */
-      val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.toLines(nodes, roadsOnly)
-
-      // TODO You can probably be smarter and reassociate the Ways first.
-      lines.aggregate(0d)({ _ + metres(_) }, { _ + _ })
-    }
-  }
-
-  /** How many kilometres of new roads were created? */
-  def newRoads(data: DataFrame)(implicit ss: SparkSession): Try[Double] = {
-
-    Try(osm.fromDataFrame(data)).map { case (nodes, ways, relations) =>
-      val roadsOnly: RDD[(Long, osm.Way)] =
-        ways.filter(_._2.meta.tags.get("highway").map(highways.contains(_)).getOrElse(false))
-
-      /* Ways that only have 1 version, implying that they were recently created. */
-      val news: RDD[(Long, osm.Way)] =
-        roadsOnly.groupByKey
-          .filter { case (_, iter) => iter.size === 1 }
-          .map { case (l, ws) => (l, ws.head) }
+      /* Roads that only had one version, implying that they were new */
+      val news: RDD[(Long, osm.Way)] = roadsOnly.groupByKey
+        .filter { case (_, iter) => iter.size === 1 }
+        .map { case (l, ws) => (l, ws.head) }
 
       val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.toLines(nodes, news)
 
-      // TODO You can probably be smarter and reassociate the Ways first.
-      lines.aggregate(0d)({ _ + metres(_) }, { _ + _ })
+      /* The `Long` is now the user's unchanging unique ID */
+      val byUsers: RDD[(Long, Iterable[Feature[Line, osm.ElementMeta]])] =
+        lines.map(f => (f.data.uid, f)).groupByKey
+
+      byUsers.mapValues(fs => fs.map(f => metres(f.geom)).foldLeft(0d)(_ + _))
     }
   }
 
