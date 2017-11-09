@@ -54,3 +54,8 @@ lazy val analytics =
   project
     .settings(commonSettings: _*)
     .dependsOn(common)
+
+lazy val debug =
+  project
+    .settings(commonSettings: _*)
+    .dependsOn(common)

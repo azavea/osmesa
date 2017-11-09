@@ -1,4 +1,9 @@
 "key_name" = "KEY-PAIR"
+
 "s3_uri"  = "s3://S3_BUCKET/PATH"
+
 "s3_hbase_root_uri" = "s3://S3_BUCKET/PATH"
+
 "analytics_subnet_id" = "subnet-aabbbccc"
+
+"slave_count" = "20"

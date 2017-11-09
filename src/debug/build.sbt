@@ -1,6 +1,6 @@
 import Dependencies._
 
-name := "osmesa-analytics"
+name := "osmesa-debug"
 
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
@@ -21,7 +21,6 @@ libraryDependencies ++= Seq(
   gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
-  // geomesaHbaseDatastore,
   sparkHive % "provided",
   sparkSql % "provided",
   cats,
@@ -41,7 +40,7 @@ initialCommands in console :=
   """
   """
 
-assemblyJarName in assembly := "osmesa-analytics.jar"
+assemblyJarName in assembly := "osmesa-debug.jar"
 
 assemblyShadeRules in assembly := {
   val shadePackage = "com.azavea.shaded.demo"

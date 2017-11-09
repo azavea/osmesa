@@ -17,7 +17,7 @@ Execute Terraform subcommands with remote state management.
 
 OPTIONS:
   plan
-  create
+  apply
   destroy
 
 STACKS
@@ -46,6 +46,15 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
             IS_EPHEMERAL_CLUSTER=1
             echo
             echo "Attempting to deploy analytic stack with version [${GIT_COMMIT}]..."
+            echo "-----------------------------------------------------"
+            echo
+
+            ;;
+        "--replica")
+            TERRAFORM_DIR="${DIR}/../deployment/terraform/replica"
+            IS_EPHEMERAL_CLUSTER=1
+            echo
+            echo "Attempting to deploy read-replica stack with version [${GIT_COMMIT}]..."
             echo "-----------------------------------------------------"
             echo
 

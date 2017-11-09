@@ -6,6 +6,7 @@ Vagrant.require_version ">= 1.8"
 Vagrant.configure(2) do |config|
   config.vm.box = "ubuntu/trusty64"
 
+  config.vm.synced_folder "~/.ssh", "/home/vagrant/.ssh"
   config.vm.synced_folder "~/.aws", "/home/vagrant/.aws"
   config.vm.synced_folder "~/.ivy2", "/home/vagrant/.ivy2"
   config.vm.synced_folder "~/.m2", "/home/vagrant/.m2"

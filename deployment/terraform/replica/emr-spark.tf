@@ -1,5 +1,5 @@
 data "template_file" "emr_configurations" {
-  template = "${file("hbase/emr-write-conf.json")}"
+  template = "${file("hbase/emr-read-conf.json")}"
   vars {
     s3_hbase_root_uri = "${var.s3_hbase_root_uri}"
   }

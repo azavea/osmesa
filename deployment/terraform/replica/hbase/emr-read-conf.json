@@ -1,0 +1,25 @@
+[
+    {
+      "Classification": "hbase-site",
+      "Properties": {
+        "hbase.rootdir": "${s3_hbase_root_uri}"
+      }
+    },
+    {
+      "Classification": "hbase",
+      "Properties": {
+        "hbase.emr.storageMode": "s3",
+        "hbase.emr.readreplica.enabled": "true"
+
+      }
+    },
+    {
+      "Classification": "emrfs-site",
+      "Properties": {
+        "fs.s3.consistent": true,
+        "fs.s3.consistent.metadata.tableName": "EmrFSMetadata",
+        "fs.s3.consistent.metadata.read.capacity": "600",
+        "fs.s3.consistent.metadata.write.capacity": "300"
+      }
+    }
+]

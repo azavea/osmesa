@@ -74,3 +74,6 @@ dist/
 \#*#
 *~
 .#*
+
+geomesa-hbase-dist*.tar.gz
+*.orc

@@ -1,5 +1,4 @@
 #!/bin/bash
-
 set -e
 
 if [[ -n "${OSMESA_DEBUG}" ]]; then
@@ -13,6 +12,7 @@ source ${DIR}/util/realpath.sh
 realpath $DIR
 
 ASSEMBLY_PATH=$(realpath ${DIR}/../src/analytics/target/scala-2.11/osmesa-analytics.jar)
+ASSEMBLY_PATH=$(realpath ${DIR}/../src/debug/target/scala-2.11/osmesa-debug.jar)
 NOTEBOOKS_PATH=$(realpath ${DIR}/../notebooks/zeppelin/)
 
 function usage() {
@@ -41,7 +41,7 @@ fi
 
 CLUSTER_ID=$(cat ${TF_STATE_FILE} | jq -r ".modules[].outputs.emrID.value")
 KEY_PAIR_FILE=$(cat ${TF_STATE_FILE} | jq -r ".modules[].resources[\"aws_emr_cluster.emrSparkCluster\"].primary.attributes[\"ec2_attributes.0.key_name\"]")
-KEY_PAIR_FILE="${KEY_PAIR_FILE}.pem"
+KEY_PAIR_FILE="/home/vagrant/.ssh/${KEY_PAIR_FILE}.pem"
 
 # MASTER_DNS=$(aws emr describe-cluster --output json --cluster-id ${CLUSTER_ID} --region us-east-1 | jq -r ".Cluster.MasterPublicDnsName")
 
@@ -55,23 +55,34 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
             shell)
                 aws emr ssh --cluster-id ${CLUSTER_ID} \
                     --profile osmesa \
-		    --key-pair-file ${KEY_PAIR_FILE} \
-		    --region us-east-1
+                    --key-pair-file ${KEY_PAIR_FILE} \
+                    --region us-east-1
 
                 exit 1 ;;
             put-zeppelin-code)
-                zip -d ${ASSEMBLY_PATH} META-INF/*.RSA META-INF/*.DSA META-INF/*.SF || true
-
                 aws emr put --cluster-id ${CLUSTER_ID} \
                     --profile osmesa \
-		    --key-pair-file ${KEY_PAIR_FILE} \
-		    --region us-east-1 \
-	            --src ${ASSEMBLY_PATH} --dest /home/hadoop/osmesa-analytics.jar
+                    --key-pair-file ${KEY_PAIR_FILE} \
+                    --region us-east-1 \
+                    --src ${NOTEBOOKS_PATH} --dest /var/lib/notebook/
+                ;;
+            upload-debug)
+                aws emr put --cluster-id ${CLUSTER_ID} \
+                    --profile osmesa \
+                    --key-pair-file ${KEY_PAIR_FILE} \
+                    --region us-east-1 \
+                    --src ${ASSEMBLY_PATH} --dest /tmp
                 ;;
             upload-code)
                 zip -d ${ASSEMBLY_PATH} META-INF/*.RSA META-INF/*.DSA META-INF/*.SF || true
 
                 aws s3 cp ${ASSEMBLY_PATH} s3://vectortiles/orc-emr/osmesa-analytics.jar
+
+                aws emr put --cluster-id ${CLUSTER_ID} \
+                    --profile osmesa \
+                    --key-pair-file ${KEY_PAIR_FILE} \
+                    --region us-east-1 \
+                    --src ${ASSEMBLY_PATH} --dest /tmp
                 # TODO
                 ;;
             run-job)
@@ -80,15 +91,15 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
             start-zeppelin)
                 aws emr ssh --cluster-id ${CLUSTER_ID} \
                     --profile osmesa \
-		    --key-pair-file ${KEY_PAIR_FILE} \
-		    --region us-east-1 \
+                    --key-pair-file ${KEY_PAIR_FILE} \
+                    --region us-east-1 \
                     --command "sudo start zeppelin"
                 ;;
             stop-zeppelin)
                 aws emr ssh --cluster-id ${CLUSTER_ID} \
                     --profile osmesa \
-		    --key-pair-file ${KEY_PAIR_FILE} \
-		    --region us-east-1 \
+                    --key-pair-file ${KEY_PAIR_FILE} \
+                    --region us-east-1 \
                     --command "sudo stop zeppelin"
                 ;;
             proxy)
