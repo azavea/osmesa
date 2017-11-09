@@ -42,7 +42,7 @@ class Bench {
   def roads: Try[Double] = {
     val path: String = "/home/colin/code/azavea/vectorpipe/data/isle-of-man.orc"
 
-    Try(ss.read.orc(path)) >>= Analysis.roads
+    (Try(ss.read.orc(path)) >>= Analysis.newRoadsByUser).map(_.aggregate(0d)({ _ + _._2 }, { _ + _ }))
   }
 
 }
