@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+message Nodes {
+  repeated int64 nodes = 1;
+}
+

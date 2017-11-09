@@ -1,0 +1,28 @@
+[
+  {
+    "Classification": "hbase",
+    "Properties": {
+      "hbase.emr.storageMode": "s3"
+    }
+  },
+  {
+    "Classification": "hbase-site",
+    "Properties": {
+      "hbase.rootdir": "${s3_hbase_root_uri}",
+      "hbase.hregion.memstore.flush.size": "402653184",
+      "hbase.hregion.memstore.block.multiplier": "8",
+      "hbase.hregion.max.filesize": "1073741824",
+      "hbase.hstore.blockingStoreFiles": "500",
+      "hbase.client.write.buffer": "8388608"
+    }
+  },
+  {
+    "Classification": "emrfs-site",
+    "Properties": {
+      "fs.s3.consistent": true,
+      "fs.s3.consistent.metadata.tableName": "EmrFSMetadata",
+      "fs.s3.consistent.metadata.read.capacity": "600",
+      "fs.s3.consistent.metadata.write.capacity": "300"
+    }
+  }
+]

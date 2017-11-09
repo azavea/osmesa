@@ -37,11 +37,12 @@ lazy val commonSettings = Seq(
 
 lazy val root = Project("osmesa", file("."))
   .aggregate(
-    common,
-    ingest
+    ingest,
+    client
   ).settings(commonSettings: _*)
 
-lazy val common = project.settings(commonSettings: _*)
+lazy val common = project
+  .settings(commonSettings: _*)
 
 lazy val ingest = project
   .settings(commonSettings: _*)
@@ -60,3 +61,12 @@ lazy val bench =
     .settings(commonSettings)
     .dependsOn(analytics)
     .enablePlugins(JmhPlugin)
+
+lazy val query = project
+  .settings(commonSettings: _*)
+  .dependsOn(common)
+
+lazy val client = project
+  .settings(commonSettings: _*)
+  .dependsOn(common)
+
