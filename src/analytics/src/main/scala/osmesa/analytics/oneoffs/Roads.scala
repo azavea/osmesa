@@ -65,11 +65,10 @@ object Analysis {
 
   /** How long is a Line, in metres? */
   private[this] def metres(line: Line): Double = {
-    val ps: Array[Point] = line.points // TODO Wasteful.
-    val head: Point = ps.head
-    val last: Point = ps.last
+    val ps: List[Point] = line.points.toList
+    val pairs: Iterator[(Point, Point)] = ps.iterator.zip(ps.tail.iterator)
 
-    Haversine(head.x, head.y, last.x, last.y)
+    pairs.foldLeft(0d) { case (acc, (p,c)) => acc + Haversine(p.x, p.y, c.x, c.y) }
   }
 
   /** How many kilometres of road changed in all the Ways present in the given DataFrame? */
