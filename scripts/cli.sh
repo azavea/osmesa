@@ -6,10 +6,6 @@ program="$1"
 shift
 
 case "$program" in
-  "ingest")
-    docker-compose -f docker-compose.cli.yml run cli \
-      spark-submit --class osmesa.ingest.Ingest ingest/target/scala-2.11/osmesa-ingest.jar "$@"
-    ;;
   "drop")
     docker-compose -f docker-compose.cli.yml run cli \
       spark-submit --class osmesa.ingest.RemoveSchema ingest/target/scala-2.11/osmesa-ingest.jar "$@"

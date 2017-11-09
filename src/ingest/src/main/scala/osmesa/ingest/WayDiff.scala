@@ -57,8 +57,8 @@ import java.io.File
 import scala.collection.JavaConverters._
 
 
-object Ingest extends CommandApp(
-  name = "OSMesa Ingest",
+object WayDiff extends CommandApp(
+  name = "OSMesa Way (diff) Ingest",
   header = "Ingest OSM ORC files into GeoMesa/HBase",
   main = {
     val orcO = Opts.option[URI]("orc", help = "ORC file URI")
