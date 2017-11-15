@@ -83,7 +83,7 @@ object Analysis {
         .filter { case (_, iter) => iter.size === 1 }
         .map { case (l, ws) => (l, ws.head) }
 
-      val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.toLines(nodes, news)
+      val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.toHistory(nodes, news)._2
 
       /* The `Long` is now the user's unchanging unique ID */
       val byUsers: RDD[(Long, Iterable[Feature[Line, osm.ElementMeta]])] =
