@@ -18,7 +18,6 @@ libraryDependencies ++= Seq(
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
   geomesaHbaseDatastore,
-  sparkHive % "provided",
   cats,
   hbaseClient % "provided",
   hbaseCommon % "provided",
