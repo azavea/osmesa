@@ -10,6 +10,7 @@ resource "aws_emr_cluster" "emrSparkCluster" {
   ec2_attributes {
     instance_profile = "EMR_EC2_DefaultRole" # This seems to be the only necessary field.
     key_name         = "${var.key_name}"
+    subnet_id        = "${var.analytics_subnet_id}"
   }
 
   # MASTER group must have an instance_count of 1.
@@ -19,7 +20,7 @@ resource "aws_emr_cluster" "emrSparkCluster" {
     instance_count = 1
     instance_role  = "MASTER"
     instance_type  = "m3.xlarge"
-    name           = "emrVectorPipeOrcDemo-MasterGroup"
+    name           = "OsmesaAnalytics-MasterGroup"
   }
 
   instance_group {
@@ -27,7 +28,7 @@ resource "aws_emr_cluster" "emrSparkCluster" {
     instance_count = 20
     instance_role  = "CORE"
     instance_type  = "m3.xlarge"
-    name           = "emrVectorPipeOrcDemo-CoreGroup"
+    name           = "OsmesaAnalytics-CoreGroup"
   }
 
   # Location to dump logs
