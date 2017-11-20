@@ -39,6 +39,7 @@ build/
 # Terraform
 deployment/terraform/.terraform
 deployment/terraform/terraform.tfvars
+.terraform.tfstate.lock.info
 *.tfvars
 *.tfstate
 *.tfplan
