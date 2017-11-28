@@ -23,8 +23,9 @@ resource "aws_emr_cluster" "emrSparkCluster" {
   applications = ["Hadoop", "Spark", "Zeppelin", "HBase", "Ganglia"]
 
   ec2_attributes {
-    instance_profile = "${var.emr_instance_profile}"
-    key_name         = "${var.key_name}"
+    instance_profile                  = "${var.emr_instance_profile}"
+    key_name                          = "${var.key_name}"
+    additional_master_security_groups = "${aws_security_group.allow_all.id}"
   }
 
   # MASTER group must have an instance_count of 1.
