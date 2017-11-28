@@ -6,18 +6,16 @@
 package osmesa.common.proto
 
 
-
-object MembersProto extends _root_.com.trueaccord.scalapb.GeneratedFileObject {
+object HashtagsProto extends _root_.com.trueaccord.scalapb.GeneratedFileObject {
   lazy val dependencies: Seq[_root_.com.trueaccord.scalapb.GeneratedFileObject] = Seq(
   )
   lazy val messagesCompanions: Seq[_root_.com.trueaccord.scalapb.GeneratedMessageCompanion[_]] = Seq(
-    Members
+    Hashtags
   )
   private lazy val ProtoBytes: Array[Byte] =
       com.trueaccord.scalapb.Encoding.fromBase64(scala.collection.Seq(
-  """Chpwcm90b2J1Zi9zcmMvTWVtYmVycy5wcm90byJ4CgdNZW1iZXJzEikKB21lbWJlcnMYASADKAsyDy5NZW1iZXJzLk1lbWJlc
-  lIHbWVtYmVycxpCCgZNZW1iZXISEgoEdHlwZRgBIAEoCVIEdHlwZRIQCgNyZWYYAiABKANSA3JlZhISCgRyb2xlGAMgASgJUgRyb
-  2xlYgZwcm90bzM="""
+  """Chtwcm90b2J1Zi9zcmMvSGFzaHRhZ3MucHJvdG8ibAoISGFzaHRhZ3MSLQoIaGFzaHRhZ3MYASADKAsyES5IYXNodGFncy5IY
+  XNodGFnUghoYXNodGFncxoxCgdIYXNodGFnEhAKA3RhZxgBIAEoCVIDdGFnEhQKBWNvdW50GAIgASgFUgVjb3VudGIGcHJvdG8z"""
       ).mkString)
   lazy val scalaDescriptor: _root_.scalapb.descriptors.FileDescriptor = {
     val scalaProto = com.google.protobuf.descriptor.FileDescriptorProto.parseFrom(ProtoBytes)

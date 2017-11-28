@@ -6,26 +6,25 @@
 package osmesa.common.proto
 
 
-
 @SerialVersionUID(0L)
-final case class Nodes(
-    nodes: _root_.scala.collection.Seq[Long] = _root_.scala.collection.Seq.empty
-    ) extends com.trueaccord.scalapb.GeneratedMessage with com.trueaccord.scalapb.Message[Nodes] with com.trueaccord.lenses.Updatable[Nodes] {
-    private[this] def nodesSerializedSize = {
-      if (__nodesSerializedSizeField == 0) __nodesSerializedSizeField = {
+final case class LongList(
+    long: _root_.scala.collection.Seq[Long] = _root_.scala.collection.Seq.empty
+    ) extends com.trueaccord.scalapb.GeneratedMessage with com.trueaccord.scalapb.Message[LongList] with com.trueaccord.lenses.Updatable[LongList] {
+    private[this] def longSerializedSize = {
+      if (__longSerializedSizeField == 0) __longSerializedSizeField = {
         var __s: Int = 0
-        nodes.foreach(__i => __s += _root_.com.google.protobuf.CodedOutputStream.computeInt64SizeNoTag(__i))
+        long.foreach(__i => __s += _root_.com.google.protobuf.CodedOutputStream.computeInt64SizeNoTag(__i))
         __s
       }
-      __nodesSerializedSizeField
+      __longSerializedSizeField
     }
-    @transient private[this] var __nodesSerializedSizeField: Int = 0
+    @transient private[this] var __longSerializedSizeField: Int = 0
     @transient
     private[this] var __serializedSizeCachedValue: Int = 0
     private[this] def __computeSerializedValue(): Int = {
       var __size = 0
-      if(nodes.nonEmpty) {
-        val __localsize = nodesSerializedSize
+      if(long.nonEmpty) {
+        val __localsize = longSerializedSize
         __size += 1 + _root_.com.google.protobuf.CodedOutputStream.computeUInt32SizeNoTag(__localsize) + __localsize
       }
       __size
@@ -39,81 +38,81 @@ final case class Nodes(
       read
     }
     def writeTo(`_output__`: _root_.com.google.protobuf.CodedOutputStream): Unit = {
-      if (nodes.nonEmpty) {
+      if (long.nonEmpty) {
         _output__.writeTag(1, 2)
-        _output__.writeUInt32NoTag(nodesSerializedSize)
-        nodes.foreach(_output__.writeInt64NoTag)
+        _output__.writeUInt32NoTag(longSerializedSize)
+        long.foreach(_output__.writeInt64NoTag)
       };
     }
-    def mergeFrom(`_input__`: _root_.com.google.protobuf.CodedInputStream): Nodes = {
-      val __nodes = (_root_.scala.collection.immutable.Vector.newBuilder[Long] ++= this.nodes)
+    def mergeFrom(`_input__`: _root_.com.google.protobuf.CodedInputStream): LongList = {
+      val __long = (_root_.scala.collection.immutable.Vector.newBuilder[Long] ++= this.long)
       var _done__ = false
       while (!_done__) {
         val _tag__ = _input__.readTag()
         _tag__ match {
           case 0 => _done__ = true
           case 8 =>
-            __nodes += _input__.readInt64()
+            __long += _input__.readInt64()
           case 10 => {
             val length = _input__.readRawVarint32()
             val oldLimit = _input__.pushLimit(length)
             while (_input__.getBytesUntilLimit > 0) {
-              __nodes += _input__.readInt64
+              __long += _input__.readInt64
             }
             _input__.popLimit(oldLimit)
           }
           case tag => _input__.skipField(tag)
         }
       }
-      Nodes(
-          nodes = __nodes.result()
+      LongList(
+          long = __long.result()
       )
     }
-    def clearNodes = copy(nodes = _root_.scala.collection.Seq.empty)
-    def addNodes(__vs: Long*): Nodes = addAllNodes(__vs)
-    def addAllNodes(__vs: TraversableOnce[Long]): Nodes = copy(nodes = nodes ++ __vs)
-    def withNodes(__v: _root_.scala.collection.Seq[Long]): Nodes = copy(nodes = __v)
+    def clearLong = copy(long = _root_.scala.collection.Seq.empty)
+    def addLong(__vs: Long*): LongList = addAllLong(__vs)
+    def addAllLong(__vs: TraversableOnce[Long]): LongList = copy(long = long ++ __vs)
+    def withLong(__v: _root_.scala.collection.Seq[Long]): LongList = copy(long = __v)
     def getFieldByNumber(__fieldNumber: Int): scala.Any = {
       (__fieldNumber: @_root_.scala.unchecked) match {
-        case 1 => nodes
+        case 1 => long
       }
     }
     def getField(__field: _root_.scalapb.descriptors.FieldDescriptor): _root_.scalapb.descriptors.PValue = {
       require(__field.containingMessage eq companion.scalaDescriptor)
       (__field.number: @_root_.scala.unchecked) match {
-        case 1 => _root_.scalapb.descriptors.PRepeated(nodes.map(_root_.scalapb.descriptors.PLong)(_root_.scala.collection.breakOut))
+        case 1 => _root_.scalapb.descriptors.PRepeated(long.map(_root_.scalapb.descriptors.PLong)(_root_.scala.collection.breakOut))
       }
     }
     override def toString: String = _root_.com.trueaccord.scalapb.TextFormat.printToUnicodeString(this)
-    def companion = Nodes
+    def companion = LongList
 }
 
-object Nodes extends com.trueaccord.scalapb.GeneratedMessageCompanion[Nodes] {
-  implicit def messageCompanion: com.trueaccord.scalapb.GeneratedMessageCompanion[Nodes] = this
-  def fromFieldsMap(__fieldsMap: scala.collection.immutable.Map[_root_.com.google.protobuf.Descriptors.FieldDescriptor, scala.Any]): Nodes = {
+object LongList extends com.trueaccord.scalapb.GeneratedMessageCompanion[LongList] {
+  implicit def messageCompanion: com.trueaccord.scalapb.GeneratedMessageCompanion[LongList] = this
+  def fromFieldsMap(__fieldsMap: scala.collection.immutable.Map[_root_.com.google.protobuf.Descriptors.FieldDescriptor, scala.Any]): LongList = {
     require(__fieldsMap.keys.forall(_.getContainingType() == javaDescriptor), "FieldDescriptor does not match message type.")
     val __fields = javaDescriptor.getFields
-    Nodes(
+    LongList(
       __fieldsMap.getOrElse(__fields.get(0), Nil).asInstanceOf[_root_.scala.collection.Seq[Long]]
     )
   }
-  implicit def messageReads: _root_.scalapb.descriptors.Reads[Nodes] = _root_.scalapb.descriptors.Reads{
+  implicit def messageReads: _root_.scalapb.descriptors.Reads[LongList] = _root_.scalapb.descriptors.Reads{
     case _root_.scalapb.descriptors.PMessage(__fieldsMap) =>
       require(__fieldsMap.keys.forall(_.containingMessage == scalaDescriptor), "FieldDescriptor does not match message type.")
-      Nodes(
+      LongList(
         __fieldsMap.get(scalaDescriptor.findFieldByNumber(1).get).map(_.as[_root_.scala.collection.Seq[Long]]).getOrElse(_root_.scala.collection.Seq.empty)
       )
     case _ => throw new RuntimeException("Expected PMessage")
   }
-  def javaDescriptor: _root_.com.google.protobuf.Descriptors.Descriptor = NodesProto.javaDescriptor.getMessageTypes.get(0)
-  def scalaDescriptor: _root_.scalapb.descriptors.Descriptor = NodesProto.scalaDescriptor.messages(0)
+  def javaDescriptor: _root_.com.google.protobuf.Descriptors.Descriptor = LongListProto.javaDescriptor.getMessageTypes.get(0)
+  def scalaDescriptor: _root_.scalapb.descriptors.Descriptor = LongListProto.scalaDescriptor.messages(0)
   def messageCompanionForFieldNumber(__number: Int): _root_.com.trueaccord.scalapb.GeneratedMessageCompanion[_] = throw new MatchError(__number)
   lazy val nestedMessagesCompanions: Seq[_root_.com.trueaccord.scalapb.GeneratedMessageCompanion[_]] = Seq.empty
   def enumCompanionForFieldNumber(__fieldNumber: Int): _root_.com.trueaccord.scalapb.GeneratedEnumCompanion[_] = throw new MatchError(__fieldNumber)
-  lazy val defaultInstance = Nodes(
+  lazy val defaultInstance = LongList(
   )
-  implicit class NodesLens[UpperPB](_l: _root_.com.trueaccord.lenses.Lens[UpperPB, Nodes]) extends _root_.com.trueaccord.lenses.ObjectLens[UpperPB, Nodes](_l) {
-    def nodes: _root_.com.trueaccord.lenses.Lens[UpperPB, _root_.scala.collection.Seq[Long]] = field(_.nodes)((c_, f_) => c_.copy(nodes = f_))
+  implicit class LongListLens[UpperPB](_l: _root_.com.trueaccord.lenses.Lens[UpperPB, LongList]) extends _root_.com.trueaccord.lenses.ObjectLens[UpperPB, LongList](_l) {
+    def long: _root_.com.trueaccord.lenses.Lens[UpperPB, _root_.scala.collection.Seq[Long]] = field(_.long)((c_, f_) => c_.copy(long = f_))
   }
-  final val NODES_FIELD_NUMBER = 1
+  final val LONG_FIELD_NUMBER = 1
 }

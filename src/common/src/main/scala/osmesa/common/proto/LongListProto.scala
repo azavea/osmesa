@@ -6,18 +6,15 @@
 package osmesa.common.proto
 
 
-
-object MembersProto extends _root_.com.trueaccord.scalapb.GeneratedFileObject {
+object LongListProto extends _root_.com.trueaccord.scalapb.GeneratedFileObject {
   lazy val dependencies: Seq[_root_.com.trueaccord.scalapb.GeneratedFileObject] = Seq(
   )
   lazy val messagesCompanions: Seq[_root_.com.trueaccord.scalapb.GeneratedMessageCompanion[_]] = Seq(
-    Members
+    LongList
   )
   private lazy val ProtoBytes: Array[Byte] =
       com.trueaccord.scalapb.Encoding.fromBase64(scala.collection.Seq(
-  """Chpwcm90b2J1Zi9zcmMvTWVtYmVycy5wcm90byJ4CgdNZW1iZXJzEikKB21lbWJlcnMYASADKAsyDy5NZW1iZXJzLk1lbWJlc
-  lIHbWVtYmVycxpCCgZNZW1iZXISEgoEdHlwZRgBIAEoCVIEdHlwZRIQCgNyZWYYAiABKANSA3JlZhISCgRyb2xlGAMgASgJUgRyb
-  2xlYgZwcm90bzM="""
+  """Chtwcm90b2J1Zi9zcmMvTG9uZ0xpc3QucHJvdG8iHgoITG9uZ0xpc3QSEgoEbG9uZxgBIAMoA1IEbG9uZ2IGcHJvdG8z"""
       ).mkString)
   lazy val scalaDescriptor: _root_.scalapb.descriptors.FileDescriptor = {
     val scalaProto = com.google.protobuf.descriptor.FileDescriptorProto.parseFrom(ProtoBytes)

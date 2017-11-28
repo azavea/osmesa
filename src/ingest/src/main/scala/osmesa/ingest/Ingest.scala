@@ -145,14 +145,12 @@ object IngestApp extends CommandApp(
         }, preservesPartitioning = true)
 
       /* Assumes that OSM ORC is in LatLng */
+     // TODO: Use osm.toHistory when it produces relations(?)
       val feats: RDD[osm.OSMFeature] =
-        // osm.toFeatures(VectorPipe.logToLog4j, reprojectedNodes, ws.partitionBy(wayPartitioner), rs)
-        osm.toFeatures(VectorPipe.logToLog4j, reprojectedNodes.map(_._2), ws.partitionBy(wayPartitioner).map(_._2), rs.map(_._2))
+        osm.toSnapshot(VectorPipe.logToLog4j, reprojectedNodes.map(_._2), ws.partitionBy(wayPartitioner).map(_._2), rs.map(_._2))
 
       /* Associated each Feature with a SpatialKey */
       val fgrid: RDD[(SpatialKey, Iterable[osm.OSMFeature])] =
-        //        VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats, new HashPartitioner(numPartitions))
-        //        VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats)
         VectorPipe.toGrid(Clip.byHybrid, VectorPipe.logToLog4j, layout, feats)
 
       /* Create the VectorTiles */

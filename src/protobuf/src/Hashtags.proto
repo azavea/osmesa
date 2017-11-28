@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+message Hashtags {
+  message Hashtag {
+    string tag = 1;
+    int32 count = 2;
+  }
+  repeated Hashtag hashtags = 1;
+}
+

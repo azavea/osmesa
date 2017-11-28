@@ -11,7 +11,7 @@ import org.apache.hadoop.hbase.util._
 import org.apache.spark.sql._
 
 
-object OsmRelIngest {
+object RelIngest {
   def apply(rel: Row, mutator: BufferedMutator): Unit = {
     val id = rel.getLong(0)
     val tags = rel.getAs[Map[String, String]](2)
@@ -28,17 +28,17 @@ object OsmRelIngest {
     val version = rel.getLong(11)
     val visible = rel.getBoolean(12)
 
-    val META_CF = Bytes.toBytes(OsmTables.relations.cfs(0))
-    val TAG_CF = Bytes.toBytes(OsmTables.relations.cfs(1))
+    val META_CF = Bytes.toBytes(FeatureTables.relations.cfs(0))
+    val TAG_CF = Bytes.toBytes(FeatureTables.relations.cfs(1))
 
     val put = new Put(Bytes.toBytes(id) ++ Bytes.toBytes(timestamp / 3600000))
-    put.addColumn(META_CF, Columns.ID, Bytes.toBytes(id))
-    put.addColumn(META_CF, Columns.MEMBERS, members)
-    put.addColumn(META_CF, Columns.USER, Bytes.toBytes(user))
-    put.addColumn(META_CF, Columns.UID, Bytes.toBytes(uid))
-    put.addColumn(META_CF, Columns.VERSION, Bytes.toBytes(version))
-    put.addColumn(META_CF, Columns.TIMESTAMP, Bytes.toBytes(timestamp))
-    put.addColumn(META_CF, Columns.VISIBLE, Bytes.toBytes(visible))
+    put.addColumn(META_CF, FeatureColumns.ID, Bytes.toBytes(id))
+    put.addColumn(META_CF, FeatureColumns.MEMBERS, members)
+    put.addColumn(META_CF, FeatureColumns.USER, Bytes.toBytes(user))
+    put.addColumn(META_CF, FeatureColumns.UID, Bytes.toBytes(uid))
+    put.addColumn(META_CF, FeatureColumns.VERSION, Bytes.toBytes(version))
+    put.addColumn(META_CF, FeatureColumns.TIMESTAMP, Bytes.toBytes(timestamp))
+    put.addColumn(META_CF, FeatureColumns.VISIBLE, Bytes.toBytes(visible))
     tags.foreach({ case (k, v) => put.addColumn(TAG_CF, Bytes.toBytes(k), Bytes.toBytes(v)) })
     mutator.mutate(put)
   }

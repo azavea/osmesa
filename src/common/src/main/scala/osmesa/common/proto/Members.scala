@@ -6,16 +6,15 @@
 package osmesa.common.proto
 
 
-
 @SerialVersionUID(0L)
 final case class Members(
-    member: _root_.scala.collection.Seq[Members.Member] = _root_.scala.collection.Seq.empty
+    members: _root_.scala.collection.Seq[Members.Member] = _root_.scala.collection.Seq.empty
     ) extends com.trueaccord.scalapb.GeneratedMessage with com.trueaccord.scalapb.Message[Members] with com.trueaccord.lenses.Updatable[Members] {
     @transient
     private[this] var __serializedSizeCachedValue: Int = 0
     private[this] def __computeSerializedValue(): Int = {
       var __size = 0
-      member.foreach(member => __size += 1 + _root_.com.google.protobuf.CodedOutputStream.computeUInt32SizeNoTag(member.serializedSize) + member.serializedSize)
+      members.foreach(members => __size += 1 + _root_.com.google.protobuf.CodedOutputStream.computeUInt32SizeNoTag(members.serializedSize) + members.serializedSize)
       __size
     }
     final override def serializedSize: Int = {
@@ -27,41 +26,41 @@ final case class Members(
       read
     }
     def writeTo(`_output__`: _root_.com.google.protobuf.CodedOutputStream): Unit = {
-      member.foreach { __v =>
+      members.foreach { __v =>
         _output__.writeTag(1, 2)
         _output__.writeUInt32NoTag(__v.serializedSize)
         __v.writeTo(_output__)
       };
     }
     def mergeFrom(`_input__`: _root_.com.google.protobuf.CodedInputStream): Members = {
-      val __member = (_root_.scala.collection.immutable.Vector.newBuilder[Members.Member] ++= this.member)
+      val __members = (_root_.scala.collection.immutable.Vector.newBuilder[Members.Member] ++= this.members)
       var _done__ = false
       while (!_done__) {
         val _tag__ = _input__.readTag()
         _tag__ match {
           case 0 => _done__ = true
           case 10 =>
-            __member += _root_.com.trueaccord.scalapb.LiteParser.readMessage(_input__, Members.Member.defaultInstance)
+            __members += _root_.com.trueaccord.scalapb.LiteParser.readMessage(_input__, Members.Member.defaultInstance)
           case tag => _input__.skipField(tag)
         }
       }
       Members(
-          member = __member.result()
+          members = __members.result()
       )
     }
-    def clearMember = copy(member = _root_.scala.collection.Seq.empty)
-    def addMember(__vs: Members.Member*): Members = addAllMember(__vs)
-    def addAllMember(__vs: TraversableOnce[Members.Member]): Members = copy(member = member ++ __vs)
-    def withMember(__v: _root_.scala.collection.Seq[Members.Member]): Members = copy(member = __v)
+    def clearMembers = copy(members = _root_.scala.collection.Seq.empty)
+    def addMembers(__vs: Members.Member*): Members = addAllMembers(__vs)
+    def addAllMembers(__vs: TraversableOnce[Members.Member]): Members = copy(members = members ++ __vs)
+    def withMembers(__v: _root_.scala.collection.Seq[Members.Member]): Members = copy(members = __v)
     def getFieldByNumber(__fieldNumber: Int): scala.Any = {
       (__fieldNumber: @_root_.scala.unchecked) match {
-        case 1 => member
+        case 1 => members
       }
     }
     def getField(__field: _root_.scalapb.descriptors.FieldDescriptor): _root_.scalapb.descriptors.PValue = {
       require(__field.containingMessage eq companion.scalaDescriptor)
       (__field.number: @_root_.scala.unchecked) match {
-        case 1 => _root_.scalapb.descriptors.PRepeated(member.map(_.toPMessage)(_root_.scala.collection.breakOut))
+        case 1 => _root_.scalapb.descriptors.PRepeated(members.map(_.toPMessage)(_root_.scala.collection.breakOut))
       }
     }
     override def toString: String = _root_.com.trueaccord.scalapb.TextFormat.printToUnicodeString(this)
@@ -95,7 +94,7 @@ object Members extends com.trueaccord.scalapb.GeneratedMessageCompanion[Members]
     __out
   }
   lazy val nestedMessagesCompanions: Seq[_root_.com.trueaccord.scalapb.GeneratedMessageCompanion[_]] = Seq[_root_.com.trueaccord.scalapb.GeneratedMessageCompanion[_]](
-    _root_.osmesa.common.proto.Members.Member
+    Members.Member
   )
   def enumCompanionForFieldNumber(__fieldNumber: Int): _root_.com.trueaccord.scalapb.GeneratedEnumCompanion[_] = throw new MatchError(__fieldNumber)
   lazy val defaultInstance = Members(
@@ -237,7 +236,7 @@ object Members extends com.trueaccord.scalapb.GeneratedMessageCompanion[Members]
   }
   
   implicit class MembersLens[UpperPB](_l: _root_.com.trueaccord.lenses.Lens[UpperPB, Members]) extends _root_.com.trueaccord.lenses.ObjectLens[UpperPB, Members](_l) {
-    def member: _root_.com.trueaccord.lenses.Lens[UpperPB, _root_.scala.collection.Seq[Members.Member]] = field(_.member)((c_, f_) => c_.copy(member = f_))
+    def members: _root_.com.trueaccord.lenses.Lens[UpperPB, _root_.scala.collection.Seq[Members.Member]] = field(_.members)((c_, f_) => c_.copy(members = f_))
   }
-  final val MEMBER_FIELD_NUMBER = 1
+  final val MEMBERS_FIELD_NUMBER = 1
 }

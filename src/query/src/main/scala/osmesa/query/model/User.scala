@@ -24,7 +24,7 @@ case class User(
   roadCountAdd: Int,
   roadCountMod: Int,
   changesetCount: Int,
-  josmEditCount: Int,
+  editCount: Int,
   editTimes: List[Instant],
   countryList: List[Country],
   hashtags: List[Hashtag]

@@ -6,16 +6,17 @@
 package osmesa.common.proto
 
 
-
-object NodesProto extends _root_.com.trueaccord.scalapb.GeneratedFileObject {
+object CountryProto extends _root_.com.trueaccord.scalapb.GeneratedFileObject {
   lazy val dependencies: Seq[_root_.com.trueaccord.scalapb.GeneratedFileObject] = Seq(
   )
   lazy val messagesCompanions: Seq[_root_.com.trueaccord.scalapb.GeneratedMessageCompanion[_]] = Seq(
-    Nodes
+    Countries
   )
   private lazy val ProtoBytes: Array[Byte] =
       com.trueaccord.scalapb.Encoding.fromBase64(scala.collection.Seq(
-  """Chhwcm90b2J1Zi9zcmMvTm9kZXMucHJvdG8iHQoFTm9kZXMSFAoFbm9kZXMYASADKANSBW5vZGVzYgZwcm90bzM="""
+  """Chpwcm90b2J1Zi9zcmMvQ291bnRyeS5wcm90byJyCglDb3VudHJpZXMSMAoJY291bnRyaWVzGAEgAygLMhIuQ291bnRyaWVzL
+  kNvdW50cnlSCWNvdW50cmllcxozCgdDb3VudHJ5EhIKBG5hbWUYASABKAlSBG5hbWUSFAoFY291bnQYAiABKAVSBWNvdW50YgZwc
+  m90bzM="""
       ).mkString)
   lazy val scalaDescriptor: _root_.scalapb.descriptors.FileDescriptor = {
     val scalaProto = com.google.protobuf.descriptor.FileDescriptorProto.parseFrom(ProtoBytes)

@@ -1,13 +1,10 @@
-package osmesa.ingest.relational.tables
+package osmesa.common.hbase
 
 import org.apache.hadoop.hbase._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util._
 import org.apache.hadoop.fs.Path
-
-import org.apache.spark._
-import org.apache.spark.sql._
 
 import scala.collection.mutable.WrappedArray
 import java.nio._

@@ -4,7 +4,7 @@ import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.util._
 
 
-object Columns {
+object FeatureColumns {
   val NODES = Bytes.toBytes("n")
   val ID = Bytes.toBytes("i")
   val LAT = Bytes.toBytes("t")
