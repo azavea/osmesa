@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+message Countries {
+  message Country {
+    string name = 1;
+    int32 count = 2;
+  }
+  repeated Country countries = 1;
+}
+

@@ -19,19 +19,20 @@ then
     then
         usage
     else
-        # Build the base image
-        pushd ./services/services-base
-        make build
-        popd
-
         # Build services containers.
         docker-compose \
             -f docker-compose.services.yml \
             build
 
-        # Build sbt container.
+        pushd ./src
+          sbt "project query" assembly
+        popd
+        [ -e ./services/query/osmesa-query.jar ] && rm ./services/query/osmesa-query.jar
+        ln ./src/query/target/scala-2.11/osmesa-query.jar ./services/query/osmesa-query.jar
+
+        # Build client container.
         docker-compose \
-            -f docker-compose.sbt.yml \
+            -f docker-compose.cli.yml \
             build
     fi
 fi

@@ -9,24 +9,35 @@ dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.
 libraryDependencies ++= Seq(
   decline,
   hive % "provided",
-  //gtGeomesa exclude("com.google.protobuf", "protobuf-java"),
-  gtGeotools exclude("com.google.protobuf", "protobuf-java"),
-  gtS3 exclude("com.google.protobuf", "protobuf-java"),
-  gtSpark exclude("com.google.protobuf", "protobuf-java"),
-  gtVector exclude("com.google.protobuf", "protobuf-java"),
-  gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
-  "com.google.protobuf" % "protobuf-java" % "2.5.0",
-  vectorpipe exclude("com.google.protobuf", "protobuf-java"),
-  geomesaHbaseDatastore,
+  sparkHive % "provided",
+  gmHBaseStore,
+  kryo,
+  snakeyaml,
   cats,
-  hbaseClient % "provided",
-  hbaseCommon % "provided",
-  hbaseServer % "provided",
+  hbaseClient,
+  hbaseCommon,
   scalactic,
-  scalatest
+  scalatest,
+  gtGeotools
+    exclude("com.google.protobuf", "protobuf-java"),
+  gtS3
+    exclude("com.google.protobuf", "protobuf-java")
+    exclude("com.amazonaws", "aws-java-sdk"),
+  gtSpark
+    exclude("com.google.protobuf", "protobuf-java"),
+  gtVector
+    exclude("com.google.protobuf", "protobuf-java"),
+  gtVectorTile
+    exclude("com.google.protobuf", "protobuf-java"),
+  vectorpipe
+    exclude("com.google.protobuf", "protobuf-java"),
+  "xerces" % "xercesImpl" % "2.7.1",
+  "com.trueaccord.scalapb" %% "scalapb-runtime" % "0.6.6"
 )
 
 fork in Test := true
+
+fork in run := true
 
 javaOptions ++= Seq("-Xmx5G")
 
@@ -50,14 +61,14 @@ assemblyShadeRules in assembly := {
   )
 }
 
+val meta = raw"""META.INF(.)*""".r
 assemblyMergeStrategy in assembly := {
   case s if s.startsWith("META-INF/services") => MergeStrategy.concat
-  case "reference.conf" | "application.conf"  => MergeStrategy.concat
-  case "META-INF/MANIFEST.MF" | "META-INF\\MANIFEST.MF" => MergeStrategy.discard
-  case "META-INF/ECLIPSEF.RSA" | "META-INF/ECLIPSEF.SF" => MergeStrategy.discard
-  case "META-INF/ECLIPSE_.RSA" | "META-INF/ECLIPSE_.SF" => MergeStrategy.discard
-  case s if s.startsWith("META-INF/") && s.endsWith("SF") => MergeStrategy.discard
-  case s if s.startsWith("META-INF/") && s.endsWith("RSA") => MergeStrategy.discard
-  case s if s.startsWith("META-INF/") && s.endsWith("DSA") => MergeStrategy.discard
+  case PathList("javax", "servlet", xs @ _*) => MergeStrategy.first
+  case PathList(ps @ _*) if ps.last endsWith ".html" => MergeStrategy.first
+  case n if n.startsWith("reference.conf") => MergeStrategy.concat
+  case n if n.endsWith(".conf") => MergeStrategy.concat
+  case meta(_) => MergeStrategy.discard
   case _ => MergeStrategy.first
 }
+

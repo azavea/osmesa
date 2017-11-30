@@ -1,0 +1,24 @@
+version: '3'
+services:
+  query:
+    image: quay.io/geotrellis/osmesa-query:latest
+    build:
+      context: ./services/query
+      dockerfile: Dockerfile
+    volumes:
+      - ./src:/opt/src
+      - ~/.aws:/root/.aws:ro
+      - ~/.ivy2:/root/.ivy2:rw
+      - ~/.sbt:/root/.sbt:rw
+      - ~/.m2:/root/.m2:ro
+    stdin_open: true
+    tty: true
+    environment:
+      PORT: 8787
+      HADOOP_MASTER_ADDRESS: hdfs-name
+    ports:
+      - 8787:8787
+#networks:
+#  default:
+#    external:
+#      name: vagrant_default
