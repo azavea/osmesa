@@ -2,7 +2,7 @@
 
 [![Join the chat at https://gitter.im/osmesa/Lobby](https://badges.gitter.im/osmesa/Lobby.svg)](https://gitter.im/osmesa/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-This project is a stack for working with Open Street Map (OSM) and other vector data sources in GeoMesa. It is build to allow for large scale batch analytic jobs to run on the latest OSM data, updated with minutely replication files.
+This project is a stack for working with OpenStreetMap (OSM) and other vector data sources in GeoMesa. It is build to allow for large scale batch analytic jobs to run on the latest OSM data, updated with minutely replication files.
 __NOTE__ This repo is pre-alpha and under active development. Contact the authors if you are interested in helping out or using this project.
 
 ## Components
@@ -11,7 +11,7 @@ __NOTE__ This repo is pre-alpha and under active development. Contact the author
 
 ### OSMesa Store
 
-The center of it all is a GeoMesa-enabled instance of HBase, backed by the Amazon S3 object store, that will store all Open Street Map and other vector source data. The OSMesa store will contain a number of tables, some of which are not GeoMesa enabled (e.g. direct copies of the `planet_history` and `planet_latest` tables from ORC but up-to-date with replication files), and others will be derived tables to service specific analytic calculations.
+The center of it all is a GeoMesa-enabled instance of HBase, backed by the Amazon S3 object store, that will store all OpenStreetMap and other vector source data. The OSMesa store will contain a number of tables, some of which are not GeoMesa enabled (e.g. direct copies of the `planet_history` and `planet_latest` tables from ORC but up-to-date with replication files), and others will be derived tables to service specific analytic calculations.
 
 The current philosophy here is to ignore storage concerns, duplicate data as needed, and make new tables
 if it will make queries faster. This design philosophy might reach it's limit and we'll have to change
