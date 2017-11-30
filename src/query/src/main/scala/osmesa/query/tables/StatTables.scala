@@ -1,5 +1,7 @@
 package osmesa.query.relational.tables
 
+import osmesa.common.hbase.HBaseTable
+
 
 object StatTables {
   val hashtags = HBaseTable("hashtags", List("h"))

@@ -9,7 +9,11 @@ import scala.util.Random
 
 package object model {
 
-  implicit class Randomized[A](lst: Seq[A]) {
+  implicit class RandomGetSeq[A](lst: Seq[A]) {
+    def takeRandom: Option[A] = lst.lift(Random.nextInt(lst.size))
+  }
+
+  implicit class RandomGetArray[A](lst: Array[A]) {
     def takeRandom: Option[A] = lst.lift(Random.nextInt(lst.size))
   }
 

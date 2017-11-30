@@ -17,11 +17,12 @@ libraryDependencies ++= Seq(
   "io.circe"                    %% "circe-parser"         % "0.9.0-M2",
   "io.circe"                    %% "circe-optics"         % "0.9.0-M2",
   "de.heikoseeberger"           %% "akka-http-circe"      % "1.17.0",
+  "org.scalaj"                  %% "scalaj-http"          % "2.3.0",
+  "com.github.seratch"          %% "awscala"              % "0.6.1",
   decline,
   hive % "provided",
   kryo,
   snakeyaml,
-  cats,
   "org.apache.hadoop" % "hadoop-common" % "2.9.0",
   scalactic,
   scalatest,
@@ -36,7 +37,6 @@ libraryDependencies ++= Seq(
     exclude("com.google.protobuf", "protobuf-java"),
   vectorpipe
     exclude("com.google.protobuf", "protobuf-java"),
-  "xerces" % "xercesImpl" % "2.7.1",
   "com.trueaccord.scalapb" %% "scalapb-runtime" % "0.6.6"
 )
 

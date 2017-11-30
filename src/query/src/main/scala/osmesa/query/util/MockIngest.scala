@@ -1,14 +1,24 @@
 package osmesa.query.util
 
+import osmesa.common._
+import osmesa.query.model._
+
+import geotrellis.util.LazyLogging
+import io.circe._
+import io.circe.syntax._
+import cats.implicits._
 import com.monovore.decline._
 import osmesa.query.relational.tables._
 import osmesa.query.util._
-
-import geotrellis.util.LazyLogging
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.client.{Put, BufferedMutator}
 import org.apache.hadoop.hbase.util._
 import org.apache.spark.sql._
+import awscala._
+import s3._
+import com.amazonaws.services.s3.model.ObjectMetadata
+
+import java.nio.charset._
 
 
 object MockIngest extends CommandApp(
@@ -17,61 +27,28 @@ object MockIngest extends CommandApp(
   main = {
     val userO = Opts.option[Int]("users", short = "u", metavar = "count", help = "Set a number of (generated) users to ingest.")
     val campaignO = Opts.option[Int]("campaign", short = "c", metavar = "count", help = "Set a number of (generated) campaigns to ingest.")
+    val bucketO = Opts.option[String]("bucket", short = "b", metavar = "bucket", help = "Where should this data be stored on S3?")
+    val prefixO = Opts.option[String]("prefix", short = "p", metavar = "prefix", help = "Where should data be stored within this bucket?")
 
-    (userO, campaignO).mapN({ (userCount, campaignCount) =>
+    (userO, campaignO, bucketO, prefixO).mapN({ (userCount, campaignCount, bucketString, prefix) =>
+      val s3 = S3.at(Region.US_EAST_1)
+      val bucket = Bucket(bucketString)
+
+      def storeUser(key: String, value: Json): Unit =
+        s3.put(bucket, s"${prefix}/users/${key}.json", value.noSpaces.getBytes(StandardCharsets.UTF_8.name()), new ObjectMetadata())
+
+      def storeCampaign(key: String, value: Json): Unit =
+        s3.put(bucket, s"${prefix}/campaigns/${key}.json", value.noSpaces.getBytes(StandardCharsets.UTF_8.name()), new ObjectMetadata())
+
       (1 to userCount).foreach({ _ =>
-        val user = User.random
-        val uid = Bytes.toBytes(user.uid)
-        val name = Bytes.toBytes(user.name)
-        val geoExtent = Bytes.toBytes(user.geoExtent)
-        val buildingCountAdd = Bytes.toBytes(user)
-        val buildingCountMod = Bytes.toBytes(user)
-        val poiCountAdd = Bytes.toBytes(user)
-        val waterwayKmAdd = Bytes.toBytes(user)
-        val roadKmAdd = Bytes.toBytes(user)
-        val roadKmMod = Bytes.toBytes(user)
-        val roadCountAdd = Bytes.toBytes(user)
-        val roadCountMod = Bytes.toBytes(user)
-        val changesetCount = Bytes.toBytes(user)
-        val editCount = Bytes.toBytes(user)
-        val editTimes = proto.LongList(user.editTimes.map(_.toEpochMilli)).toByteArray
-        val countryList = proto.Countries(user.countryList).toByteArray
-        val hashtags = proto.Hashtags(user.hashtags).toByteArray
-
+        val usr = User.random
+        storeUser(usr.uid.toString, usr.asJson)
+      })
+      (1 to campaignCount).foreach({ _ =>
+        val campaign = Campaign.random
+        storeCampaign(campaign.tag, campaign.asJson)
+      })
     })
   }
 )
-
-
-
-
-object NodeIngest {
-  def apply(node: Row, mutator: BufferedMutator): Unit = {
-    val id = node.getLong(0)
-    val tags = node.getAs[Map[String, String]](2)
-    val lat = Option(node.getDecimal(3)).map(_.doubleValue).getOrElse(Double.NaN)
-    val lon = Option(node.getDecimal(4)).map(_.doubleValue).getOrElse(Double.NaN)
-    val changeset = node.getLong(7)
-    val timestamp = node.getTimestamp(8).toInstant.toEpochMilli
-    val uid = node.getLong(9)
-    val user = node.getString(10)
-    val version = node.getLong(11)
-    val visible = node.getBoolean(12)
-
-    val META_CF = Bytes.toBytes(FeatureTables.nodes.cfs(0))
-    val TAG_CF = Bytes.toBytes(FeatureTables.nodes.cfs(1))
-
-    val put = new Put(Bytes.toBytes(id) ++ Bytes.toBytes(timestamp / 3600000))
-    put.addColumn(META_CF, Columns.ID, Bytes.toBytes(id))
-    put.addColumn(META_CF, Columns.LAT, Bytes.toBytes(lat))
-    put.addColumn(META_CF, Columns.LON, Bytes.toBytes(lon))
-    put.addColumn(META_CF, Columns.USER, Bytes.toBytes(user))
-    put.addColumn(META_CF, Columns.UID, Bytes.toBytes(uid))
-    put.addColumn(META_CF, Columns.VERSION, Bytes.toBytes(version))
-    put.addColumn(META_CF, Columns.TIMESTAMP, Bytes.toBytes(timestamp))
-    put.addColumn(META_CF, Columns.VISIBLE, Bytes.toBytes(visible))
-    tags.foreach({ case (k, v) => put.addColumn(TAG_CF, Bytes.toBytes(k), Bytes.toBytes(v)) })
-    mutator.mutate(put)
-  }
-}
 

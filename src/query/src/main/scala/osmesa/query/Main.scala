@@ -4,6 +4,10 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.stream.ActorMaterializer
 import akka.http.scaladsl.server.Directives._
+import com.amazonaws.services.s3.AmazonS3ClientBuilder
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
+import awscala._
+import s3._
 
 import scala.util.{Try, Properties}
 
@@ -29,6 +33,10 @@ object Main extends App {
     Try(system.terminate())
   }
 
-  Http().bindAndHandle(Router.routes, host, port)
+	val s3client = AmazonS3ClientBuilder.defaultClient()
+  val s3 = S3.at(Region.US_EAST_1)
+  val bucket = "geotrellis-test"
+  val prefix = "nathan/osm-stats"
+  Http().bindAndHandle(Router.routes(s3, s3client, bucket, prefix), host, port)
 }
 
