@@ -11,13 +11,13 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.model.HttpMethods._
 import ch.megard.akka.http.cors.scaladsl.CorsDirectives._
 import ch.megard.akka.http.cors.scaladsl.settings._
-import cats._
-import cats.implicits._
-import cats.syntax._
 import com.amazonaws.services.s3.model.{ ListObjectsV2Request, ObjectListing }
-import com.amazonaws.services.s3.AmazonS3
+import com.amazonaws.services.s3._
 import awscala._
 import s3._
+import cats._
+import cats.syntax._
+import cats.implicits._
 
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
@@ -25,12 +25,16 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 
 object Router {
+  val awsS3 = AmazonS3ClientBuilder.defaultClient()
+
+  val s3 = S3.at(Region.US_EAST_1)
+
   val settings =
     CorsSettings.defaultSettings.copy(
       allowedMethods = scala.collection.immutable.Seq(GET, POST, PUT, HEAD, OPTIONS, DELETE)
     )
 
-  def routes(s3: S3, awsS3: AmazonS3, bucket: String, prefix: String) =
+  def routes(bucket: String, prefix: String) =
     cors(settings) {
       pathEndOrSingleSlash {
         complete {
@@ -38,10 +42,9 @@ object Router {
             "/hashtags/",
             "/hashtags/{hashtag}/",
             "/hashtags/{hashtag}/users",
-            "/hashtags/{hashtag}/users/{user}",
             "/users/",
             "/users/user/"
-          ).mkString("/n")
+          ).mkString("\n")
           HttpEntity(ContentTypes.`text/plain(UTF-8)`, endpoints)
         }
       } ~
@@ -79,7 +82,7 @@ object Router {
         pathPrefix(Segment) { tag =>
           pathEndOrSingleSlash {
             complete {
-              s3.get(Bucket(bucket), s"${prefix}/campaigns/${tag}").flatMap({ s3obj =>
+              s3.get(Bucket(bucket), s"${prefix}/campaigns/${tag}.json").flatMap({ s3obj =>
                 val content = scala.io.Source.fromInputStream(s3obj.content).mkString
                 parse(content).toOption
               })
@@ -88,18 +91,13 @@ object Router {
           pathPrefix("users") {
             pathEndOrSingleSlash {
               complete {
-                val contributors: List[CampaignParticipation] = s3.get(Bucket(bucket), s"${prefix}/campaigns/${tag}").flatMap({ s3obj =>
-                  val content = scala.io.Source.fromInputStream(s3obj.content).mkString
-                  val decoded: Either[Error, Campaign] = decode[Campaign](content)
-                  decoded.map({ _.users.toList }).toOption
-                }).getOrElse(List[CampaignParticipation]())
-              }
-            } ~
-            pathPrefix(Segment) { uid =>
-              pathEndOrSingleSlash {
-                complete {
-                  User.random
-                }
+                val contributors: Option[List[CampaignParticipation]] =
+                  s3.get(Bucket(bucket), s"${prefix}/campaigns/${tag}.json").flatMap({ s3obj =>
+                    val content = scala.io.Source.fromInputStream(s3obj.content).mkString
+                    val decoded: Either[Error, Campaign] = decode[Campaign](content)
+                    decoded.map({ _.users.toList }).toOption
+                  })
+                contributors
               }
             }
           }
@@ -138,7 +136,7 @@ object Router {
         } ~
         pathPrefix(Segment) { uid =>
           complete {
-            s3.get(Bucket(bucket), s"${prefix}/users/${uid}").flatMap({ s3obj =>
+            s3.get(Bucket(bucket), s"${prefix}/users/${uid}.json").flatMap({ s3obj =>
               val content = scala.io.Source.fromInputStream(s3obj.content).mkString
               parse(content).toOption
             })
