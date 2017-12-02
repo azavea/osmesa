@@ -12,3 +12,5 @@ variable "s3_hbase_root_uri" { }
 
 # Subnet for the analytics cluster
 variable "analytics_subnet_id" { }
+
+variable "slave_count" { }

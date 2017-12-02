@@ -25,7 +25,7 @@ resource "aws_emr_cluster" "emrSparkCluster" {
 
   instance_group {
     bid_price      = "0.10"
-    instance_count = 20
+    instance_count = "${var.slave_count}"
     instance_role  = "CORE"
     instance_type  = "m3.xlarge"
     name           = "OsmesaAnalytics-CoreGroup"
