@@ -4,7 +4,7 @@ lazy val commonSettings = Seq(
   organization := "com.azavea",
   version := Version.osmesa,
   cancelable in Global := true,
-  scalaVersion := Version.scala,
+  scalaVersion in ThisBuild := Version.scala,
   scalacOptions := Seq(
     "-deprecation",
     "-unchecked",
@@ -55,8 +55,8 @@ lazy val analytics =
 /* Run with
       jmh:run -t 1 -f 1 -wi 5 -i 5 .*Bench.*
  */
-lazy val bench =
-  project.in(file("bench"))
-    .settings(commonSettings)
-    .dependsOn(analytics)
-    .enablePlugins(JmhPlugin)
+// lazy val bench =
+//   project.in(file("bench"))
+//     .settings(commonSettings)
+//     .dependsOn(analytics)
+//     .enablePlugins(JmhPlugin)
