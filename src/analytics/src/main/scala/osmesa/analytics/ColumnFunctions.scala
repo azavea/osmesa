@@ -25,12 +25,12 @@ trait ColumnFunctions {
 
   def hashtags(col: Column): TypedColumn[Any, Array[String]] =
     udf[Array[String], Map[String, String]]({ tags =>
-      val HashtagSet = raw"#(\w+)".r
+      val HashtagSet = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!"#$%()*,.\/:;<=>?@\[\]^{|}~]+)""".r
       var hashtags = List[String]()
       tags.get("comment") match {
         case Some(s) =>
           for (m <- HashtagSet.findAllMatchIn(s)) {
-            hashtags = hashtags :+ m.group(0).replace("#", "").toLowerCase
+            hashtags = hashtags :+ m.group(1).toLowerCase
           }
         case None => // pass
       }
