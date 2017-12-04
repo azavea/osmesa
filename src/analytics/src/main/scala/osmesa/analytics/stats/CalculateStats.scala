@@ -33,19 +33,9 @@ object CalculateStats {
   }
 
   def statTopics(col: Column): TypedColumn[Any, Array[StatTopic]] =
-    udf[Array[StatTopic], Map[String, String]]({ tags =>
-      val b = mutable.ArrayBuffer[StatTopic]()
-      tags.get("highway") match {
-        case Some(v) if Constants.ROAD_VALUES.contains(v) => b += StatTopics.ROAD
-        case None => ()
-      }
-
-      if(tags contains "building") { b += StatTopics.BUILDING }
-      if(tags contains "waterway") { b += StatTopics.WATERWAY }
-      if(tags contains "amenity") { b += StatTopics.POI }
-
-      b.toArray
-    }).apply(col).as[Array[StatTopic]]
+    udf[Array[StatTopic], Map[String, String]](StatTopics.tagsToTopics).
+      apply(col).
+      as[Array[StatTopic]]
 
   def computeChangesetStats(history: DataFrame, changesets: DataFrame, options: Options = Options.DEFAULT)(implicit ss: SparkSession): RDD[(Long, ChangesetStats)] = {
     import ss.implicits._
@@ -101,32 +91,6 @@ object CalculateStats {
         .partitionBy(changesetPartitioner)
 
     // **  Roll up stats based on changeset ** //
-    history.
-        where("type == 'relation'").
-        select(
-          $"id",
-          $"changeset",
-          $"version",
-          $"members",
-          statTopics($"tags").as("statTopics")
-        ).show()
-
-      history.
-        where("type == 'relation'").
-        select(
-          $"id",
-          $"changeset",
-          $"version",
-          $"members",
-          statTopics($"tags").as("statTopics")
-        ).
-        select(
-          $"id",
-          $"changeset",
-          $"version",
-          $"members",
-          $"statTopics"
-        ).explain
 
     val relevantRelations =
       history.

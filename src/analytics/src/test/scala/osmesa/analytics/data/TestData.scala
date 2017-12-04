@@ -28,11 +28,6 @@ object TestData {
     val GoEagles = Hashtag("GoEagles")
   }
 
-  abstract sealed trait OsmChange
-  case class NodeChange(node: Node) extends OsmChange
-  case class WayChange(way: Way) extends OsmChange
-  case class RelationChange(relation: Relation) extends OsmChange
-
   class Elements() {
     private var newNodeId = 11100L
     private var newWayId = 1100L
@@ -108,40 +103,8 @@ object TestData {
   case class Changeset(
     user: User,
     hashtags: Seq[Hashtag],
-    changes: Seq[OsmChange]
+    changes: Seq[OsmElement]
   )
-
-  class Changes() {
-    case class Info[T <: OsmElement](
-      element: T,
-      currentVersion: Long,
-      hashtags: Map[String, Set[Option[OsmId]]], // Mapped to the contributing elements, or None if self.
-      topics: Map[StatTopic, Set[Option[OsmId]]] // Mapped to the contributing elements, or None if self.
-    )
-
-    private val _historyRows = mutable.ListBuffer[Row]()
-    private val _changesetRows = mutable.ListBuffer[Row]()
-
-    private val nodeInfo = mutable.Map[Long, Info[Node]]()
-    private val wayInfo = mutable.Map[Long, Info[Way]]()
-    private val relationInfo = mutable.Map[Long, Info[Relation]]()
-
-    private val nodesToWays = mutable.Map[Long, Long]()
-    private val nodesToRelations = mutable.Map[Long, Long]()
-    private val waysToRelations = mutable.Map[Long, Long]()
-
-    private val userStats = mutable.Map[Long, UserStats]()
-    private val hashtagStats = mutable.Map[Long, HashtagStats]()
-
-    def add(changeset: Changeset): Unit = {
-      ???
-    }
-
-    def historyRows: Seq[Row] = _historyRows.toSeq
-    def changesetRows: Seq[Row] = _changesetRows.toSeq
-    def stats: (Seq[UserStats], Seq[HashtagStats]) =
-      (userStats.values.toSeq, hashtagStats.values.toSeq)
-  }
 
   def createHistory(rows: Seq[Row])(implicit ss: SparkSession): DataFrame =
     ss.createDataFrame(

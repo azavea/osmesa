@@ -26,14 +26,6 @@ class StatCounter private (
       }
     )
 
-  private def mergeMaps[K, V](m1: Map[K, Set[V]], m2: Map[K, Set[V]]): Map[K, Set[V]] =
-    (m1.toSeq ++ m2.toSeq).
-      groupBy(_._1).
-      map { case (k, vs) =>
-        (k, vs.map(_._2).reduce(_ ++ _))
-      }.
-      toMap
-
   def merge(other: StatCounter): StatCounter =
     new StatCounter(
       mergeMaps(elements, other.elements),
