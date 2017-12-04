@@ -52,7 +52,6 @@ object Countries {
 }
 
 class CountryLookup() extends Serializable {
-  //private val index = Countries.indexed
   private val index =
     SpatialIndex.fromExtents(
       Countries.all.
