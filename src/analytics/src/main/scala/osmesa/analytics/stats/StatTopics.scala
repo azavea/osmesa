@@ -16,7 +16,7 @@ object StatTopics {
     val b = mutable.ArrayBuffer[StatTopic]()
     tags.get("highway") match {
       case Some(v) if Constants.ROAD_VALUES.contains(v) => b += StatTopics.ROAD
-      case None => ()
+      case _ => ()
     }
 
     if(tags contains "building") { b += StatTopics.BUILDING }
