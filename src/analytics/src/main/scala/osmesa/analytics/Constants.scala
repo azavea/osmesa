@@ -7,4 +7,9 @@ object Constants {
       "primary_link", "secondary_link", "tertiary_link", "service", "residential", "unclassified",
       "living_street", "road"
     )
+
+  val WATERWAY_VALUES =
+    Set(
+      "river", "canal", "stream", "brook", "drain", "ditch"
+    )
 }
