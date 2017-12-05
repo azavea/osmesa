@@ -1,0 +1,19 @@
+[
+    {
+        "name": "osmesa-statistics",
+        "image": "${image}",
+        "cpu": 1024,
+        "memory": 3072,
+        "essential": true,
+        "environment": [
+            { "name": "S3_BUCKET", "value": "${s3bucket}"},
+            { "name": "S3_PREFIX", "value": "${s3prefix}"}
+        ],
+        "portMappings": [
+            {
+                "containerPort": 8787,
+                "hostPort": 80
+            }
+        ]
+    }
+]

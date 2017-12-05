@@ -2,7 +2,7 @@ FROM quay.io/azavea/osmesa-base
 
 MAINTAINER Pomadchin Grigory, daunnc@gmail.com
 
-ENV ZOOKEEPER_VERSION 3.4.8
+ENV ZOOKEEPER_VERSION 3.4.11
 ENV ZOOKEEPER_HOME /opt/zookeeper
 ENV ZOOKEEPER_DATA /data/zookeeper
 ENV ZOOKEEPER_CONF_DIR $ZOOKEEPER_HOME/conf

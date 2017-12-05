@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+message Members {
+  message Member {
+    string type = 1;
+    int64 ref = 2;
+    string role = 3;
+  }
+  repeated Member members = 1;
+}
+

@@ -75,3 +75,14 @@ dist/
 \#*#
 *~
 .#*
+
+# Data files
+*.orc
+*.tar.gz
+*.log
+
+# Protobuf artifacts
+src/protobuf/compiled/*
+
+*.tfstate.*
+*.jar

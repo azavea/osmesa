@@ -1,5 +1,10 @@
 version: '3'
 services:
+  osmesa-base:
+    image: quay.io/azavea/osmesa-base:latest
+    build:
+      context: ./services/services-base
+      dockerfile: Dockerfile
   hdfs-name:
     image: quay.io/azavea/osmesa-hdfs:latest
     build:
@@ -11,6 +16,8 @@ services:
     ports:
       - 50070:50070
       - 8088:8088
+    depends_on:
+      - osmesa-base
   hdfs-data:
     image: quay.io/azavea/osmesa-hdfs:latest
     build:
@@ -28,6 +35,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - 2181:2181
+    depends_on:
+      - osmesa-base
   hbase-master:
     image: quay.io/azavea/osmesa-hbase:latest
     build:
