@@ -42,8 +42,8 @@ object TestCases {
       Some(
         (
           Seq(
-            ExpectedUserStats(User.Bob, roads = ExpectedCounts(1, 0)),
-            ExpectedUserStats(User.Alice, roads = ExpectedCounts(0, 1))
+            ExpectedUserStats(User.Bob, roads = ExpectedCounts(1, 0), countries = Set("mexico")),
+            ExpectedUserStats(User.Alice, roads = ExpectedCounts(0, 1), countries = Set("mexico"))
           ),
           Seq()
         )

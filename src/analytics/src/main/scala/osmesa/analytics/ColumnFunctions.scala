@@ -16,13 +16,6 @@ trait ColumnFunctions {
   private implicit def arrayEnc[T: TypeTag]: Encoder[Array[T]] = ExpressionEncoder()
   private implicit def boolEnc: Encoder[Boolean] = ExpressionEncoder()
 
-  private val highways: Set[String] = Set(
-    "motorway", "trunk", "motorway_link", "trunk_link", "primary", "secondary", "tertiary",
-    "primary_link", "secondary_link", "tertiary_link", "service", "residential", "unclassified",
-    "living_street", "road"
-  )
-
-
   def hashtags(col: Column): TypedColumn[Any, Array[String]] =
     udf[Array[String], Map[String, String]]({ tags =>
       val HashtagSet = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!"#$%()*,.\/:;<=>?@\[\]^{|}~]+)""".r
@@ -63,6 +56,9 @@ trait ColumnFunctions {
 
   def isWaterway(col: Column): TypedColumn[Any, Boolean] =
     udf[Boolean, Map[String, String]]({ tags =>
-      tags contains "waterway"
+      tags.get("waterway") match {
+        case Some(v) => Constants.WATERWAY_VALUES.contains(v)
+        case None => false
+      }
     }).apply(col).as[Boolean]
 }

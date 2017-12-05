@@ -15,6 +15,7 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.functions._
 import vectorpipe._
 
+import java.math.BigDecimal
 import java.time.Instant
 import scala.collection.mutable
 import scala.util.{Try, Success, Failure}
@@ -254,8 +255,8 @@ object CalculateStats {
           val id = row.getAs[Long]("id")
           val changeset = row.getAs[Long]("changeset")
           val version = row.getAs[Long]("version")
-          val lat = row.getAs[Double]("lat")
-          val lon = row.getAs[Double]("lon")
+          val lat = Option(row.getAs[BigDecimal]("lat")).map(_.doubleValue).getOrElse(Double.NaN)
+          val lon = Option(row.getAs[BigDecimal]("lon")).map(_.doubleValue).getOrElse(Double.NaN)
           val topics = row.getAs[Seq[StatTopic]]("statTopics").toSet
           (id, (changeset, version, new Coordinate(lon, lat), topics))
         }

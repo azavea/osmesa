@@ -36,6 +36,8 @@ fork in run := true
 
 fork in Test := true
 
+test in assembly := {}
+
 javaOptions ++= Seq("-Xmx5G")
 
 initialCommands in console :=

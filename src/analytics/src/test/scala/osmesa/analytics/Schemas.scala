@@ -28,8 +28,8 @@ object Schemas {
         StructField("id", LongType, false),
         StructField("type", StringType, false),
         StructField("tags", MapType(StringType, StringType), false),
-        StructField("lat", DoubleType, false),
-        StructField("lon", DoubleType, false),
+        StructField("lat", DataTypes.createDecimalType(9,7), true),
+        StructField("lon", DataTypes.createDecimalType(10,7), true),
         StructField(
           "nds",
           ArrayType(
