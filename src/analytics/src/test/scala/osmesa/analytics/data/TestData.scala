@@ -3,6 +3,7 @@ package osmesa.analytics.data
 import osmesa.analytics._
 import osmesa.analytics.stats._
 
+import com.vividsolutions.jts.geom.Coordinate
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
@@ -12,7 +13,7 @@ import java.sql.Timestamp
 import scala.collection.mutable
 
 object TestData {
-  case class User(uid: Long, name: String)
+  case class User(id: Long, name: String)
   object User {
     val Bob = User(1L, "Bob")
     val Alice = User(2L, "Alice")
@@ -23,9 +24,11 @@ object TestData {
 
   case class Hashtag(name: String)
   object Hashtag {
-    val Mapathon = Hashtag("Mapathon")
-    val OnlyPeru = Hashtag("OnlyPeru")
-    val GoEagles = Hashtag("GoEagles")
+    // TODO: Right now these need to be lower case becaues of the toLowerCase call
+    // happening in the stats calculation.
+    val Mapathon = Hashtag("mapathon")
+    val OnlyPeru = Hashtag("onlyperu")
+    val GoEagles = Hashtag("goeagles")
   }
 
   class Elements() {

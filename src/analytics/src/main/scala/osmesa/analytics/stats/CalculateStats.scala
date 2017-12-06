@@ -45,17 +45,16 @@ object CalculateStats {
     val wayPartitioner = new HashPartitioner(options.wayPartitionCount)
     val nodePartitioner = new HashPartitioner(options.nodePartitionCount)
 
-    def generateUpstreamTopics[T <: OsmId](rdd: RDD[(Long, Iterable[(T, Long, Set[StatTopic])])]): RDD[(Long, List[(T, UpstreamTopics)])] =
+    def generateUpstreamTopics[T <: OsmId](rdd: RDD[(Long, Iterable[(T, Long, Long, Set[StatTopic])])]): RDD[(Long, List[(T, UpstreamTopics)])] =
       rdd.
         mapValues { idsAndChangesets =>
-          (idsAndChangesets.foldLeft(Map[T, Map[Long, Set[StatTopic]]]()) { case (acc, (osmId, changeset, statTopics)) =>
+          (idsAndChangesets.foldLeft(Map[T, Map[Long, (Set[StatTopic], Long)]]()) { case (acc, (osmId, changeset, version, statTopics)) =>
             acc.get(osmId) match {
-              case Some(m) => acc + (osmId -> (m + (changeset ->  statTopics)))
-              case _ => acc + (osmId -> Map(changeset -> statTopics))
+              case Some(m) => acc + (osmId -> (m + (changeset -> (statTopics, version))))
+              case _ => acc + (osmId -> Map(changeset -> (statTopics, version)))
             }
           }).toList.map { case (k, v) => (k, new UpstreamTopics(v)) }
         }
-
 
     // Create the base set of ChangesetStats we'll be joining against
     val initialChangesetStats =
@@ -88,8 +87,8 @@ object CalculateStats {
             )
 
           (changeset, stats)
-        }
-        .partitionBy(changesetPartitioner)
+        }.
+        partitionBy(changesetPartitioner)
 
     // **  Roll up stats based on changeset ** //
 
@@ -119,21 +118,22 @@ object CalculateStats {
 
     val relationMembers =
       relevantRelations.
-        select($"id", $"changeset", $"statTopics", explode($"members").as("member"))
+        select($"id", $"changeset", $"version", $"statTopics", explode($"members").as("member"))
 
     val relationsForWays: RDD[(Long, List[(RelationId, UpstreamTopics)])] =
       generateUpstreamTopics(
         relationMembers.
           where($"member.type" === "way").
-          select($"id", $"changeset", $"statTopics", $"member.ref".as("wayId")).
+          select($"id", $"changeset", $"version", $"statTopics", $"member.ref".as("wayId")).
           rdd.
           map { row =>
             val osmId = RelationId(row.getAs[Long]("id"))
             val changeset = row.getAs[Long]("changeset")
+            val version = row.getAs[Long]("version")
             val topics = row.getAs[Seq[StatTopic]]("statTopics").toSet
             val wayId = row.getAs[Long]("wayId")
 
-            (wayId, (osmId, changeset, topics))
+            (wayId, (osmId, changeset, version, topics))
           }.
           groupByKey(wayPartitioner)
       )
@@ -142,15 +142,16 @@ object CalculateStats {
       generateUpstreamTopics(
         relationMembers.
           where($"member.type" === "node").
-          select($"id", $"changeset", $"statTopics", $"member.ref".as("nodeId")).
+          select($"id", $"changeset", $"version", $"statTopics", $"member.ref".as("nodeId")).
           rdd.
           map { row =>
             val osmId = RelationId(row.getAs[Long]("id"))
             val changeset = row.getAs[Long]("changeset")
+            val version = row.getAs[Long]("version")
             val topics = row.getAs[Seq[StatTopic]]("statTopics").toSet
             val nodeId = row.getAs[Long]("nodeId")
 
-            (nodeId, (osmId, changeset, topics))
+            (nodeId, (osmId, changeset, version, topics))
           }.
           groupByKey(nodePartitioner)
       )
@@ -191,9 +192,9 @@ object CalculateStats {
             // List[(RelationId, Map[Long, Set[StatTopic]])]
             case Some(relations) =>
               for((relationId, upstreamTopics) <- relations) {
-                val upstreamTopicSet = upstreamTopics.forChangeset(changeset)
+                val (upstreamTopicSet, isNew) = upstreamTopics.forChangeset(changeset)
                 if(!upstreamTopicSet.isEmpty) {
-                  statCounter = statCounter + (ChangeItem(relationId, changeset, false), upstreamTopicSet)
+                  statCounter = statCounter + (ChangeItem(relationId, changeset, isNew), upstreamTopicSet)
                 }
               }
             case None => ()
@@ -215,9 +216,9 @@ object CalculateStats {
                 case Some(relations) =>
                   (for(
                     (relationId, upstreamTopics) <- relations;
-                    (changeset, topics) <- upstreamTopics.topicMap
+                    (changeset, (topics, version)) <- upstreamTopics.topicMap
                   ) yield {
-                    (relationId, changeset, topics)
+                    (relationId, changeset, version, topics)
                   }).toList
 
                 case None => List()
@@ -231,9 +232,9 @@ object CalculateStats {
       generateUpstreamTopics(
         wayInfo.
           filter { case (_, (_, _, _, topics)) => !topics.isEmpty }.
-          flatMap { case (wayId, (changeset, _, nodeIds, topics)) =>
+          flatMap { case (wayId, (changeset, version, nodeIds, topics)) =>
             nodeIds.map { nodeId =>
-              (nodeId, (WayId(wayId), changeset, topics))
+              (nodeId, (WayId(wayId), changeset, version, topics))
             }
           }.
           groupByKey(nodePartitioner)
@@ -286,12 +287,12 @@ object CalculateStats {
                 val countryOpt = countryLookup.lookup(coord)
 
                 for((upstreamId, upstreamTopics) <- (relations ++ wayRelations ++ ways).flatten) {
-                  val upstreamTopicSet = upstreamTopics.forChangeset(changeset)
+                  val (upstreamTopicSet, isNew) = upstreamTopics.forChangeset(changeset)
                   if(!upstreamTopicSet.isEmpty) {
-                    val item = ChangeItem(upstreamId, changeset, false)
+                    val item = ChangeItem(upstreamId, changeset, isNew)
                     statCounter = statCounter + (item, upstreamTopicSet)
                     countryOpt.foreach { country =>
-                      statCounter = statCounter + (item, country)
+                      statCounter = statCounter + country
                     }
                   }
                 }
@@ -300,7 +301,7 @@ object CalculateStats {
                   val item = ChangeItem(NodeId(nodeId), changeset, version == 1L)
                   statCounter = statCounter + (item, topics)
                   countryOpt.foreach { country =>
-                    statCounter = statCounter + (item, country)
+                    statCounter = statCounter + country
                   }
                 }
 
@@ -316,7 +317,6 @@ object CalculateStats {
     //         (wayId, (changeset, coord))
     //       }
     //     }
-
 
     val mergedStatChanges =
       ss.sparkContext.union(relationStatChanges, wayStatChanges, nodeStatChanges).
@@ -335,12 +335,12 @@ object CalculateStats {
               waterwaysAdded = counter.waterwaysAdded,
               waterwaysModified = counter.waterwaysModified,
               poisAdded = counter.poisAdded,
-              poisModified = counter.poisModified// ,
+              poisModified = counter.poisModified,
               // kmRoadAdded = 0.0,
               // kmRoadModified = 0.0,
               // kmWaterwayAdded = 0.0,
               // kmWaterwayModified = 0.0,
-              // countries = List()
+              countries = counter.countries
             )
           case None => stats
         }
@@ -355,11 +355,19 @@ object CalculateStats {
       .reduceByKey(_ merge _ )
       .map(_._2)
 
-  def computeHashtagStats(changesetStats: RDD[(Long, ChangesetStats)]): RDD[HashtagStats] = ???
+  def computeHashtagStats(changesetStats: RDD[(Long, ChangesetStats)]): RDD[HashtagStats] =
+    changesetStats
+      .flatMap { case (_, changesetStat) =>
+        changesetStat.hashtags.map { hashtag =>
+          (hashtag, HashtagStats.fromChangesetStats(hashtag, changesetStat))
+        }
+      }
+      .reduceByKey(_ merge _)
+      .map(_._2)
 
-  def compute(history: DataFrame, changesets: DataFrame)(implicit ss: SparkSession): (RDD[HashtagStats], RDD[UserStats]) = {
-    val changesetStats = computeChangesetStats(history, changesets)
+  def compute(history: DataFrame, changesets: DataFrame, options: Options = Options.DEFAULT)(implicit ss: SparkSession): (RDD[UserStats], RDD[HashtagStats]) = {
+    val changesetStats = computeChangesetStats(history, changesets, options)
 
-    (computeHashtagStats(changesetStats), computeUserStats(changesetStats))
+    (computeUserStats(changesetStats), computeHashtagStats(changesetStats))
   }
 }

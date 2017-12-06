@@ -1,5 +1,7 @@
 package osmesa.analytics.stats
 
+import osmesa.analytics._
+
 import java.time.Instant
 
 sealed abstract class OsmId { def id: Long }
@@ -13,7 +15,7 @@ case class HashtagCount(tag: String, count: Int)
 case class EditorCount(editor: String, count: Int)
 case class DayCount(day: Instant, count: Int)
 case class UserCount(id: Long, name: String, count: Int)
-case class CountryCount(name: String, count: Int)
+case class CountryCount(id: CountryId, count: Int)
 
 case class HashtagStats(
   /** Tag that represents this hashtag (lower case, without '#') */
@@ -75,7 +77,52 @@ case class HashtagStats(
 
   /** Total number of changesets with this hashtag */
   totalEdits: Long
-)
+) {
+  /** Merge two user objects to aggregate statistics.
+    * Will throw if the IDs are not the same
+    */
+  def merge(other: HashtagStats): HashtagStats =
+    if(tag != other.tag) sys.error(s"Hashtag IDs do not match, cannot aggregate: ${tag} != ${other.tag}")
+    else {
+      HashtagStats(
+        tag,
+        extentUri,
+        roadsAdd = roadsAdd + other.roadsAdd,
+        roadsMod = roadsMod + other.roadsMod,
+        buildingsAdd = buildingsAdd + other.buildingsAdd,
+        buildingsMod = buildingsMod + other.buildingsMod,
+        waterwayAdd = waterwayAdd + other.waterwayAdd,
+        poiAdd = poiAdd + other.poiAdd,
+        kmRoadAdd = kmRoadAdd + other.kmRoadAdd,
+        kmRoadMod = kmRoadMod + other.kmRoadMod,
+        kmWaterwayAdd = kmWaterwayAdd + other.kmWaterwayAdd,
+        users = (users ++ other.users).toSet.toList,
+        totalEdits = totalEdits + other.totalEdits
+      )
+    }
+}
+
+object HashtagStats {
+  def hashtagExtentUri(hashtag: String): String =
+    s"${hashtag}/{z}/{x}/{y}.mvt"
+
+  def fromChangesetStats(hashtag: String, changesetStats: ChangesetStats): HashtagStats =
+    HashtagStats(
+      hashtag,
+      hashtagExtentUri(hashtag),
+      roadsAdd = changesetStats.roadsAdded,
+      roadsMod = changesetStats.roadsModified,
+      buildingsAdd = changesetStats.buildingsAdded,
+      buildingsMod = changesetStats.buildingsModified,
+      waterwayAdd = changesetStats.waterwaysAdded,
+      poiAdd = changesetStats.poisAdded,
+      kmRoadAdd = changesetStats.kmRoadModified,
+      kmRoadMod = changesetStats.kmRoadAdded,
+      kmWaterwayAdd = changesetStats.kmWaterwayAdded,
+      users = List(UserCount(changesetStats.userId, changesetStats.userName, 1)),
+      totalEdits = 1L
+    )
+}
 
 case class UserStats(
   /** UID of the user */
@@ -126,7 +173,7 @@ case class UserStats(
   countries: List[CountryCount],
 
   /** Set of hashtags this user has contributed to, counted by changeset */
-  hashtag: List[HashtagCount]
+  hashtags: List[HashtagCount]
 ) {
   /** Merge two user objects to aggregate statistics.
     * Will throw if the IDs are not the same
@@ -152,13 +199,16 @@ case class UserStats(
         editors ++ other.editors,
         editTimes ++ other.editTimes,
         countries ++ other.countries,
-        hashtag ++ other.hashtag
+        mergeIntMaps(hashtags.map { h => (h.tag, h.count) }.toMap, other.hashtags.map { h => (h.tag, h.count) }.toMap). // TODO: Clean up
+          map { case (k, v) => HashtagCount(k, v) }.
+          toList
       )
     }
 }
 
 object UserStats {
-  def userExtentUri(userId: Long): String = ???
+  def userExtentUri(userId: Long): String =
+    s"${userId}/{z}/{x}/{y}.mvt"
 
   def fromChangesetStats(changesetStats: ChangesetStats): UserStats =
     UserStats(
@@ -178,7 +228,7 @@ object UserStats {
       1,
       changesetStats.editor.map(EditorCount(_, 1)).toList,
       List(DayCount(changesetStats.closedAt, 1)),
-      changesetStats.countries.map(CountryCount(_, 1)),
+      changesetStats.countries.map(CountryCount(_, 1)).toList,
       changesetStats.hashtags.map(HashtagCount(_, 1))
     )
 }
@@ -203,5 +253,5 @@ case class ChangesetStats(
   kmRoadModified: Double = 0.0,
   kmWaterwayAdded: Double = 0.0,
   kmWaterwayModified: Double = 0.0,
-  countries: List[String] = List()
+  countries: Set[CountryId] = Set()
 )

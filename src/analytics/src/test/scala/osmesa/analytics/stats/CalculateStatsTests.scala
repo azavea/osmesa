@@ -18,7 +18,7 @@ import java.sql.Timestamp
 case class NodeRef(ref: Long)
 case class MemberRef(t: String, ref: Long, role: String)
 
-class CalculateStatsTests extends FunSuite with Matchers with TestEnvironment {
+class CalculateStatsTests extends FunSpec with Matchers with TestEnvironment with ExpectedStatsValidators {
   def time[T](msg: String)(f: => T) = {
     val start = System.currentTimeMillis
     val v = f
@@ -38,46 +38,30 @@ class CalculateStatsTests extends FunSuite with Matchers with TestEnvironment {
   implicit val ss = sqlContext.sparkSession
   import ss.implicits._
 
-  test("Test scorecard stats") {
-    val history =
-      TestData.createHistory(
-        Seq(
-          Row(
-            1L, "node", Map("building" -> "true"), 1.0, 2.0,
-            null, null,
-            1L, new Timestamp(System.currentTimeMillis()), 1L, "bob", 1L, true
-          ),
-          Row(
-            2L, "relation", Map("highway" -> "motorway"), 1.0, 2.0,
-            null, Array(Row("way", 3L, null)),
-            1L, new Timestamp(System.currentTimeMillis()), 1L, "bob", 1L, true
-          ),
-          Row(
-            3L, "way", Map(), 1.0, 2.0,
-            Array(Row(1L)), null,
-            1L, new Timestamp(System.currentTimeMillis()), 1L, "bob", 1L, true
-          )
-        )
-      )
+  val options =
+    CalculateStats.Options(changesetPartitionCount = 8, wayPartitionCount = 8, nodePartitionCount = 8)
 
-    history.show
+  def runTestCase(ds: OsmDataset): Unit = {
+    val (history, changesets) =
+      (ds.history, ds.changesets)
 
-    val changesets =
-      TestData.createChangesets(
-        Seq(
-          Row(
-            1L, Map("comments" -> "#test"),
-            new Timestamp(System.currentTimeMillis() - 10000L), false, new Timestamp(System.currentTimeMillis()),
-            1L, 0.0, 1.0, 0.0, 1.0, 1L,
-            1L, "bob"
-          )
-        )
-      )
+    val (actualUserStats, actualHashtagStats) = CalculateStats.compute(history, changesets, options)
+    val (expectedUserStats, expectedHashtagStats) = ds.calculatedStats
 
-    changesets.show
+    validate(
+      actualUserStats.collect.map(ExpectedUserStats(_)),
+      expectedUserStats
+    )
 
-    val options = CalculateStats.Options(changesetPartitionCount = 8, wayPartitionCount = 8, nodePartitionCount = 8)
-    val changesetStats = CalculateStats.computeChangesetStats(history, changesets, options)
-    changesetStats.collect().foreach(println)
+    validate(
+      actualHashtagStats.collect.map(ExpectedHashtagStats(_)),
+      expectedHashtagStats
+    )
+  }
+
+  describe("CalcluateStats") {
+    it("should handle testcase 1") {
+      runTestCase(TestCases.createWayThenNodeChange)
+    }
   }
 }

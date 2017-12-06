@@ -5,8 +5,14 @@ import osmesa.analytics.stats._
 
 import org.apache.spark.sql._
 
-case class ExpectedCounts(added: Int, modified: Int)
-case class ExpectedLengths(added: Double, modified: Double)
+case class ExpectedCounts(added: Int, modified: Int) {
+  override def toString =
+    s"($added, $modified)"
+}
+case class ExpectedLengths(added: Double, modified: Double) {
+  override def toString =
+    s"($added, $modified)"
+}
 
 case class ExpectedUserStats(
   user: TestData.User,
@@ -18,25 +24,55 @@ case class ExpectedUserStats(
   waterwaysKm: ExpectedLengths = ExpectedLengths(0.0, 0.0),
   countries: Set[String] = Set(), // Just names
   hashtags: Set[TestData.Hashtag] = Set()
-)
+) {
+  override def toString: String =
+    s"[User $user, buildings = $buildings, pois = $pois, roads = $roads $roadsKm, waterways = $waterways $waterwaysKm], countries = $countries, hashtags = $hashtags"
+
+  def updateTopic(topic: StatTopic, isNew: Boolean): ExpectedUserStats =
+    topic match {
+      case StatTopics.BUILDING =>
+        if(isNew) {
+          this.copy(buildings = buildings.copy(added = buildings.added + 1))
+        } else {
+          this.copy(buildings = buildings.copy(modified = buildings.modified + 1))
+        }
+
+      case StatTopics.ROAD =>
+        if(isNew) {
+          this.copy(roads = roads.copy(added = roads.added + 1))
+        } else {
+          this.copy(roads = roads.copy(modified = roads.modified + 1))
+        }
+
+      case StatTopics.POI =>
+        if(isNew) {
+          this.copy(pois = pois.copy(added = pois.added + 1))
+        } else {
+          this.copy(pois = pois.copy(modified = pois.modified + 1))
+        }
+
+      case StatTopics.WATERWAY =>
+        if(isNew) {
+          this.copy(waterways = waterways.copy(added = waterways.added + 1))
+        } else {
+          this.copy(waterways = waterways.copy(modified = waterways.modified + 1))
+        }
+    }
+}
 
 object ExpectedUserStats {
-  def validate(e1: Seq[ExpectedUserStats], e2: Seq[ExpectedUserStats]): Unit = {
-    def err(msg: String): Unit =
-      sys.error(s"Expected user stats don't match: $msg")
-    val m1 = e1.map { u => (u.user, u) }.toMap
-    val m2 = e2.map { u => (u.user, u) }.toMap
-
-    if(m1.keys.toSet != m2.keys.toSet) {
-      err(s"keys different ${m1.keys} vs ${m2.keys}")
-    }
-
-    for(k <- m1.keys) {
-      val (s1, s2) = (m1(k), m2(k))
-      if(s1 != s2) {
-        err(s"User $k doesn't match - $s1 vs $s2")
-      }
-    }
+  def apply(s: UserStats): ExpectedUserStats = {
+    ExpectedUserStats(
+      user = TestData.User(s.uid, s.name),
+      buildings = ExpectedCounts(s.buildingCountAdd, s.buildingCountMod),
+      pois = ExpectedCounts(s.poiCountAdd, s.poiCountMod),
+      roads = ExpectedCounts(s.roadCountAdd, s.roadCountMod),
+      waterways = ExpectedCounts(s.waterwayCountAdd, 0),
+      roadsKm = ExpectedLengths(s.kmRoadAdd, s.kmRoadMod),
+      waterwaysKm = ExpectedLengths(s.kmWaterwayAdd, 0.0),
+      countries = s.countries.map(_.id.name).toSet,
+      hashtags = s.hashtags.map { t => TestData.Hashtag(t.tag) }.toSet
+    )
   }
 }
 
@@ -48,28 +84,57 @@ case class ExpectedHashtagStats(
   waterways: ExpectedCounts = ExpectedCounts(0, 0),
   roadsKm: ExpectedLengths = ExpectedLengths(0.0, 0.0),
   waterwaysKm: ExpectedLengths = ExpectedLengths(0.0, 0.0),
-  users: List[TestData.User] = List(),
+  users: Set[TestData.User] = Set(),
   totalEdits: Int = 0
-)
+) {
+  override def toString: String =
+    s"[Hashtag $hashtag, buildings = $buildings, pois = $pois, roads = $roads $roadsKm, waterways = $waterways $waterwaysKm], users = $users, totalEdits = $totalEdits"
 
-object ExpectedHashatagStats {
-  def validate(e1: Seq[ExpectedHashtagStats], e2: Seq[ExpectedHashtagStats]): Unit = {
-    def err(msg: String): Unit =
-      sys.error(s"Expected hashtag stats don't match: $msg")
-    val m1 = e1.map { h => (h.hashtag, h) }.toMap
-    val m2 = e2.map { h => (h.hashtag, h) }.toMap
+  def updateTopic(topic: StatTopic, isNew: Boolean): ExpectedHashtagStats =
+    topic match {
+      case StatTopics.BUILDING =>
+        if(isNew) {
+          this.copy(buildings = buildings.copy(added = buildings.added + 1))
+        } else {
+          this.copy(buildings = buildings.copy(modified = buildings.modified + 1))
+        }
 
-    if(m1.keys.toSet != m2.keys.toSet) {
-      err(s"keys different ${m1.keys} vs ${m2.keys}")
+      case StatTopics.ROAD =>
+        if(isNew) {
+          this.copy(roads = roads.copy(added = roads.added + 1))
+        } else {
+          this.copy(roads = roads.copy(modified = roads.modified + 1))
+        }
+
+      case StatTopics.POI =>
+        if(isNew) {
+          this.copy(pois = pois.copy(added = pois.added + 1))
+        } else {
+          this.copy(pois = pois.copy(modified = pois.modified + 1))
+        }
+
+      case StatTopics.WATERWAY =>
+        if(isNew) {
+          this.copy(waterways = waterways.copy(added = waterways.added + 1))
+        } else {
+          this.copy(waterways = waterways.copy(modified = waterways.modified + 1))
+        }
     }
+}
 
-    for(k <- m1.keys) {
-      val (s1, s2) = (m1(k), m2(k))
-      if(s1 != s2) {
-        err(s"Hashtag $k doesn't match - $s1 vs $s2")
-      }
-    }
-  }
+object ExpectedHashtagStats {
+  def apply(s: HashtagStats): ExpectedHashtagStats =
+    ExpectedHashtagStats(
+      hashtag = TestData.Hashtag(s.tag),
+      buildings = ExpectedCounts(s.buildingsAdd, s.buildingsMod),
+      pois = ExpectedCounts(s.poiAdd, 0),
+      roads = ExpectedCounts(s.roadsAdd, s.roadsMod),
+      waterways = ExpectedCounts(s.waterwayAdd, 0),
+      roadsKm = ExpectedLengths(s.kmRoadAdd, s.kmRoadMod),
+      waterwaysKm = ExpectedLengths(s.kmWaterwayAdd, 0.0),
+      users = s.users.map { u => TestData.User(u.id, u.name) }.toSet,
+      totalEdits = s.totalEdits.toInt
+    )
 }
 
 trait OsmDataset {
@@ -88,20 +153,6 @@ object OsmDataset {
     val changes = new Changes
     val stats =
       f(elements, changes)
-
-    // match {
-    //     case Some((expectedUserStats, expectedHashtagStats)) =>
-    //       // If the test case passed in the expected stats, verify that
-    //       // the Changes computed the same expected stats.
-    //       val stats @ (calculatedUserStats, calculatedHashtagStats) = changes.stats
-
-    //       ExpectedUserStats.validate(expectedUserStats, calculatedUserStats)
-    //       ExpectedHashatagStats.validate(expectedHashtagStats, calculatedHashtagStats)
-
-    //       stats
-    //     case None =>
-    //       changes.stats
-    //   }
 
     new OsmDataset {
       def history(implicit ss: SparkSession) = TestData.createHistory(changes.historyRows)
