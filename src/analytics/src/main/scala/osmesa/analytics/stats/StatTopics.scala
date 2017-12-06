@@ -19,8 +19,16 @@ object StatTopics {
       case _ => ()
     }
 
-    if(tags contains "building") { b += StatTopics.BUILDING }
-    if(tags contains "waterway") { b += StatTopics.WATERWAY }
+    tags.get("waterway") match {
+      case Some(v) if Constants.WATERWAY_VALUES.contains(v) => b += StatTopics.WATERWAY
+      case _ => ()
+    }
+
+    tags.get("building") match {
+      case Some(v) if v.toLowerCase != "no" => b += StatTopics.BUILDING
+      case _ => ()
+    }
+
     if(tags contains "amenity") { b += StatTopics.POI }
 
     b.toArray
