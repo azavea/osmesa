@@ -15,4 +15,8 @@ class ChangesTests extends FunSuite with Matchers with ExpectedStatsValidators {
   test("testcase") {
     validate(TestCases.createWayThenNodeChange)
   }
+
+  test("other") {
+    validate(TestCases.createWayThen2NodesChange)
+  }
 }
