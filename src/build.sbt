@@ -52,6 +52,11 @@ lazy val analytics =
     .settings(commonSettings: _*)
     .dependsOn(common)
 
+lazy val stats =
+  project
+    .settings(commonSettings: _*)
+    .dependsOn(common)
+
 /* Run with
       jmh:run -t 1 -f 1 -wi 5 -i 5 .*Bench.*
  */
