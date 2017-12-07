@@ -116,8 +116,8 @@ object HashtagStats {
       buildingsMod = changesetStats.buildingsModified,
       waterwayAdd = changesetStats.waterwaysAdded,
       poiAdd = changesetStats.poisAdded,
-      kmRoadAdd = changesetStats.kmRoadModified,
-      kmRoadMod = changesetStats.kmRoadAdded,
+      kmRoadAdd = changesetStats.kmRoadAdded,
+      kmRoadMod = changesetStats.kmRoadModified,
       kmWaterwayAdd = changesetStats.kmWaterwayAdded,
       users = List(UserCount(changesetStats.userId, changesetStats.userName, 1)),
       totalEdits = 1L
@@ -199,9 +199,10 @@ case class UserStats(
         editors ++ other.editors,
         editTimes ++ other.editTimes,
         countries ++ other.countries,
-        mergeIntMaps(hashtags.map { h => (h.tag, h.count) }.toMap, other.hashtags.map { h => (h.tag, h.count) }.toMap). // TODO: Clean up
-          map { case (k, v) => HashtagCount(k, v) }.
-          toList
+        mergeMaps(
+          hashtags.map { h => (h.tag, h.count) }.toMap,
+          other.hashtags.map { h => (h.tag, h.count) }.toMap
+        )(_ + _).map { case (k, v) => HashtagCount(k, v) }.toList // TODO: Cleanup
       )
     }
 }

@@ -37,6 +37,10 @@ class Changes() {
   private val userStats = mutable.Map[Long, ExpectedUserStats]()
   private val hashtagStats = mutable.Map[String, ExpectedHashtagStats]()
 
+  private val nodes = mutable.Map[Long, Node]()
+  private val waysToNodeIds = mutable.Map[Long, List[Long]]()
+  private val waysToLengths = mutable.Map[Long, Map[StatTopic, Double]]()
+
   private def getTimestamp(changeset: Long): Timestamp = {
     val dt = ZonedDateTime.of(2015, 5, 17, 12, 0, 0, 0, ZoneOffset.UTC)
     new Timestamp(dt.plus(5, ChronoUnit.SECONDS).toInstant().toEpochMilli)
@@ -122,7 +126,7 @@ class Changes() {
           !reasons.isEmpty
         }.
         toMap
-    mergeSetMaps(filteredPrevTopics, newTopics.map((_, Set[Option[OsmId]](None))).toMap)
+    mergeMaps(filteredPrevTopics, newTopics.map((_, Set[Option[OsmId]](None))).toMap)(_ ++ _)
   }
 
   private def updateUserStat(user: User)(f: ExpectedUserStats => ExpectedUserStats): Unit = {
@@ -145,6 +149,8 @@ class Changes() {
 
   // Adds a node, returns if it was new or not.
   private def addNode(user: User, node: Node, topics: Set[StatTopic], cause: Option[OsmId]): (Boolean, Map[StatTopic, Set[Option[OsmId]]]) = {
+    nodes(node.id) = node
+
     countryLookup.lookup(new Coordinate(node.lon, node.lat)) match {
       case Some(c) =>
         updateUserStat(user) { stat =>
@@ -162,7 +168,7 @@ class Changes() {
               toMap
 
           val topicMap =
-            mergeSetMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)
+            mergeMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)(_ ++ _)
 
           (Info(
             node,
@@ -186,6 +192,8 @@ class Changes() {
 
   // Adds a way, returns if it was new or not.
   private def addWay(user: User, way: Way, topics: Set[StatTopic], cause: Option[OsmId]): (Boolean, Map[StatTopic, Set[Option[OsmId]]]) = {
+    waysToNodeIds(way.id) = way.nodes.map(_.id).toList
+
     val (info, isNew, topicMap) =
       wayInfo.get(way.id) match {
         case Some(Info(prevway, prevVersion, prevTopics)) =>
@@ -195,7 +203,7 @@ class Changes() {
               toMap
 
           val topicMap =
-            mergeSetMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)
+            mergeMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)(_ ++ _)
 
           (Info(
             way,
@@ -228,7 +236,7 @@ class Changes() {
               toMap
 
           val topicMap =
-            mergeSetMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)
+            mergeMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)(_ ++ _)
 
           (Info(
             relation,
@@ -259,6 +267,22 @@ class Changes() {
   def add(changeset: Changeset): Unit = {
     val Changeset(user, hashtags, elements) = changeset
 
+    val updatesToDo = mutable.Set[(OsmId, StatTopic, Boolean)]()
+    val waysToCalculate = mutable.Map[StatTopic, Set[(WayId, Boolean)]]()
+
+    def checkIfWay(osmId: OsmId, topic: StatTopic, isNew: Boolean): Unit =
+      if(topic == StatTopics.ROAD || topic == StatTopics.WATERWAY) {
+        osmId match {
+          case wayId: WayId =>
+            waysToCalculate.get(topic) match {
+              case Some(s) => waysToCalculate(topic) = s + ((wayId, isNew))
+              case None => waysToCalculate(topic) = Set((wayId, isNew))
+              case _ => ()
+            }
+          case _ => ()
+        }
+      }
+
     for(element <- elements) {
       element match {
         case node @ Node(id, lon, lat, tags)  =>
@@ -267,10 +291,13 @@ class Changes() {
           val (isNew, fullTopics) = addNode(user, node, topics, None)
 
           fullTopics.
-            foreach { case (topic, _) =>
-              updateUserStat(user)(_.updateTopic(topic, isNew))
-              hashtags.foreach { tag =>
-                updateHashtagStat(tag)(_.updateTopic(topic, isNew))
+            foreach { case (topic, cause) =>
+              cause.foreach {
+                case Some(osmId) =>
+                  updatesToDo += ((osmId, topic, isNew))
+                  checkIfWay(osmId, topic, isNew)
+                case None =>
+                  updatesToDo += ((NodeId(id), topic, isNew))
               }
             }
 
@@ -281,13 +308,12 @@ class Changes() {
             val (isNew, nodeTopics) = addNode(user, node, topics, Some(WayId(id)))
             nodeTopics.
               foreach { case (topic, cause) =>
-                cause.toList match {
-                  case Some(osmId) :: Nil if osmId == WayId(id) => ()
-                  case _ =>
-                    updateUserStat(user)(_.updateTopic(topic, isNew))
-                    hashtags.foreach { tag =>
-                      updateHashtagStat(tag)(_.updateTopic(topic, isNew))
-                    }
+                cause.foreach {
+                  case Some(osmId) if osmId == WayId(id) => ()
+                  case Some(osmId) =>
+                    updatesToDo += ((osmId, topic, isNew))
+                    checkIfWay(osmId, topic, isNew)
+                  case None => updatesToDo += ((NodeId(node.id), topic, isNew))
                 }
               }
           }
@@ -295,10 +321,12 @@ class Changes() {
           val (isNew, fullTopics) = addWay(user, way, topics, None)
 
           fullTopics.
-            foreach { case (topic, _) =>
-              updateUserStat(user)(_.updateTopic(topic, isNew))
-              hashtags.foreach { tag =>
-                updateHashtagStat(tag)(_.updateTopic(topic, isNew))
+            foreach { case (topic, cause) =>
+              cause.foreach {
+                case Some(osmId) => updatesToDo += ((osmId, topic, isNew))
+                case None =>
+                  updatesToDo += ((WayId(id), topic, isNew))
+                  checkIfWay(WayId(id), topic, isNew)
               }
             }
 
@@ -311,13 +339,12 @@ class Changes() {
                 val (isNew, nodeTopics) = addNode(user, node, topics, Some(RelationId(id)))
                 nodeTopics.
                   foreach { case (topic, cause) =>
-                    cause.toList match {
-                      case Some(osmId) :: Nil if osmId == RelationId(id) => ()
-                      case _ =>
-                        updateUserStat(user)(_.updateTopic(topic, isNew))
-                        hashtags.foreach { tag =>
-                          updateHashtagStat(tag)(_.updateTopic(topic, isNew))
-                        }
+                    cause.foreach {
+                      case Some(osmId) if osmId == RelationId(id) => ()
+                      case Some(osmId) =>
+                        updatesToDo += ((osmId, topic, isNew))
+                        checkIfWay(osmId, topic, isNew)
+                      case None => updatesToDo += ((NodeId(node.id), topic, isNew))
                     }
                   }
 
@@ -325,15 +352,15 @@ class Changes() {
                 val (isNew, wayTopics) = addWay(user, way, topics, Some(RelationId(id)))
                 wayTopics.
                   foreach { case (topic, cause) =>
-                    cause.toList match {
-                      case Some(osmId) :: Nil if osmId == RelationId(id) => ()
-                      case _ =>
-                        updateUserStat(user)(_.updateTopic(topic, isNew))
-                        hashtags.foreach { tag =>
-                          updateHashtagStat(tag)(_.updateTopic(topic, isNew))
-                        }
+                    cause.foreach {
+                      case Some(osmId) if osmId == RelationId(id) => ()
+                      case Some(osmId) => updatesToDo += ((osmId, topic, isNew))
+                      case None =>
+                        updatesToDo += ((WayId(way.id), topic, isNew))
+                        checkIfWay(WayId(way.id), topic, isNew)
                     }
                   }
+
               case relation: Relation =>
                 sys.error("We do not yet support relations of relations.")
             }
@@ -351,6 +378,14 @@ class Changes() {
       }
     }
 
+    // Run the updates for this changeset.
+    updatesToDo.foreach { case (cause, topic, isNew) =>
+      updateUserStat(user)(_.updateTopic(topic, isNew))
+      hashtags.foreach { tag =>
+        updateHashtagStat(tag)(_.updateTopic(topic, isNew))
+      }
+    }
+
     updateUserStat(user) { stat => stat.copy(hashtags = stat.hashtags ++ hashtags) }
     hashtags.foreach { tag =>
       updateHashtagStat(tag) { stat =>
@@ -359,6 +394,57 @@ class Changes() {
           totalEdits = stat.totalEdits + 1
         )
       }
+    }
+
+    for(
+      (topic, ways) <- waysToCalculate;
+      (way, isNew) <- ways
+    ) {
+      val currentLength =
+        waysToNodeIds(way.id).
+          sliding(2).
+          collect { case List(x,y) => (x,y) }.
+          foldLeft(0.0) { case (acc, (n1, n2)) =>
+            val node1 = nodes(n1)
+            val node2 = nodes(n2)
+            acc + Distance.kmBetween(node1.lon, node1.lat, node2.lon, node2.lat)
+          }
+
+
+      val topicMap =
+        waysToLengths.get(way.id) match {
+          case Some(m) => m
+          case None => Map[StatTopic, Double]()
+        }
+
+      val changeLength =
+        topicMap.get(topic) match {
+          case Some(l) => math.abs(l - currentLength)
+          case None => currentLength
+        }
+
+      val (uFunc, hFunc): (ExpectedUserStats => ExpectedUserStats, ExpectedHashtagStats => ExpectedHashtagStats) =
+        (topic, isNew) match {
+          case (StatTopics.ROAD, true) =>
+            ({ stats => stats.copy(roadsKm = (stats.roadsKm.added + changeLength, stats.roadsKm.modified)) },
+              { stats => stats.copy(roadsKm = (stats.roadsKm.added + changeLength, stats.roadsKm.modified)) })
+          case (StatTopics.ROAD, false) =>
+            ({ stats => stats.copy(roadsKm = (stats.roadsKm.added, stats.roadsKm.modified + changeLength)) },
+              { stats => stats.copy(roadsKm = (stats.roadsKm.added, stats.roadsKm.modified + changeLength)) })
+          case (StatTopics.WATERWAY, true) =>
+            ({ stats => stats.copy(roadsKm = (stats.roadsKm.added, stats.roadsKm.modified + changeLength)) },
+              { stats => stats.copy(roadsKm = (stats.roadsKm.added, stats.roadsKm.modified + changeLength)) })
+          case (StatTopics.WATERWAY, false) =>
+            ({ stats => stats.copy(roadsKm = (stats.roadsKm.added, stats.roadsKm.modified + changeLength)) },
+              { stats => stats.copy(roadsKm = (stats.roadsKm.added, stats.roadsKm.modified + changeLength)) })
+          case _ =>
+            sys.error(s"Unexpected: Way to calculate length for topic $topic")
+        }
+
+      updateUserStat(user)(uFunc)
+      hashtags.foreach { tag => updateHashtagStat(tag)(hFunc) }
+
+      waysToLengths(way.id) = topicMap + (topic -> currentLength)
     }
 
     addChangesetRow(changeset)

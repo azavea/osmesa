@@ -9,9 +9,16 @@ case class ExpectedCounts(added: Int, modified: Int) {
   override def toString =
     s"($added, $modified)"
 }
+object ExpectedCounts {
+  implicit def fromTuple(tup: (Int, Int)) = ExpectedCounts(tup._1, tup._2)
+}
+
 case class ExpectedLengths(added: Double, modified: Double) {
   override def toString =
     s"($added, $modified)"
+}
+object ExpectedLengths {
+  implicit def fromTuple(tup: (Double, Double)) = ExpectedLengths(tup._1, tup._2)
 }
 
 case class ExpectedUserStats(
@@ -26,7 +33,7 @@ case class ExpectedUserStats(
   hashtags: Set[TestData.Hashtag] = Set()
 ) {
   override def toString: String =
-    s"[User $user, buildings = $buildings, pois = $pois, roads = $roads $roadsKm, waterways = $waterways $waterwaysKm], countries = $countries, hashtags = $hashtags"
+    s"[User $user, buildings = $buildings, pois = $pois, roads = $roads $roadsKm, waterways = $waterways $waterwaysKm], countries = $countries, hashtags = $hashtags]"
 
   def updateTopic(topic: StatTopic, isNew: Boolean): ExpectedUserStats =
     topic match {
@@ -88,7 +95,7 @@ case class ExpectedHashtagStats(
   totalEdits: Int = 0
 ) {
   override def toString: String =
-    s"[Hashtag $hashtag, buildings = $buildings, pois = $pois, roads = $roads $roadsKm, waterways = $waterways $waterwaysKm], users = $users, totalEdits = $totalEdits"
+    s"[Hashtag $hashtag, buildings = $buildings, pois = $pois, roads = $roads $roadsKm, waterways = $waterways $waterwaysKm], users = $users, totalEdits = $totalEdits]"
 
   def updateTopic(topic: StatTopic, isNew: Boolean): ExpectedHashtagStats =
     topic match {

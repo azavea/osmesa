@@ -4,7 +4,8 @@ import osmesa.analytics._
 
 class StatCounter private (
   private val elements: Map[StatTopic, Set[ChangeItem]] = Map(),
-  val countries: Set[CountryId] = Set()
+  val countries: Set[CountryId] = Set(),
+  private val topicLengths: Map[StatTopic, (Double, Double)] = Map()
 ) {
   def +(item: ChangeItem, statTopics: Set[StatTopic]): StatCounter = {
     var e = elements
@@ -14,58 +15,26 @@ class StatCounter private (
         case None => e = e + (statTopic -> Set(item))
       }
     }
-    new StatCounter(e, countries)
+    new StatCounter(e, countries, topicLengths)
   }
 
-  // def +(item: ChangeItem, countryId: CountryId): StatCounter =
-  //   new StatCounter(
-  //     elements,
-  //     countries + countryId
-  //     // countries.get(item) match {
-  //     //   case Some(s) => countries + (item -> (s + countryId))
-  //     //   case None => countries + (item -> Set(countryId))
-  //     // }
-  //   )
   def +(countryId: CountryId): StatCounter =
-    new StatCounter(elements, countries + countryId)
+    new StatCounter(elements, countries + countryId, topicLengths)
 
-  // def +(item: ChangeItem, countryId: CountryId): StatCounter =
-  //   new StatCounter(
-  //     elements,
-  //     countries.get(item) match {
-  //       case Some(m) =>
-  //         m.get(countryId) match {
-  //           case Some(count) =>
-  //             countries + (item -> (m + (countryId -> (count + 1))))
-  //           case None =>
-  //             countries + (item -> (m + (countryId -> 1)))
-  //         }
-  //       case None => countries + (item -> Map(countryId -> 1))
-  //     }
-  //   )
+  /** Lenghts are (Added, Modified) */
+  def +(statTopic: StatTopic, lengths: (Double, Double)): StatCounter =
+    new StatCounter(elements, countries,
+      topicLengths.get(statTopic) match {
+        case Some((a,m)) => topicLengths + (statTopic -> (lengths._1 + a, lengths._2 + m))
+        case None => topicLengths + (statTopic -> lengths)
+      }
+    )
 
   def merge(other: StatCounter): StatCounter =
     new StatCounter(
-      mergeSetMaps(elements, other.elements),
-      countries ++ other.countries
-//      mergeMaps(countries, other.countries)
-      // {
-      //   (countries.toSeq ++ other.countries.toSeq).
-      //     groupBy(_._1).
-      //     map { case (changeItem, mps) =>
-      //       (
-      //         changeItem,
-      //         mps.
-      //           flatMap(_._2.toSeq).
-      //           groupBy(_._1).
-      //           map { case (countryId, vs) =>
-      //             (countryId, vs.map(_._2).sum)
-      //           }.
-      //           toMap
-      //       )
-      //     }.
-      //     toMap
-      // }
+      mergeMaps(elements, other.elements)(_ ++ _),
+      countries ++ other.countries,
+      mergeMaps(topicLengths, other.topicLengths) { (l1, l2) => (l1._1 + l2._1, l1._2 + l2._2) }
     )
 
   private def countNew(topic: StatTopic): Int =
@@ -80,6 +49,18 @@ class StatCounter private (
       case None => 0
     }
 
+  private def addedLength(topic: StatTopic): Double =
+    topicLengths.get(topic) match {
+      case Some(lengths) => lengths._1
+      case None => 0.0
+    }
+
+  private def modifiedLength(topic: StatTopic): Double =
+    topicLengths.get(topic) match {
+      case Some(lengths) => lengths._2
+      case None => 0.0
+    }
+
   def roadsAdded: Int = countNew(StatTopics.ROAD)
   def roadsModified: Int = countModified(StatTopics.ROAD)
   def buildingsAdded: Int = countNew(StatTopics.BUILDING)
@@ -88,15 +69,12 @@ class StatCounter private (
   def waterwaysModified: Int = countModified(StatTopics.WATERWAY)
   def poisAdded: Int = countNew(StatTopics.POI)
   def poisModified: Int = countModified(StatTopics.POI)
-//  def countries: Set[CountryId] = countries
-    // countries.
-    //   map(_._2).
-    //   reduce(
-    //   groupBy(_._1).
-    //   map { case (c, (_, tally)) =>
-    //     CountryCount(c, tally.sum)
-    //   }.
-    //   toList
+
+  def roadsKmAdded: Double = addedLength(StatTopics.ROAD)
+  def roadsKmModified: Double = modifiedLength(StatTopics.ROAD)
+  def waterwaysKmAdded: Double = addedLength(StatTopics.WATERWAY)
+  def waterwaysKmModified: Double = modifiedLength(StatTopics.WATERWAY)
+
 }
 
 object StatCounter {

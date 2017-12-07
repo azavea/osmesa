@@ -63,5 +63,9 @@ class CalculateStatsTests extends FunSpec with Matchers with TestEnvironment wit
     it("should handle testcase 1") {
       runTestCase(TestCases.createWayThenNodeChange)
     }
+
+    it("should handle testcase 2") {
+      runTestCase(TestCases.createWayThen2NodesChange)
+    }
   }
 }
