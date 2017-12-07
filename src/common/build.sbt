@@ -10,7 +10,12 @@ libraryDependencies ++= Seq(
   gtVector,
   cats,
   scalactic,
-  scalatest
+  scalatest,
+  circeCore,
+  circeGeneric,
+  circeExtras,
+  circeParser,
+  circeOptics
 )
 
 
