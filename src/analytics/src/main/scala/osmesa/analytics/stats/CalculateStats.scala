@@ -16,6 +16,7 @@ import vectorpipe._
 
 import java.math.BigDecimal
 import java.time.Instant
+import java.sql.Timestamp
 import scala.collection.mutable
 import scala.util.{Try, Success, Failure}
 
@@ -162,6 +163,7 @@ object CalculateStats {
           $"id",
           $"changeset",
           $"version",
+          $"timestamp",
           $"nds.ref".as("nodes"),
           statTopics($"tags").as("statTopics")
         ).
@@ -170,21 +172,22 @@ object CalculateStats {
           val id = row.getAs[Long]("id")
           val changeset = row.getAs[Long]("changeset")
           val version = row.getAs[Long]("version")
+          val instant = row.getAs[Timestamp]("timestamp").toInstant.toEpochMilli
           val nodeIds = row.getAs[Seq[Long]]("nodes").toArray
           val topics = row.getAs[Seq[StatTopic]]("statTopics").toSet
-          (id, (changeset, version, nodeIds, topics))
+          (id, (changeset, version, instant, nodeIds, topics))
         }
 
     val waysToRelations =
       wayInfo.
         leftOuterJoin(relationsForWays).
-        filter { case (_, ((_, _, _, topics), relationOpt)) =>
+        filter { case (_, ((_, _, _, _, topics), relationOpt)) =>
           !topics.isEmpty || relationOpt.isDefined
         }
 
     val wayStatChanges =
       waysToRelations.
-        map { case (wayId, ((changeset, version, nodeIds, topics), relationsOpt)) =>
+        map { case (wayId, ((changeset, version, _, nodeIds, topics), relationsOpt)) =>
           var statCounter = StatCounter()
 
           relationsOpt match {
@@ -209,7 +212,7 @@ object CalculateStats {
     val wayRelationsForNodes: RDD[(Long, List[(RelationId, UpstreamTopics)])] =
       generateUpstreamTopics {
         waysToRelations.
-          flatMap { case (wayId, ((_, _, nodeIds, _), relationsOpt)) =>
+          flatMap { case (wayId, ((_, _, _, nodeIds, _), relationsOpt)) =>
             val relationTopics =
               relationsOpt match {
                 case Some(relations) =>
@@ -230,8 +233,8 @@ object CalculateStats {
     val waysForNodes: RDD[(Long, List[(WayId, UpstreamTopics)])] =
       generateUpstreamTopics {
         wayInfo.
-          filter { case (_, (_, _, _, topics)) => !topics.isEmpty }.
-          flatMap { case (wayId, (changeset, version, nodeIds, topics)) =>
+          filter { case (_, (_, _, _, _, topics)) => !topics.isEmpty }.
+          flatMap { case (wayId, (changeset, version, instant, nodeIds, topics)) =>
             nodeIds.map { nodeId =>
               (nodeId, (WayId(wayId), changeset, version, topics))
             }
@@ -246,6 +249,7 @@ object CalculateStats {
           $"id",
           $"changeset",
           $"version",
+          $"timestamp",
           $"lat",
           $"lon",
           statTopics($"tags").as("statTopics")
@@ -257,19 +261,15 @@ object CalculateStats {
           val version = row.getAs[Long]("version")
           val lat = Option(row.getAs[BigDecimal]("lat")).map(_.doubleValue).getOrElse(Double.NaN)
           val lon = Option(row.getAs[BigDecimal]("lon")).map(_.doubleValue).getOrElse(Double.NaN)
+          val instant =
+            row.getAs[Timestamp]("timestamp").toInstant.toEpochMilli
           val topics = row.getAs[Seq[StatTopic]]("statTopics").toSet
-          (id, (changeset, version, new Coordinate(lon, lat), topics))
+          (id, (changeset, version, instant, new Coordinate(lon, lat), topics))
         }
 
     val groupedNodes =
       nodeInfo.
-        cogroup(relationsForNodes, waysForNodes, wayRelationsForNodes).
-        filter { case (_, (nodes, ways, relations, wayRelations)) =>
-          nodes.foldLeft(false) { case (acc, (_, _, _, statTopics)) => acc || !statTopics.isEmpty } ||
-          !ways.isEmpty ||
-          !relations.isEmpty ||
-          !wayRelations.isEmpty
-        }
+        cogroup(relationsForNodes, waysForNodes, wayRelationsForNodes)// .
 
     val bcCountryLookup = ss.sparkContext.broadcast(new CountryLookup())
 
@@ -279,7 +279,7 @@ object CalculateStats {
           val countryLookup = bcCountryLookup.value
           partition.
             flatMap { case (nodeId, (nodes, relations, ways, wayRelations)) =>
-              for((changeset, version, coord, topics) <- nodes) yield {
+              for((changeset, version, _, coord, topics) <- nodes) yield {
                 var statCounter = StatCounter()
 
                 // Figure out the countries
@@ -299,9 +299,10 @@ object CalculateStats {
                 if(!topics.isEmpty) {
                   val item = ChangeItem(NodeId(nodeId), changeset, version == 1L)
                   statCounter = statCounter + (item, topics)
-                  countryOpt.foreach { country =>
-                    statCounter = statCounter + country
-                  }
+                }
+
+                countryOpt.foreach { country =>
+                  statCounter = statCounter + country
                 }
 
                 (changeset, statCounter)
@@ -311,7 +312,7 @@ object CalculateStats {
 
     // Measure lenghts for roads and waterways
 
-    val relevantNodesToWays: RDD[(Long, Iterable[(Long, Long, Coordinate)])] =
+    val relevantNodesToWays: RDD[(Long, Iterable[(Long, Long, Long, Coordinate)])] =
       groupedNodes.
         filter { case (_, (_, _, ways, wayRelations)) =>
           (wayRelations ++ ways).
@@ -323,16 +324,16 @@ object CalculateStats {
         flatMap { case (nodeId, (nodes, relations, ways, wayRelations)) =>
           for(
             (wayId, _) <- ways.flatten;
-            (changeset, _, coord, _) <- nodes
+            (changeset, _, instant, coord, _) <- nodes
           ) yield {
-            (wayId.id, (nodeId, changeset, coord))
+            (wayId.id, (nodeId, changeset, instant, coord))
           }
         }.
         groupByKey(wayPartitioner)
 
-    val relevantWays: RDD[(Long, Iterable[(Array[Long], Long, Map[StatTopic, Boolean])])] =
+    val relevantWays: RDD[(Long, Iterable[(Array[Long], Long, Long, Map[StatTopic, Boolean])])] =
       waysToRelations.
-        flatMap { case (wayId, ((changeset, version, nodeIds, topics), relationsOpt)) =>
+        flatMap { case (wayId, ((changeset, version, instant, nodeIds, topics), relationsOpt)) =>
           val upstreams: Map[StatTopic, Boolean] = {
             val s =
               relationsOpt match {
@@ -354,7 +355,7 @@ object CalculateStats {
             mergeMaps(upstreams, topicsToNew) { (w, r) => w }
 
           if(fullTopics.contains(StatTopics.ROAD) || fullTopics.contains(StatTopics.WATERWAY)) {
-            Some((wayId, (nodeIds, changeset, fullTopics)))
+            Some((wayId, (nodeIds, changeset, instant, fullTopics)))
           } else {
             None
           }
@@ -368,7 +369,7 @@ object CalculateStats {
           var changesetsToCounters =
             Map[Long, StatCounter]()
 
-          WayLengthCalculator.calculateChangesetLengths(nodes, ways).
+          WayLengthCalculator.calculateChangesetLengths(wayId, nodes, ways).
             foreach { case (changeset, (topic, lengths)) =>
               changesetsToCounters.get(changeset) match {
                 case Some(counter) =>

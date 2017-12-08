@@ -13,7 +13,7 @@ libraryDependencies ++= Seq(
   "org.json4s" %% "json4s-ast" % "3.2.11",
 
   decline,
-  hive % "provided",
+  sparkHive,// % "provided",
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
   gtS3 exclude("com.google.protobuf", "protobuf-java"),
   gtSpark exclude("com.google.protobuf", "protobuf-java"),
