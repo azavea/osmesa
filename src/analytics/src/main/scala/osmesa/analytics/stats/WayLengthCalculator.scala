@@ -37,27 +37,39 @@ object WayLengthCalculator {
         }.
         toMap
 
-    def getLength(nodeArray: Array[Long], instant: Long): Double =
-      nodeArray.
-        toList.
-        map { node =>
-          val (instants, coords) = nodeMap(node)
-          val idx = {
-            // index of the search key, if it is contained in the array; otherwise, (-(insertion point) - 1).
-            val i = Arrays.binarySearch(instants, instant)
-            if(i >= 0) { i }
-            else {
-              ~i - 1
+    // To be safe and not blow up the job on bad data, if there are any
+    // nodes the way is pointing to that we don't have in `nodes`, just skip
+    // this version of the way.
+    def getLength(nodeArray: Array[Long], instant: Long): Option[Double] = {
+      val coordsOpts =
+        nodeArray.
+          toList.
+          map { node =>
+            nodeMap.get(node).map { case (instants, coords) =>
+              val idx = {
+                // index of the search key, if it is contained in the array; otherwise, (-(insertion point) - 1).
+                val i = Arrays.binarySearch(instants, instant)
+                if(i >= 0) { i }
+                else {
+                  ~i - 1
+                }
+              }
+
+              coords(math.max(idx, 0))
             }
           }
-
-          coords(math.max(idx, 0))
-        }.
-        sliding(2).
-        collect { case List(x,y) => (x,y) }.
-        foldLeft(0.0) { case (acc, (c1, c2)) =>
-          acc + Distance.kmBetween(c1.x, c1.y, c2.x, c2.y)
-        }
+      if(coordsOpts.foldLeft(true)(_ && _.isDefined)) {
+        Some(
+          coordsOpts.
+            flatten.
+            sliding(2).
+            collect { case List(x,y) => (x,y) }.
+            foldLeft(0.0) { case (acc, (c1, c2)) =>
+              acc + Distance.kmBetween(c1.x, c1.y, c2.x, c2.y)
+            }
+        )
+      } else { None }
+    }
 
     val wayArr = ways.toArray.sortBy(_._3)
 
@@ -89,32 +101,34 @@ object WayLengthCalculator {
             val wChangeset = wayArr(wayIdx)._2
             val topics = wayArr(wayIdx)._4
 
-            val totalLength =
-              getLength(wayArr(wayIdx)._1, instant)
+            getLength(wayArr(wayIdx)._1, instant) match {
+              case Some(totalLength) =>
+                val editLength =
+                  math.abs(totalLength - prevLength)
 
-            val editLength =
-              math.abs(totalLength - prevLength)
+                val changesetLengths =
+                  topics.
+                    map { case (t, n) =>
+                      if(t == StatTopics.ROAD || t == StatTopics.WATERWAY) {
+                        Some(
+                          if(n && changeset == wChangeset) { (t, (editLength, 0.0)) }
+                          else { (t, (0.0, editLength)) }
+                        )
+                      } else {
+                        None
+                      }
+                    }.
+                    flatten.
+                    toMap.
+                    map { case (k, v) =>
+                      (changeset, (k, v))
+                    }.
+                    toSeq
 
-            val changesetLengths =
-              topics.
-                map { case (t, n) =>
-                  if(t == StatTopics.ROAD || t == StatTopics.WATERWAY) {
-                    Some(
-                      if(n && changeset == wChangeset) { (t, (editLength, 0.0)) }
-                      else { (t, (0.0, editLength)) }
-                    )
-                  } else {
-                    None
-                  }
-                }.
-                flatten.
-                toMap.
-                map { case (k, v) =>
-                  (changeset, (k, v))
-                }.
-                toSeq
-
-            (newWayIdx, totalLength, changesetLengths ++ acc)
+                (newWayIdx, totalLength, changesetLengths ++ acc)
+              case None =>
+                (newWayIdx, prevLength, acc)
+            }
           }
         }
 
