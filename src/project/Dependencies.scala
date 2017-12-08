@@ -19,4 +19,11 @@ object Dependencies {
   val hbaseClient    = "org.apache.hbase" % "hbase-client" % "1.3.1"
   val hbaseServer    = "org.apache.hbase" % "hbase-server" % "1.3.1"
   val geomesaHbaseDatastore = "org.locationtech.geomesa" % "geomesa-hbase-datastore_2.11" % Version.geomesa
+  val kryo           = "com.esotericsoftware"        % "kryo-shaded"                   % Version.kryo
+  val snakeyaml      = "org.yaml"                    % "snakeyaml"                     % Version.snakeyaml
+  val circeCore      = "io.circe"                    %% "circe-core"                   % Version.circe
+  val circeGeneric   = "io.circe"                    %% "circe-generic"                % Version.circe
+  val circeExtras    = "io.circe"                    %% "circe-generic-extras"         % Version.circe
+  val circeParser    = "io.circe"                    %% "circe-parser"                 % Version.circe
+  val circeOptics    = "io.circe"                    %% "circe-optics"                 % Version.circe
 }
