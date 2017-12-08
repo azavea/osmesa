@@ -100,6 +100,22 @@ case class HashtagStats(
         totalEdits = totalEdits + other.totalEdits
       )
     }
+
+  /** Temporary glue to core types that are served out by the stats server */
+  def toCoreType: osmesa.common.model.Campaign =
+    osmesa.common.model.Campaign(
+      tag = tag,
+      // Where is URI?
+      roadCountAdd = roadsAdd,
+      roadsCountMod = roadsMod,
+      buildingCountAdd = buildingsAdd,
+      buildingCountMod = buildingsMod,
+      waterwayCountAdd = waterwayAdd,
+      poiCountAdd = poiAdd,
+      roadKmAdd = kmRoadAdd,
+      roadKmMod = kmRoadMod,
+      waterwayKmAdd = kmWaterwayAdd
+    )
 }
 
 object HashtagStats {
@@ -205,6 +221,28 @@ case class UserStats(
         )(_ + _).map { case (k, v) => HashtagCount(k, v) }.toList // TODO: Cleanup
       )
     }
+
+  /** Temporary glue to core types that are served out by the stats server */
+  def toCoreType: osmesa.common.model.User =
+    osmesa.common.model.User(
+      uid = uid,
+      name = name,
+      geoExtent = extent,
+      buildingCountAdd = buildingCountAdd,
+      buildingCountMod = buildingCountMod,
+      poiCountAdd = poiCountAdd,
+      waterwayKmAdd = kmWaterwayAdd,
+      waterwayCountAdd = waterwayCountAdd,
+      roadKmAdd = kmRoadAdd,
+      roadKmMod = kmRoadMod,
+      roadCountAdd = roadCountAdd,
+      roadCountMod = roadCountMod,
+      changesetCount = changesetCount,
+      editCount = changesetCount,
+      editTimes = List(), // TODO: Fix
+      countryList = List(), // TODO
+      hashtags = List() // TODO
+    )
 }
 
 object UserStats {
