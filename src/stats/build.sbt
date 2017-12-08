@@ -18,7 +18,7 @@ libraryDependencies ++= Seq(
   "io.circe"                    %% "circe-optics"         % "0.9.0-M2",
   "de.heikoseeberger"           %% "akka-http-circe"      % "1.17.0",
   decline,
-  hive % "provided",
+  sparkHive % "provided",
   kryo,
   snakeyaml,
   cats,
@@ -78,4 +78,3 @@ assemblyMergeStrategy in assembly := {
   case meta(_) => MergeStrategy.discard
   case _ => MergeStrategy.first
 }
-
