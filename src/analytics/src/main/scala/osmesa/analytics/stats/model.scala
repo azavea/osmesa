@@ -105,7 +105,7 @@ case class HashtagStats(
   def toCoreType: osmesa.common.model.Campaign =
     osmesa.common.model.Campaign(
       tag = tag,
-      // Where is URI?
+      geoExtent = extentUri,
       roadCountAdd = roadsAdd,
       roadsCountMod = roadsMod,
       buildingCountAdd = buildingsAdd,
@@ -239,9 +239,15 @@ case class UserStats(
       roadCountMod = roadCountMod,
       changesetCount = changesetCount,
       editCount = changesetCount,
-      editTimes = List(), // TODO: Fix
-      countryList = List(), // TODO
-      hashtags = List() // TODO
+      editTimes = editTimes.map { case DayCount(instant, count) =>
+        osmesa.common.model.Day(instant, count)
+      },
+      countryList = countries.map { case CountryCount(CountryId(name, _), count) =>
+        osmesa.common.model.Country(name, count)
+      },
+      hashtags = hashtags.map { case HashtagCount(tag, count) =>
+        osmesa.common.model.Hashtag(tag, count)
+      }
     )
 }
 

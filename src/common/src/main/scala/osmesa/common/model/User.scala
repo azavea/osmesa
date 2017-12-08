@@ -9,6 +9,13 @@ import cats.implicits._
 import scala.util.Random
 import java.time.Instant
 
+case class Day(instant: Instant, count: Int)
+
+object Day {
+  implicit val customConfig: Configuration = Configuration.default.withSnakeCaseKeys.withDefaults
+  implicit val encoder: Encoder[Day] = deriveEncoder
+  implicit val decoder: Decoder[Day] = deriveDecoder
+}
 
 case class User(
   uid: Long,
@@ -25,7 +32,7 @@ case class User(
   roadCountMod: Int,
   changesetCount: Int,
   editCount: Int,
-  editTimes: List[Instant],
+  editTimes: List[Day],
   countryList: List[Country],
   hashtags: List[Hashtag]
 )
@@ -42,10 +49,11 @@ object User {
     val hashtags = (1 to 10).map({ i => Hashtag.random }).toList.sequence
 
     (names.takeRandom, countries, hashtags).mapN({ (randomName, randomCountries, randomHashtags) =>
+      val uid = Random.nextInt(10000).toLong + 1
       User(
-        Random.nextInt(10000).toLong + 1,
+        uid,
         randomName,
-        "https://s3.amazonaws.com/vectortiles/test-vts/peruser-2/piaco_dk/{z}/{x}/{y}.mvt",
+        "${uid}/{z}/{x}/{y}.mvt",
         Random.nextInt(10000),
         Random.nextInt(10000),
         Random.nextInt(10000),
@@ -57,11 +65,10 @@ object User {
         Random.nextInt(10000),
         Random.nextInt(10000),
         Random.nextInt(10000),
-        (1 to 10).map({ i => new java.util.Date(scala.util.Random.nextInt(Int.MaxValue).toLong + 1199999999999L).toInstant }).toList,
+        (1 to 10).map({ i => Day(new java.util.Date(scala.util.Random.nextInt(Int.MaxValue).toLong + 1199999999999L).toInstant, Random.nextInt(10)) }).toList,
         randomCountries,
         randomHashtags
       )
     })
   }
 }
-

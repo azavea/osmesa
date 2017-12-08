@@ -9,6 +9,7 @@ import scala.util.Random
 
 case class Campaign(
   tag: String,
+  geoExtent: String,
   roadCountAdd: Int,
   roadsCountMod: Int,
   buildingCountAdd: Int,
@@ -28,6 +29,7 @@ object Campaign {
   def random = Hashtag.tags.takeRandom.map({ randomTag =>
     Campaign(
       randomTag,
+      "${randomTag}/{z}/{x}/{y}.mvt",
       Random.nextInt(10000),
       Random.nextInt(10000),
       Random.nextInt(10000),
@@ -40,4 +42,3 @@ object Campaign {
     )
   })
 }
-

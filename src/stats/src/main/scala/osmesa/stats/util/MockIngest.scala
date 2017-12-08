@@ -38,12 +38,10 @@ object MockIngest extends CommandApp(
         val countryList = proto.Countries(user.countryList).toByteArray
         val hashtags = proto.Hashtags(user.hashtags).toByteArray
 
+      })
     })
   }
 )
-
-
-
 
 object NodeIngest {
   def apply(node: Row, mutator: BufferedMutator): Unit = {
@@ -74,4 +72,3 @@ object NodeIngest {
     mutator.mutate(put)
   }
 }
-
