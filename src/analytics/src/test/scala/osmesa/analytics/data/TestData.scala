@@ -10,6 +10,8 @@ import geotrellis.vector.io.json._
 import org.apache.spark.sql._
 
 import java.sql.Timestamp
+import java.math.BigDecimal
+import java.math.RoundingMode
 import scala.collection.mutable
 
 object TestData {
@@ -59,7 +61,10 @@ object TestData {
     }
 
     def newNode(x: Double, y: Double, tags: Map[String, String], name: Option[String]): Node = {
-      val result = Node(createNodeId, x, y, tags)
+      // Create the appropriate resolution decimal.
+      val lon = new BigDecimal(x).setScale(7, RoundingMode.HALF_UP).doubleValue
+      val lat = new BigDecimal(y).setScale(7, RoundingMode.HALF_UP).doubleValue
+      val result = Node(createNodeId, lon, lat, tags)
       name match {
         case Some(n) => nodesByName(n) = result ; result
         case None => result

@@ -8,27 +8,21 @@ import scala.reflect.runtime.universe.TypeTag
 
 /**
  * UDFs for working with OSM data in Spark DataFrames.
- *
- * @author sfitch
- * @since 4/3/17
  */
 trait ColumnFunctions {
   private implicit def arrayEnc[T: TypeTag]: Encoder[Array[T]] = ExpressionEncoder()
   private implicit def boolEnc: Encoder[Boolean] = ExpressionEncoder()
 
+  def containsHashtags(col: Column, targetTags: Set[String]): TypedColumn[Any, Boolean] =
+    udf[Boolean, Map[String, String]]({ tags =>
+      ColumnFunctions.hashtagsFromComments(tags).map { tag =>
+        targetTags.contains(tag)
+      }.foldLeft(false)(_ || _)
+    }).apply(col).as[Boolean]
+
   def hashtags(col: Column): TypedColumn[Any, Array[String]] =
     udf[Array[String], Map[String, String]]({ tags =>
-      val HashtagSet = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!"#$%()*,.\/:;<=>?@\[\]^{|}~]+)""".r
-      var hashtags = List[String]()
-      tags.get("comment") match {
-        case Some(s) =>
-          for (m <- HashtagSet.findAllMatchIn(s)) {
-            hashtags = hashtags :+ m.group(1).toLowerCase
-          }
-        case None => // pass
-      }
-
-      hashtags.toArray
+      ColumnFunctions.hashtagsFromComments(tags).toArray
     }).apply(col).as[Array[String]]
 
   def tagKeys(col: Column): TypedColumn[Any, Array[String]] =
@@ -61,4 +55,15 @@ trait ColumnFunctions {
         case None => false
       }
     }).apply(col).as[Boolean]
+}
+
+object ColumnFunctions {
+  def hashtagsFromComments(tags: Map[String, String]): Seq[String] = {
+    tags.get("comment") match {
+      case Some(s) =>
+        Constants.HASHTAG_SET.findAllMatchIn(s).map(_.group(1).toLowerCase).toSeq
+      case None =>
+        Seq()
+    }
+  }
 }

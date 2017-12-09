@@ -3,13 +3,14 @@ package osmesa.common.model
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto._
 import io.circe.{Decoder, Encoder}
+import io.circe.java8.time._
 import cats._
 import cats.implicits._
 
 import scala.util.Random
-import java.time.Instant
+import java.time._
 
-case class Day(instant: Instant, count: Int)
+case class Day(day: java.time.LocalDate, count: Int)
 
 object Day {
   implicit val customConfig: Configuration = Configuration.default.withSnakeCaseKeys.withDefaults
@@ -65,7 +66,7 @@ object User {
         Random.nextInt(10000),
         Random.nextInt(10000),
         Random.nextInt(10000),
-        (1 to 10).map({ i => Day(new java.util.Date(scala.util.Random.nextInt(Int.MaxValue).toLong + 1199999999999L).toInstant, Random.nextInt(10)) }).toList,
+        (1 to 10).map({ i => Day(new java.util.Date(scala.util.Random.nextInt(Int.MaxValue).toLong + 1199999999999L).toInstant.atOffset(ZoneOffset.UTC).toLocalDate, Random.nextInt(10)) }).toList,
         randomCountries,
         randomHashtags
       )
