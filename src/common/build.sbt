@@ -15,7 +15,8 @@ libraryDependencies ++= Seq(
   circeGeneric,
   circeExtras,
   circeParser,
-  circeOptics
+  circeOptics,
+  circeJava8
 )
 
 

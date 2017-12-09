@@ -2,7 +2,7 @@ package osmesa.analytics.stats
 
 import osmesa.analytics._
 
-import java.time.Instant
+import java.time._
 
 sealed abstract class OsmId { def id: Long }
 case class NodeId(id: Long) extends OsmId
@@ -13,7 +13,7 @@ case class ChangeItem(osmId: OsmId, changeset: Long, isNew: Boolean)
 
 case class HashtagCount(tag: String, count: Int)
 case class EditorCount(editor: String, count: Int)
-case class DayCount(day: Instant, count: Int)
+case class DayCount(day: LocalDate, count: Int)
 case class UserCount(id: Long, name: String, count: Int)
 case class CountryCount(id: CountryId, count: Int)
 
@@ -96,7 +96,10 @@ case class HashtagStats(
         kmRoadAdd = kmRoadAdd + other.kmRoadAdd,
         kmRoadMod = kmRoadMod + other.kmRoadMod,
         kmWaterwayAdd = kmWaterwayAdd + other.kmWaterwayAdd,
-        users = (users ++ other.users).toSet.toList,
+        users = mergeMaps(
+          users.map { c => ((c.id, c.name), c.count) }.toMap,
+          other.users.map { c => ((c.id, c.name), c.count) }.toMap
+        )(_ + _).map { case (k, v) => UserCount(k._1, k._2, v) }.toList, // TODO: Cleanup
         totalEdits = totalEdits + other.totalEdits
       )
     }
@@ -212,12 +215,21 @@ case class UserStats(
         roadCountAdd + other.roadCountAdd,
         roadCountMod + other.roadCountMod,
         changesetCount + other.changesetCount,
-        editors ++ other.editors,
-        editTimes ++ other.editTimes,
-        countries ++ other.countries,
         mergeMaps(
-          hashtags.map { h => (h.tag, h.count) }.toMap,
-          other.hashtags.map { h => (h.tag, h.count) }.toMap
+          editors.map { c => (c.editor, c.count) }.toMap,
+          other.editors.map { c => (c.editor, c.count) }.toMap
+        )(_ + _).map { case (k, v) => EditorCount(k, v) }.toList, // TODO: Cleanup
+        mergeMaps(
+          editTimes.map { c => (c.day, c.count) }.toMap,
+          other.editTimes.map { c => (c.day, c.count) }.toMap
+        )(_ + _).map { case (k, v) => DayCount(k, v) }.toList, // TODO: Cleanup
+        mergeMaps(
+          countries.map { c => (c.id, c.count) }.toMap,
+          other.countries.map { c => (c.id, c.count) }.toMap
+        )(_ + _).map { case (k, v) => CountryCount(k, v) }.toList, // TODO: Cleanup
+        mergeMaps(
+          hashtags.map { c => (c.tag, c.count) }.toMap,
+          other.hashtags.map { c => (c.tag, c.count) }.toMap
         )(_ + _).map { case (k, v) => HashtagCount(k, v) }.toList // TODO: Cleanup
       )
     }
@@ -272,7 +284,7 @@ object UserStats {
       changesetStats.roadsModified,
       1,
       changesetStats.editor.map(EditorCount(_, 1)).toList,
-      List(DayCount(changesetStats.closedAt, 1)),
+      List(DayCount(changesetStats.closedAt.atOffset(ZoneOffset.UTC).toLocalDate, 1)),
       changesetStats.countries.map(CountryCount(_, 1)).toList,
       changesetStats.hashtags.map(HashtagCount(_, 1))
     )

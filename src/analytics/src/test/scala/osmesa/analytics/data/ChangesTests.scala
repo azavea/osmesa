@@ -6,7 +6,10 @@ import org.scalatest._
 // for computing expected stats.
 
 class ChangesTests extends FunSuite with Matchers with ExpectedStatsValidators {
-  for((name, testCase) <- TestCases() if testCase.expectedStats.isDefined) {
+  val f: String => Boolean = { _ => true }
+  // val f: String => Boolean = { n => n == "a way over time" }
+
+  for((name, testCase) <- TestCases() if testCase.expectedStats.isDefined && f(name)) {
     test(name) {
       validate(testCase.calculatedStats, testCase.expectedStats.get)
     }

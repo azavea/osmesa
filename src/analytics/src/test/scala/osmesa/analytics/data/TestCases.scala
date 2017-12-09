@@ -7,6 +7,14 @@ object TestCases {
 
   val ROAD_TAG = Map("highway" -> "motorway")
 
+  def totalDistance(nodes: Seq[Node]): Double =
+    nodes.
+      sliding(2).
+      collect { case List(a, b) => (a, b) }.
+      foldLeft(0.0) { case (acc, (n1, n2)) =>
+        acc + Distance.kmBetween(n1.lon, n1.lat, n2.lon, n2.lat)
+      }
+
   def apply(): Map[String, OsmDataset] =
     Map(
       /* One person creates a road, and then someone else moves a node in that road.
@@ -315,6 +323,107 @@ object TestCases {
                   roads = (1, 0),
                   roadsKm = (d1, 0.0),
                   countries = Set("Mexico")
+                )
+              ),
+              Seq()
+            )
+          )
+        },
+
+      "a way over time" ->
+        OsmDataset.build { (elements, changes) =>
+          val node1 =
+            elements.newNode(-83.88198852539062, 40.60978237983301, Map(), None)
+
+          val node2 =
+            elements.newNode(-83.82293701171875, 40.670222795307346, Map(), None)
+
+          val node3 =
+            elements.newNode(-83.73779296875, 40.5930995321649, Map(), None)
+
+          val node4 =
+            elements.newNode(-83.83941650390625, 40.551374198715166, Map(), None)
+
+          val wayV1 =
+            elements.newWay(
+              Seq(node1, node2, node3, node4),
+              ROAD_TAG,
+              None
+            )
+          val wayV1Length = totalDistance(Seq(node1, node2, node3, node4))
+
+          val wayV2 =
+            wayV1.copy(nodes = Seq(node1, node2, node3))
+          val wayV2Length = totalDistance(Seq(node1, node2, node3))
+
+          val node5 =
+            elements.newNode(-83.73710632324219, 40.59336023367942, Map(), None)
+
+          val node6 =
+            elements.newNode(-83.69556427001953, 40.60978237983301, Map(), None)
+
+          val node7 =
+            elements.newNode(-83.7158203125, 40.49865881031932, Map(), None)
+
+          val node8 =
+            elements.newNode(-83.81160736083984, 40.49056515559304, Map(), None)
+
+          val wayV3 =
+            wayV2.copy(nodes = Seq(node1, node2, node3, node5, node6, node7, node8))
+          val wayV3Length = totalDistance(Seq(node1, node2, node3, node5, node6, node7, node8))
+
+          changes.add {
+            Changeset(
+              User.Bob,
+              Seq(),
+              Seq(node1, node2)
+            )
+          }
+
+          changes.add {
+            Changeset(
+              User.Bob,
+              Seq(),
+              Seq(wayV1)
+            )
+          }
+
+          changes.add {
+            Changeset(
+              User.Alice,
+              Seq(),
+              Seq(wayV2)
+            )
+          }
+
+          changes.add {
+            Changeset(
+              User.Alice,
+              Seq(),
+              Seq(wayV3)
+            )
+          }
+
+          val aliceKmEdit =
+            Seq(wayV1Length, wayV2Length, wayV3Length).
+              sliding(2).
+              collect { case List(a, b) => (a, b) }.
+              foldLeft(0.0) { case (acc, (a, b)) => acc + math.abs(b - a) }
+
+          Some(
+            (
+              Seq(
+                ExpectedUserStats(
+                  User.Bob,
+                  roads = (1, 0),
+                  roadsKm = (wayV1Length, 0.0),
+                  countries = Set("United States of America")
+                ),
+                ExpectedUserStats(
+                  User.Alice,
+                  roads = (0, 2),
+                  roadsKm = (0.0, aliceKmEdit),
+                  countries = Set("United States of America")
                 )
               ),
               Seq()

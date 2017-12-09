@@ -21,7 +21,7 @@ class StatCounter private (
   def +(countryId: CountryId): StatCounter =
     new StatCounter(elements, countries + countryId, topicLengths)
 
-  /** Lenghts are (Added, Modified) */
+  /** Lengths are (Added, Modified) */
   def +(statTopic: StatTopic, lengths: (Double, Double)): StatCounter =
     new StatCounter(elements, countries,
       topicLengths.get(statTopic) match {

@@ -25,6 +25,7 @@ class Changes() {
   private val _historyRows = mutable.Map[OsmId, List[Row]]()
   private val _changesetRows = mutable.ListBuffer[Row]()
   private var changesetId: Long = 0L
+  private var timeDelta: Int = 0
 
   private val nodeInfo = mutable.Map[Long, Info[Node]]()
   private val wayInfo = mutable.Map[Long, Info[Way]]()
@@ -43,7 +44,9 @@ class Changes() {
 
   private def getTimestamp(changeset: Long): Timestamp = {
     val dt = ZonedDateTime.of(2015, 5, 17, 12, 0, 0, 0, ZoneOffset.UTC)
-    new Timestamp(dt.plus(5, ChronoUnit.SECONDS).toInstant().toEpochMilli)
+    val td = timeDelta
+    timeDelta += 1
+    new Timestamp(dt.plus(changeset, ChronoUnit.SECONDS).plus(td, ChronoUnit.MILLIS).toInstant().toEpochMilli)
   }
 
   private def addHistoryRow[T <: OsmElement](user: User, info: Info[T]): Unit = {
@@ -159,70 +162,68 @@ class Changes() {
       case None => ()
     }
 
-    val (info, isNew, topicMap) =
+    val (infoOpt, isNew, tm) =
       nodeInfo.get(node.id) match {
         case Some(Info(prevNode, prevVersion, prevTopics)) =>
-          val filteredPrevTopics =
-            prevTopics.
-              map { case (k, v) => k -> (v - cause) }.
-              toMap
+          cause match {
+            case None =>
+              val filteredPrevTopics =
+                prevTopics.
+                  map { case (k, v) => k -> (v - cause) }.
+                  toMap
 
-          val topicMap =
-            mergeMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)(_ ++ _)
+              val topicMap =
+                mergeMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)(_ ++ _)
 
-          (Info(
-            node,
-            prevVersion + 1L,
-            topicMap
-          ), false, topicMap)
+              (Some(Info(node, prevVersion + 1L, topicMap)), false, topicMap)
+            case Some(_) =>
+              (None, false, prevTopics)
+          }
         case None =>
           val topicMap =
             topics.map((_, Set(cause))).toMap
 
-          (Info(
-            node,
-            1L,
-            topicMap
-          ), true, topicMap)
+          (Some(Info(node, 1L, topicMap)), true, topicMap)
       }
-    addHistoryRow(user, info)
-    nodeInfo(node.id) = info
-    (isNew, topicMap)
+    infoOpt.foreach { info =>
+      addHistoryRow(user, info)
+      nodeInfo(node.id) = info
+    }
+    (isNew, tm)
   }
 
   // Adds a way, returns if it was new or not.
   private def addWay(user: User, way: Way, topics: Set[StatTopic], cause: Option[OsmId]): (Boolean, Map[StatTopic, Set[Option[OsmId]]]) = {
     waysToNodeIds(way.id) = way.nodes.map(_.id).toList
 
-    val (info, isNew, topicMap) =
+    val (infoOpt, isNew, tm) =
       wayInfo.get(way.id) match {
         case Some(Info(prevway, prevVersion, prevTopics)) =>
-          val filteredPrevTopics =
-            prevTopics.
-              map { case (k, v) => k -> (v - cause) }.
-              toMap
+          cause match {
+            case None =>
+              val filteredPrevTopics =
+                prevTopics.
+                  map { case (k, v) => k -> (v - cause) }.
+                  toMap
 
-          val topicMap =
-            mergeMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)(_ ++ _)
+              val topicMap =
+                mergeMaps(filteredPrevTopics, topics.map((_, Set(cause))).toMap)(_ ++ _)
 
-          (Info(
-            way,
-            prevVersion + 1L,
-            topicMap
-          ), false, topicMap)
+              (Some(Info(way, prevVersion + 1L, topicMap)), false, topicMap)
+            case Some(_) =>
+              (None, false, prevTopics)
+          }
         case None =>
           val topicMap =
             topics.map((_, Set(cause))).toMap
 
-          (Info(
-            way,
-            1L,
-            topicMap
-          ), true, topicMap)
+          (Some(Info(way, 1L, topicMap)), true, topicMap)
       }
-    addHistoryRow(user, info)
-    wayInfo(way.id) = info
-    (isNew, topicMap)
+    infoOpt.foreach { info =>
+      addHistoryRow(user, info)
+      wayInfo(way.id) = info
+    }
+    (isNew, tm)
   }
 
   // Adds a relation, returns if it was new or not.
@@ -286,7 +287,7 @@ class Changes() {
     for(element <- elements) {
       element match {
         case node @ Node(id, lon, lat, tags)  =>
-          val topics = StatTopics.tagsToTopics(tags).toSet
+          val topics = StatTopics.tagsToTopics(tags, "node").toSet
 
           val (isNew, fullTopics) = addNode(user, node, topics, None)
 
@@ -302,7 +303,7 @@ class Changes() {
             }
 
         case way @ Way(id, nodes, tags) =>
-          val topics = StatTopics.tagsToTopics(tags).toSet
+          val topics = StatTopics.tagsToTopics(tags, "way").toSet
 
           for(node <- nodes) {
             val (isNew, nodeTopics) = addNode(user, node, topics, Some(WayId(id)))
@@ -331,7 +332,7 @@ class Changes() {
             }
 
         case relation @ Relation(id, members, tags) =>
-          val topics = StatTopics.tagsToTopics(tags).toSet
+          val topics = StatTopics.tagsToTopics(tags, "relation").toSet
 
           for(member <- members) {
             member match {
@@ -409,7 +410,6 @@ class Changes() {
             val node2 = nodes(n2)
             acc + Distance.kmBetween(node1.lon, node1.lat, node2.lon, node2.lat)
           }
-
 
       val topicMap =
         waysToLengths.get(way.id) match {

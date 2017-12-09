@@ -45,8 +45,14 @@ class CalculateStatsTests extends FunSpec with Matchers with TestEnvironment wit
     val (history, changesets) =
       (ds.history, ds.changesets)
 
+    // history.show()
+
     val (actualUserStats, actualHashtagStats) = CalculateStats.compute(history, changesets, options)
-    val (expectedUserStats, expectedHashtagStats) = ds.calculatedStats
+    val (expectedUserStats, expectedHashtagStats) =
+      ds.expectedStats match {
+        case Some(stats) => stats
+        case None => ds.calculatedStats
+      }
 
     validate(
       actualUserStats.collect.map(ExpectedUserStats(_)),
@@ -60,8 +66,8 @@ class CalculateStatsTests extends FunSpec with Matchers with TestEnvironment wit
   }
 
   describe("CalcluateStats") {
-    val f: String => Boolean = { _ => true }
-    // val f: String => Boolean = { s => s == "adding a way of previous nodes" }
+    // val f: String => Boolean = { _ => true }
+    val f: String => Boolean = { s => s == "adding a way of previous nodes" }
 
     for((name, testCase) <- TestCases() if f(name)) {
       it(s"should handle test case: $name") {
