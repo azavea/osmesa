@@ -1,5 +1,6 @@
 package osmesa.analytics.oneoffs
 
+import osmesa.common.model._
 import osmesa.analytics._
 import osmesa.analytics.stats._
 
@@ -15,21 +16,35 @@ object StatsJobCommand extends CommandApp(
   header = "Calculate statistics",
   main   = {
 
-    val historyO = Opts.option[String]("orc", help = "Location of the History ORC file to process.")
-    val changesetsO = Opts.option[String]("orc", help = "Location of the Changesets ORC file to process.")
-    val hashtagsO = Opts.option[String]("orc", help = "Comm separated list of hashtags to consider.")
+    val historyO = Opts.option[String]("history", help = "Location of the History ORC file to process.")
+    val changesetsO = Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process.")
+    val bucketO = Opts.option[String]("bucket", help = "Bucket to write results to")
+    val prefixO = Opts.option[String]("prefix", help = "Prefix of keys path for results.")
+    val hashtagsO = Opts.option[String]("hashtags", help = "Comm separated list of hashtags to consider.")
 
-    (historyO, changesetsO, hashtagsO).mapN { (historyUri, changesetsUri, hashtagsStr) =>
+    (
+      historyO,
+      changesetsO,
+      bucketO,
+      prefixO,
+      hashtagsO
+    ).mapN { (historyUri, changesetsUri, bucket, prefix, hashtagsStr) =>
       val hashtags = hashtagsStr.split(",").map(_.toLowerCase).toSet
       assert(hashtags.size > 0)
 
-      StatsJob.run(historyUri, changesetsUri, hashtags)
+      StatsJob.run(historyUri, changesetsUri, bucket, prefix, hashtags)
     }
   }
 )
 
 object StatsJob {
-  def run(historyUri: String, changesetsUri: String, hashtags: Set[String]): Unit = {
+  def run(
+    historyUri: String,
+    changesetsUri: String,
+    bucket: String,
+    prefix: String,
+    hashtags: Set[String]
+  ): Unit = {
     implicit val spark = Analytics.sparkSession("StatsJob")
     import spark.implicits._
 
@@ -55,9 +70,31 @@ object StatsJob {
       val (userStats, hashtagStats) =
         CalculateStats.compute(history, filteredChangesets, options)
 
-      // Write JSON to correct location
-      ???
+      val userToPath: User => String = { user =>
+        val p = new java.io.File(prefix, "users").getPath
+        s"${p}/${user.uid}.json"
+      }
 
+      val hashtagToPath: Campaign => String = { hashtag =>
+        val p = new java.io.File(prefix, "hashtag").getPath
+        val id = java.net.URLEncoder.encode(hashtag.tag, "UTF-8")
+        s"${p}/${id}.json"
+      }
+
+      // Write JSON to correct location
+      JsonRDDWriter.
+        write(
+          userStats.map(_.toCoreType),
+          bucket,
+          userToPath
+        )
+
+      JsonRDDWriter.
+        write(
+          hashtagStats.map(_.toCoreType),
+          bucket,
+          hashtagToPath
+        )
     } finally {
       spark.stop()
     }

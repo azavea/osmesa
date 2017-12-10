@@ -66,8 +66,8 @@ class CalculateStatsTests extends FunSpec with Matchers with TestEnvironment wit
   }
 
   describe("CalcluateStats") {
-    // val f: String => Boolean = { _ => true }
-    val f: String => Boolean = { s => s == "adding a way of previous nodes" }
+    val f: String => Boolean = { _ => true }
+//    val f: String => Boolean = { s => s == "create way then 2 nodes change" }
 
     for((name, testCase) <- TestCases() if f(name)) {
       it(s"should handle test case: $name") {

@@ -11,6 +11,14 @@ object WayLengthCalculator {
     *
     * instant = milliseconds from epoch
     *
+    * Computes the length differences based on changests. This means if there
+    * are more than one version of the way in a single changeset, this will
+    * only consider the second way and the difference of length between
+    * that second way version and a previous version from a prior changeset.
+    * This will account for nodes that change without the way version changing,
+    * where the length difference will be credited to the changeset that modified
+    * the participating node(s).
+    *
     * Returns Seq[(changeset, (topic, (added, modified)))]
     */
   def calculateChangesetLengths(
@@ -37,9 +45,38 @@ object WayLengthCalculator {
         }.
         toMap
 
-    // To be safe and not blow up the job on bad data, if there are any
-    // nodes the way is pointing to that we don't have in `nodes`, just skip
-    // this version of the way.
+    val (wayInstants, waysArr) =
+      ways.
+        toArray.
+        sortBy(_._3).
+        map { case (nodeIds, changeset, instant, topicMap) =>
+          (instant, (nodeIds, changeset, topicMap))
+        }.
+        unzip
+
+    /** Gets the nodes and topics for a way given an instant. The way chosen will be
+      * the most recent way that is <= the instant.
+      * If the instant is before all instants of the way, return None.
+      */
+    def getWayForInstant(instant: Long): Option[(Array[Long], Long, Map[StatTopic, Boolean])] = {
+      val idx = {
+        // index of the search key, if it is contained in the array; otherwise, (-(insertion point) - 1).
+        val i = Arrays.binarySearch(wayInstants, instant)
+        if(i >= 0) { i }
+        else {
+          ~i - 1
+        }
+      }
+
+      if(idx < 0) { None }
+      else { Some(waysArr(idx)) }
+    }
+
+    /** Gets the length of this way at an instant.
+      *  To be safe and not blow up the job on bad data, if there are any
+      * nodes the way is pointing to that we don't have in `nodes`, just skip
+      * this version of the way.
+      */
     def getLength(nodeArray: Array[Long], instant: Long): Option[Double] = {
       val coordsOpt =
         nodeArray.
@@ -78,70 +115,54 @@ object WayLengthCalculator {
       } else { None }
     }
 
-    val wayArr = ways.toArray.sortBy { case (_, changeset, instant, _) => (instant, changeset) }
-
-    val (_, _, result) =
+    val changesetsToMaxInstants =
       (ways.map { t => (t._2, t._3) }.toSet ++ nodes.map { t => (t._2, t._3) }.toSet).
-        toArray.
-        sortBy(_._2).
-        foldLeft((0, 0.0, Seq[(Long, (StatTopic, (Double, Double)))]())) { case ((wayIdx, prevLength, acc), (changeset, instant)) =>
-          val wInstant = wayArr(wayIdx)._3
+        groupBy(_._1).
+        map { case (changeset, vs) =>
+          (changeset, vs.map(_._2).max)
+        }.
+        toSeq.
+        sortBy(_._2)
 
-          if(instant < wInstant && wayArr(wayIdx)._2 != changeset) {
-            // Skip a node change if it's not attached to a way yet.
-            (wayIdx, prevLength, acc)
-          } else {
-            val newWayIdx =
-              if(instant > wInstant) {
-                // If the target instant (e.g. from a node change) is greater or equal than this way instant,
-                // and is also greater than or equal to the next way instant, shift the way index
-                // up one and start working with the new way.
-                if(wayIdx + 1 < wayArr.length) {
-                  if(wayArr(wayIdx + 1)._3 <= instant || changeset == wayArr(wayIdx + 1)._2) {
-                    wayIdx + 1
+    // Accumulator is (previous way length, changesets -> (topic -> (addedLength, modifiedLength)).
+    val seed =
+      (0.0, Seq[(Long, (StatTopic, (Double, Double)))]())
+
+    val (_, result) =
+      changesetsToMaxInstants.
+        foldLeft(seed) { case ((prevLength, acc), (changeset, changesetInstant)) =>
+          (for(
+            (nodes, wayChangeset, topics) <- getWayForInstant(changesetInstant);
+            length <- getLength(nodes, changesetInstant)
+          ) yield {
+            val editLength =
+              math.abs(length - prevLength)
+
+            val changesetLengths =
+              topics.
+                map { case (t, isNew) =>
+                  if(t == StatTopics.ROAD || t == StatTopics.WATERWAY) {
+                    Some(
+                      if(isNew && changeset == wayChangeset) { (t, (editLength, 0.0)) }
+                      else { (t, (0.0, editLength)) }
+                    )
                   } else {
-                    wayIdx
+                    None
                   }
-                } else {
-                  wayIdx
-                }
-              } else {
-                wayIdx
-              }
+                }.
+                flatten.
+                toMap.
+                map { case (k, v) =>
+                  (changeset, (k, v))
+                }.
+                toSeq
 
-            val wChangeset = wayArr(wayIdx)._2
-            val topics = wayArr(wayIdx)._4
-
-            getLength(wayArr(wayIdx)._1, instant) match {
-              case Some(totalLength) =>
-                val editLength =
-                  math.abs(totalLength - prevLength)
-
-                val changesetLengths =
-                  topics.
-                    map { case (t, isNew) =>
-                      if(t == StatTopics.ROAD || t == StatTopics.WATERWAY) {
-                        Some(
-                          if(isNew && changeset == wChangeset) { (t, (editLength, 0.0)) }
-                          else { (t, (0.0, editLength)) }
-                        )
-                      } else {
-                        None
-                      }
-                    }.
-                    flatten.
-                    toMap.
-                    map { case (k, v) =>
-                      (changeset, (k, v))
-                    }.
-                    toSeq
-
-                (newWayIdx, totalLength, changesetLengths ++ acc)
-              case None =>
-                (newWayIdx, prevLength, acc)
-            }
-          }
+            (length, changesetLengths ++ acc)
+          }).getOrElse(
+            (prevLength, acc)
+          )
         }
+
     result
   }
 }

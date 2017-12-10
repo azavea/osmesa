@@ -27,4 +27,5 @@ object Dependencies {
   val circeParser    = "io.circe"                    %% "circe-parser"                 % Version.circe
   val circeOptics    = "io.circe"                    %% "circe-optics"                 % Version.circe
   val circeJava8     = "io.circe"                    %% "circe-java8"                  % Version.circe
+  val logging        = "com.typesafe.scala-logging"  %% "scala-logging"                % Version.scalaLogging
 }
