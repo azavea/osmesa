@@ -20,7 +20,7 @@ object StatsJobCommand extends CommandApp(
     val changesetsO = Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process.")
     val bucketO = Opts.option[String]("bucket", help = "Bucket to write results to")
     val prefixO = Opts.option[String]("prefix", help = "Prefix of keys path for results.")
-    val hashtagsO = Opts.option[String]("hashtags", help = "Comm separated list of hashtags to consider.")
+    val hashtagsO = Opts.option[String]("hashtags", help = "Comm separated list of hashtags to consider.").orNone
 
     (
       historyO,
@@ -28,8 +28,8 @@ object StatsJobCommand extends CommandApp(
       bucketO,
       prefixO,
       hashtagsO
-    ).mapN { (historyUri, changesetsUri, bucket, prefix, hashtagsStr) =>
-      val hashtags = hashtagsStr.split(",").map(_.toLowerCase).toSet
+    ).mapN { (historyUri, changesetsUri, bucket, prefix, hashtagsOpt) =>
+      val hashtags = hashtagsOpt.map(_.split(",").map(_.toLowerCase).toSet)
       assert(hashtags.size > 0)
 
       StatsJob.run(historyUri, changesetsUri, bucket, prefix, hashtags)
@@ -43,7 +43,7 @@ object StatsJob {
     changesetsUri: String,
     bucket: String,
     prefix: String,
-    hashtags: Set[String]
+    hashtagsOpt: Option[Set[String]]
   ): Unit = {
     implicit val spark = Analytics.sparkSession("StatsJob")
     import spark.implicits._
@@ -55,10 +55,13 @@ object StatsJob {
       // Filter changesets and history by the target hashtags.
 
       val filteredChangesets =
-        changesets
-          .where(containsHashtags($"tags", hashtags))
-
-      val targetChangesetIds = filteredChangesets.select($"id".as("changeset"))
+        hashtagsOpt match {
+          case Some(hashtags) =>
+            changesets
+              .where(containsHashtags($"tags", hashtags))
+          case None =>
+            changesets
+        }
 
       val options =
         CalculateStats.Options(
