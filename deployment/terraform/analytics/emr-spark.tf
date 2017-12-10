@@ -5,12 +5,12 @@ resource "aws_emr_cluster" "emrSparkCluster" {
   # This it will work if only `Spark` is named here, but booting the cluster seems
   # to be much faster when `Hadoop` is included. Ingests, etc., will succeed
   # even if `Hadoop` is missing here.
-  applications = ["Hadoop", "Spark", "Zeppelin", "HBase"]
+  applications = ["Hadoop", "Spark", "Zeppelin", "HBase", "Ganglia"]
 
   ec2_attributes {
     instance_profile = "EMR_EC2_DefaultRole" # This seems to be the only necessary field.
     key_name         = "${var.key_name}"
-    subnet_id        = "${var.analytics_subnet_id}"
+    subnet_id        = "${var.subnet_id}"
   }
 
   # MASTER group must have an instance_count of 1.

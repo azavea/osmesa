@@ -15,7 +15,8 @@ realpath $DIR
 ASSEMBLY_PATH=$(realpath ${DIR}/../src/analytics/target/scala-2.11/osmesa-analytics.jar)
 NOTEBOOKS_PATH=$(realpath ${DIR}/../notebooks/zeppelin/)
 
-S3_JAR_PATH="s3://nome-osmesa/emr/jars/osmesa-analytics.jar"
+# Be sure to add jar path here prior to use
+S3_JAR_PATH=""
 
 function usage() {
     echo -n \

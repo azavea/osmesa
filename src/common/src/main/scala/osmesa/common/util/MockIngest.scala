@@ -1,4 +1,4 @@
-package osmesa.stats.util
+package osmesa.common.util
 
 import osmesa.common._
 import osmesa.common.model._
@@ -8,8 +8,6 @@ import io.circe._
 import io.circe.syntax._
 import cats.implicits._
 import com.monovore.decline._
-import org.apache.hadoop.conf.Configuration
-import org.apache.spark.sql._
 import awscala._
 import s3._
 import com.amazonaws.services.s3.model.ObjectMetadata

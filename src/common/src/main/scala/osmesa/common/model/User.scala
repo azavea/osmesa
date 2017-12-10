@@ -1,5 +1,7 @@
 package osmesa.common.model
 
+import osmesa.common.util._
+
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto._
 import io.circe.{Decoder, Encoder}
@@ -10,66 +12,54 @@ import cats.implicits._
 import scala.util.Random
 import java.time._
 
-case class Day(day: java.time.LocalDate, count: Int)
-
-object Day {
-  implicit val customConfig: Configuration = Configuration.default.withSnakeCaseKeys.withDefaults
-  implicit val encoder: Encoder[Day] = deriveEncoder
-  implicit val decoder: Decoder[Day] = deriveDecoder
-}
 
 case class User(
   uid: Long,
   name: String,
-  geoExtent: String,
-  buildingCountAdd: Int,
-  buildingCountMod: Int,
-  poiCountAdd: Int,
-  waterwayKmAdd: Double,
-  waterwayCountAdd: Int,
-  roadKmAdd: Double,
-  roadKmMod: Double,
-  roadCountAdd: Int,
-  roadCountMod: Int,
+  extentUri: String,
+  buildingsAdd: Int,
+  buildingsMod: Int,
+  roadsAdd: Int,
+  kmRoadsAdd: Double,
+  roadsMod: Int,
+  kmRoadsMod: Double,
+  waterwaysAdd: Int,
+  kmWaterwaysAdd: Double,
+  poiAdd: Int,
   changesetCount: Int,
   editCount: Int,
-  editTimes: List[Day],
-  countryList: List[Country],
-  hashtags: List[Hashtag]
+  editors: List[EditorCount],
+  editTimes: List[DayCount],
+  countryList: List[CountryCount],
+  hashtags: List[HashtagCount]
 )
 
 object User {
-  implicit val customConfig: Configuration = Configuration.default.withSnakeCaseKeys.withDefaults
+  implicit val customConfig: Configuration = Configuration.default.withSnakeCaseMemberNames.withDefaults
   implicit val encoder: Encoder[User] = deriveEncoder
   implicit val decoder: Decoder[User] = deriveDecoder
 
-  val names = List("fred", "salvadore", "orlando", "victor", "alphonse", "giuseppe")
-
   def random = {
-    val countries = (1 to 10).map({ i => Country.random }).toList.sequence
-    val hashtags = (1 to 10).map({ i => Hashtag.random }).toList.sequence
-
-    (names.takeRandom, countries, hashtags).mapN({ (randomName, randomCountries, randomHashtags) =>
-      val uid = Random.nextInt(10000).toLong + 1
-      User(
-        uid,
-        randomName,
-        "${uid}/{z}/{x}/{y}.mvt",
-        Random.nextInt(10000),
-        Random.nextInt(10000),
-        Random.nextInt(10000),
-        Random.nextDouble * 10000,
-        Random.nextInt(10000),
-        Random.nextDouble * 10000,
-        Random.nextDouble * 10000,
-        Random.nextInt(10000),
-        Random.nextInt(10000),
-        Random.nextInt(10000),
-        Random.nextInt(10000),
-        (1 to 10).map({ i => Day(new java.util.Date(scala.util.Random.nextInt(Int.MaxValue).toLong + 1199999999999L).toInstant.atOffset(ZoneOffset.UTC).toLocalDate, Random.nextInt(10)) }).toList,
-        randomCountries,
-        randomHashtags
-      )
-    })
+    User(
+      math.abs(Random.nextLong),
+      Corpus.randomName,
+      "https://s3.amazonaws.com/vectortiles/test-vts/peruser-2/piaco_dk/{z}/{x}/{y}.mvt",
+      Random.nextInt(10000),
+      Random.nextInt(10000),
+      Random.nextInt(10000),
+      Random.nextDouble * 10000,
+      Random.nextInt(10000),
+      Random.nextDouble * 10000,
+      Random.nextInt(10000),
+      Random.nextDouble * 10000,
+      Random.nextInt(10000),
+      Random.nextInt(10000),
+      Random.nextInt(10000),
+      (1 to 10).map({ _ => EditorCount.random }).toList,
+      (1 to 10).map({ _ => DayCount.random }).toList,
+      (1 to 10).map({ _ => CountryCount.random }).toList,
+      (1 to 10).map({ _ => HashtagCount.random }).toList
+    )
   }
 }
+

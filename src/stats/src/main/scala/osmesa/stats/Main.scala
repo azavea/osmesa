@@ -1,9 +1,12 @@
-package osmesa.query
+package osmesa.stats
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.stream.ActorMaterializer
 import akka.http.scaladsl.server.Directives._
+import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
+import awscala._
+import s3._
 
 import scala.util.{Try, Properties}
 
@@ -24,10 +27,15 @@ object Main extends App {
   val port: Int =
     Properties.envOrNone("PORT").map(_.toInt).getOrElse(80)
 
+  val bucket =
+    Properties.envOrElse("S3_BUCKET", "geotrellis-test")
+
+  val prefix =
+    Properties.envOrElse("S3_PREFIX", "nathan/osm-stats")
 
   sys.addShutdownHook {
     Try(system.terminate())
   }
 
-  Http().bindAndHandle(Router.routes, host, port)
+  Http().bindAndHandle(Router.routes(bucket, prefix), host, port)
 }
