@@ -6,6 +6,7 @@ import cats.implicits._
 import com.monovore.decline._
 import com.vividsolutions.jts.geom.Coordinate
 import geotrellis.vector.{Feature, Line, Point}
+import geotrellis.spark.util.KryoWrapper
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
@@ -287,12 +288,10 @@ object CalculateStats {
       nodeInfo.
         cogroup(relationsForNodes, waysForNodes, wayRelationsForNodes)
 
-    val bcCountryLookup = ss.sparkContext.broadcast(new CountryLookup())
-
     val nodeStatChanges =
       groupedNodes.
         mapPartitions { partition =>
-          val countryLookup = bcCountryLookup.value
+          val countryLookup = new CountryLookup()
           partition.
             flatMap { case (nodeId, (nodes, relationInfos, wayInfos, wayRelationInfos)) =>
               nodes.flatMap { case (changeset, version, _, coord, topics) =>

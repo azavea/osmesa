@@ -2,6 +2,7 @@ package osmesa.analytics.oneoffs
 
 import osmesa.analytics._
 
+import cats.implicits._
 import com.amazonaws.services.s3.model.{PutObjectRequest, ObjectMetadata}
 import com.amazonaws.services.s3.model.CannedAccessControlList._
 import com.monovore.decline._
@@ -32,31 +33,204 @@ import scala.collection.mutable
 
 case class FootprintInfo(user: Long, ageInDays: Int, density: Int)
 
+object FootprintByUserCommand extends CommandApp(
+
+  name   = "footprint-by-user",
+  header = "Create footprint vector tiles by user",
+  main   = {
+
+    val historyO = Opts.option[String]("history", help = "Location of the History ORC file to process.")
+    val changesetsO = Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process.")
+    val bucketO = Opts.option[String]("bucket", help = "Bucket to write results to")
+    val prefixO = Opts.option[String]("prefix", help = "Prefix of keys path for results.")
+    val hashtagsO = Opts.option[String]("hashtags", help = "Path to s3 file containg hashtags to consider.").orNone
+    val partitionsO = Opts.option[Int]("partitions", help = "Number of partitions for the partitioner.").orNone
+    val publicO = Opts.flag("public", help = "If flag is set, save as public data.").orFalse
+
+    (
+      historyO,
+      changesetsO,
+      bucketO,
+      prefixO,
+      hashtagsO,
+      partitionsO,
+      publicO
+    ).mapN { (historyUri, changesetsUri, bucket, prefix, hashtagsOpt, partitionsOpt, publicAcl) =>
+      FootprintByUser.run(historyUri, changesetsUri, bucket, prefix, hashtagsOpt, partitionsOpt, publicAcl)
+    }
+  }
+)
+
+
 object FootprintByUser {
   val BASE_ZOOM = 15
   val LAYER_NAME = "user_footprint"
 
   type FeatureType = (jts.Coordinate, Long, Int, Int)
 
-  def save(zoom: Int, vectorTiles: RDD[((SpatialKey, Int), VectorTile)]) = {
-    val s3PathFromKey: ((SpatialKey, Int)) => String =
-      { case (sk, name) =>
-        // val n =  URLEncoder.encode(name, "UTF-8")
-        val n =  name
-        s"s3://osmesa-osm-pds/test/results/user-extent-vts/${n}/${zoom}/${sk.col}/${sk.row}.mvt"
+  def run(
+    historyUri: String,
+    changesetsUri: String,
+    bucket: String,
+    prefix: String,
+    hashtagsOpt: Option[String],
+    partitionsOpt: Option[Int],
+    publicAcl: Boolean
+  ): Unit = {
+    implicit val spark = Analytics.sparkSession("Footprint By User")
+    import spark.implicits._
+
+    try {
+
+      val partitionCount = partitionsOpt.getOrElse(10000)
+      val partitioner = new HashPartitioner(partitionCount)
+
+      val history = spark.read.orc(historyUri)
+
+      // val usersToProcess =
+      //   OSMOrc.planetHistory.
+      //     select("timestamp", "user", "uid").
+      //     where("type = 'node'").
+      //     groupBy("user", "uid").
+      //     count().
+      //     where("count >= 100")
+
+      // usersToProcess.
+      //   coalesce(1).
+      //   write.
+      //   format("csv").
+      //   save("s3://osmesa-osm-pds/test/results/users.csv")
+
+
+      // val idsToProcess =
+      //   usersToProcess.
+      //     rdd.
+      //     map { row => row.getAs[Long]("uid") }.
+      //     collect.
+      //     toSet
+
+      val changesetFootprints =
+        history.
+          select("lat", "lon", "changeset", "timestamp", "uid").
+          where("type = 'node'").
+          repartition(partitionCount).
+          map { row =>
+            val lat = row.getAs[java.math.BigDecimal]("lat").doubleValue()
+            val lon = row.getAs[java.math.BigDecimal]("lon").doubleValue()
+            val ts = row.getAs[java.sql.Timestamp]("timestamp")
+            val ageInDays = (((new Date).getTime()-ts.getTime())/(1000*60*60*24)).toInt
+            val timestamp = getISO8601StringForDate(ts)
+            val changeset = row.getAs[Long]("changeset")
+            val user = row.getAs[Long]("uid")
+
+            (user, (lon, lat, ageInDays))
+          }.
+          rdd.
+          filter { case (_, (lon, lat, _)) => isData(lon) && isData(lat) }.
+          partitionBy(partitioner).
+          map { case (user, (lon, lat, ageInDays)) =>
+            Feature(
+              Point(lon, lat).reproject(LatLng, WebMercator),
+              FootprintInfo(user, ageInDays, 1)
+            )
+          }
+
+      val baseLayout = ZoomedLayoutScheme(WebMercator).levelForZoom(BASE_ZOOM).layout
+
+      val keyedChangesetFootprints: RDD[((SpatialKey, Long), Iterable[FeatureType])] =
+        changesetFootprints.
+          clipToGrid(baseLayout).
+          map { case (spatialKey, feature) =>
+            (
+              (spatialKey, feature.data.user),
+              ((spatialKey, (feature.geom.jtsGeom.getCoordinate, feature.data.user, feature.data.ageInDays, 1)))
+            )
+          }.
+          aggregateByKey(Map[(Int, Int), (jts.Coordinate, Int, Int)](), partitioner)(
+            { (acc: Map[(Int, Int), (jts.Coordinate, Int, Int)], skft: (SpatialKey, FeatureType)) =>
+              val (key, (coord, hashtag, ageInDays, density)) = skft
+              val extent = baseLayout.mapTransform(key)
+              val rasterExtent = RasterExtent(extent, 256, 256)
+              val (col, row) = rasterExtent.mapToGrid(coord.x, coord.y)
+              acc.get((col, row)) match {
+                case Some((existingCoord, existingAge, existingDensity)) =>
+                  val (newCoord, newAge) =
+                    if(ageInDays < existingAge) {
+                      (coord, ageInDays)
+                    } else { (existingCoord, existingAge) }
+                  acc + ((col, row) -> (newCoord, newAge, density + existingDensity + 1))
+                case None =>
+                  acc + ((col, row) -> (coord, ageInDays, density))
+              }
+
+            },
+            { (acc1: Map[(Int, Int), (jts.Coordinate, Int, Int)], acc2: Map[(Int, Int), (jts.Coordinate, Int, Int)]) =>
+              var acc = acc1
+              for((key, (coord, ageInDays, density)) <- acc2) {
+                acc1.get(key) match {
+                  case Some((existingCoord, existingAge, existingDensity)) =>
+                    val (newCoord, newAge) =
+                      if(ageInDays < existingAge) {
+                        (coord, ageInDays)
+                      } else { (existingCoord, existingAge) }
+                    acc = acc + (key -> (newCoord, newAge, density + existingDensity + 1))
+                  case None =>
+                    acc = acc + (key -> (coord, ageInDays, density))
+                }
+              }
+
+              acc
+            }
+          ).
+          mapPartitions({ partition =>
+            partition.map { case (key @ (_, user), map) =>
+              (
+                key,
+                map.values.map { case (coord, ageInDays, density) =>
+                  (coord, user, ageInDays, density)
+                }
+              )
+            }
+          }, preservesPartitioning = true)
+
+      var rdd = keyedChangesetFootprints
+      for(z <- BASE_ZOOM to 0 by -1) {
+        val layout = ZoomedLayoutScheme(WebMercator).levelForZoom(z).layout
+        save(z, bakeVectorTiles(rdd, layout), bucket, prefix, publicAcl)
+        rdd =
+          rdd.
+            map { case ((sk, u), geoms) =>
+              ((SpatialKey(sk.col/2, sk.row/2), u), geoms)
+            }.
+            groupByKey(partitioner).
+            mapPartitions({ part =>
+              part.map { case (key, values) =>
+                (key, pyramidUp(values, key._1, layout))
+              }
+            }, preservesPartitioning = true)
+      }
+    } finally {
+      spark.close()
+    }
+  }
+
+  def save(zoom: Int, vectorTiles: RDD[((SpatialKey, Long), VectorTile)], bucket: String, prefix: String, publicAcl: Boolean) = {
+    val s3PathFromKey: ((SpatialKey, Long)) => String =
+      { case (sk, uid) =>
+        s"s3://${bucket}/${prefix}/hashtags/${uid}/${zoom}/${sk.col}/${sk.row}.mvt"
       }
 
-    vectorTiles
-      .mapValues(_.toBytes)
-      .saveToS3(s3PathFromKey, putObjectModifier = { o => o.withCannedAcl(PublicRead)})
+    vectorTiles.
+      mapValues(_.toBytes).
+      saveToS3(s3PathFromKey, putObjectModifier = { o => if(publicAcl) o.withCannedAcl(PublicRead) else o })
   }
 
   def bakeVectorTiles(
-    rdd: RDD[((SpatialKey, Int), Iterable[FeatureType])],
+    rdd: RDD[((SpatialKey, Long), Iterable[FeatureType])],
     layout: LayoutDefinition
-  ): RDD[((SpatialKey, Int), VectorTile)] =
-    rdd
-      .mapPartitions({ partition =>
+  ): RDD[((SpatialKey, Long), VectorTile)] =
+    rdd.
+      mapPartitions({ partition =>
         val mapTransform = layout.mapTransform
         partition.map { case ((spatialKey, user), pointFeatures) =>
           val tileExtent = mapTransform(spatialKey)
@@ -126,107 +300,5 @@ object FootprintByUser {
     }
 
     results.map { case ((user, _, _), (coord, ageInDays, density)) => (coord, user, ageInDays, density) }
-  }
-
-  val bigBadUsers =
-    List(
-      "DaveHansenTiger",
-      "woodpeck_fixbot",
-      "woodpeck_repair",
-      "OSMF Redaction Account"
-    )
-
-  def main(args: Array[String]): Unit = {
-    implicit val ss = Analytics.sparkSession("Footprint By User")
-    import ss.implicits._
-
-    val partitioner = new HashPartitioner(10000)
-
-    val history = OSMOrc.planetHistory
-
-    val usersToProcess =
-      OSMOrc.planetHistory
-        .select("timestamp", "user", "uid")
-        .where("type = 'node'")
-        .filter(!$"user".isin(bigBadUsers: _*))
-        .groupBy("user", "uid")
-        .count()
-        .where("count >= 100")
-
-    usersToProcess
-      .coalesce(1)
-      .write
-      .format("csv")
-      .save("s3://osmesa-osm-pds/test/results/users.csv")
-
-
-    val idsToProcess =
-      usersToProcess
-        .rdd
-        .map { row => row.getAs[Long]("uid") }
-        .collect
-        .toSet
-
-    val changesetFootprints =
-      history
-        .select("lat", "lon", "changeset", "timestamp", "uid")
-        .where("type = 'node'")
-        .repartition(10000)
-        .map { row =>
-          val lat = row.getAs[java.math.BigDecimal]("lat").doubleValue()
-          val lon = row.getAs[java.math.BigDecimal]("lon").doubleValue()
-          val ts = row.getAs[java.sql.Timestamp]("timestamp")
-          val ageInDays = (((new Date).getTime()-ts.getTime())/(1000*60*60*24)).toInt
-          val timestamp = getISO8601StringForDate(ts)
-          val changeset = row.getAs[Long]("changeset")
-          val user = row.getAs[Long]("uid")
-
-          (user, lon, lat, ageInDays)
-        }
-        .rdd
-        .flatMap { case (user, lon, lat, ageInDays) =>
-          if(idsToProcess.contains(user)) {
-            if(isData(lon) && isData(lat) && Extent(-180, -89.99999, 179.99999, 89.99999).contains(lon, lat)) {
-              Some(
-                Feature(
-                  Point(lon, lat).reproject(LatLng, WebMercator),
-                  FootprintInfo(user, ageInDays, 1)
-                )
-              )
-            } else { None }
-          } else { None }
-        }
-
-
-    val baseLayout = ZoomedLayoutScheme(WebMercator).levelForZoom(BASE_ZOOM).layout
-
-    val keyedChangesetFootprints: RDD[((SpatialKey, Int), Iterable[FeatureType])] =
-      changesetFootprints
-        .clipToGrid(baseLayout)
-        .map { case (spatialKey, feature) =>
-          val userKey = (feature.data.user % 100).toInt
-          (
-            (spatialKey, userKey),
-            (feature.geom.jtsGeom.getCoordinate, feature.data.user, feature.data.ageInDays, 1)
-          )
-        }
-        .groupByKey(partitioner)
-
-    var rdd = keyedChangesetFootprints
-    for(z <- BASE_ZOOM to 0 by -1) {
-      val layout = ZoomedLayoutScheme(WebMercator).levelForZoom(z).layout
-      save(z, bakeVectorTiles(rdd, layout))
-      rdd =
-        rdd
-          .map { case ((sk, u), geoms) =>
-            ((SpatialKey(sk.col/2, sk.row/2), u), geoms)
-          }
-          .groupByKey(partitioner)
-          .mapPartitions({ part =>
-            part.map { case (key, values) =>
-              (key, pyramidUp(values, key._1, layout))
-            }
-          }, preservesPartitioning = true)
-    }
   }
 }
