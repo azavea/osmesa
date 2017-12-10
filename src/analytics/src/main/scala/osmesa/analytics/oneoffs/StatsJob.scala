@@ -20,19 +20,25 @@ object StatsJobCommand extends CommandApp(
     val changesetsO = Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process.")
     val bucketO = Opts.option[String]("bucket", help = "Bucket to write results to")
     val prefixO = Opts.option[String]("prefix", help = "Prefix of keys path for results.")
-    val hashtagsO = Opts.option[String]("hashtags", help = "Comm separated list of hashtags to consider.").orNone
+    val hashtagsO = Opts.option[String]("hashtags", help = "Comma separated list of hashtags to consider.").orNone
+    val changesetPartitionsO = Opts.option[Int]("changset_partitions", help = "Number of partitions for the changeset partitioner.").orNone
+    val wayPartitionsO = Opts.option[Int]("way_partitions", help = "Number of partitions for the way partitioner.").orNone
+    val nodePartitionsO = Opts.option[Int]("node_partitions", help = "Number of partitions for the node partitioner.").orNone
 
     (
       historyO,
       changesetsO,
       bucketO,
       prefixO,
-      hashtagsO
-    ).mapN { (historyUri, changesetsUri, bucket, prefix, hashtagsOpt) =>
+      hashtagsO,
+      changesetPartitionsO,
+      wayPartitionsO,
+      nodePartitionsO
+    ).mapN { (historyUri, changesetsUri, bucket, prefix, hashtagsOpt, cspOpt, wpOpt, npOpt) =>
       val hashtags = hashtagsOpt.map(_.split(",").map(_.toLowerCase).toSet)
       assert(hashtags.size > 0)
 
-      StatsJob.run(historyUri, changesetsUri, bucket, prefix, hashtags)
+      StatsJob.run(historyUri, changesetsUri, bucket, prefix, hashtags, cspOpt, wpOpt, npOpt)
     }
   }
 )
@@ -43,7 +49,10 @@ object StatsJob {
     changesetsUri: String,
     bucket: String,
     prefix: String,
-    hashtagsOpt: Option[Set[String]]
+    hashtagsOpt: Option[Set[String]],
+    changesetPartitionsOpt: Option[Int],
+    wayPartitionsOpt: Option[Int],
+    nodePartitionsOpt: Option[Int]
   ): Unit = {
     implicit val spark = Analytics.sparkSession("StatsJob")
     import spark.implicits._
@@ -65,9 +74,9 @@ object StatsJob {
 
       val options =
         CalculateStats.Options(
-          changesetPartitionCount = 1000,
-          wayPartitionCount = 1000,
-          nodePartitionCount = 10000
+          changesetPartitionCount = changesetPartitionsOpt.getOrElse(1000),
+          wayPartitionCount = wayPartitionsOpt.getOrElse(1000),
+          nodePartitionCount = nodePartitionsOpt.getOrElse(10000)
         )
 
       val (userStats, hashtagStats) =

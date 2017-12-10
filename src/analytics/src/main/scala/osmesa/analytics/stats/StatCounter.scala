@@ -6,7 +6,7 @@ class StatCounter private (
   private val elements: Map[StatTopic, Set[ChangeItem]] = Map(),
   val countries: Set[CountryId] = Set(),
   private val topicLengths: Map[StatTopic, (Double, Double)] = Map()
-) {
+) extends Serializable {
   def +(item: ChangeItem, statTopics: Set[StatTopic]): StatCounter = {
     var e = elements
     for(statTopic <- statTopics) {

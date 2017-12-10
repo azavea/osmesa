@@ -123,7 +123,7 @@ case class HashtagStats(
 
 object HashtagStats {
   def hashtagExtentUri(hashtag: String): String =
-    s"${hashtag}/{z}/{x}/{y}.mvt"
+    s"hashtags/${hashtag}/{z}/{x}/{y}.mvt"
 
   def fromChangesetStats(hashtag: String, changesetStats: ChangesetStats): HashtagStats =
     HashtagStats(
@@ -265,7 +265,7 @@ case class UserStats(
 
 object UserStats {
   def userExtentUri(userId: Long): String =
-    s"${userId}/{z}/{x}/{y}.mvt"
+    s"users/${userId}/{z}/{x}/{y}.mvt"
 
   def fromChangesetStats(changesetStats: ChangesetStats): UserStats =
     UserStats(

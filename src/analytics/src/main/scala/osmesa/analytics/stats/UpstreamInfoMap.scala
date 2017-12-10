@@ -10,7 +10,7 @@ case class UpstreamChangesetInfo(changeset: Long, topics: Set[StatTopic], isNew:
 /** Takes a map of changesets to a tuple of the upstream ID
   * and the topics to the upstream version that contributed those topics:
   * Map[changeset, (osmId, (topics, version))] */
-class UpstreamInfoMap(val infoMap: Map[Long, UpstreamInfo]) {
+class UpstreamInfoMap(val infoMap: Map[Long, UpstreamInfo]) extends Serializable {
   private lazy val (changesets, infos) = {
     val sorted =
       infoMap.
