@@ -20,6 +20,8 @@ class UpstreamInfoMap(val infoMap: Map[Long, UpstreamInfo]) {
 
   private lazy val allTopics = infos.map(_.topics).reduce(_ ++ _)
 
+  def allChangesets = changesets.toSeq
+
   def hasTopic(topic: StatTopic): Boolean =
     allTopics.contains(topic)
 

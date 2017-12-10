@@ -9,7 +9,7 @@ import scala.util.{Try, Properties}
 
 
 object AkkaSystem {
-  implicit val system = ActorSystem("rf-system")
+  implicit val system = ActorSystem("osmesa-system")
   implicit val materializer = ActorMaterializer()
 }
 
@@ -31,4 +31,3 @@ object Main extends App {
 
   Http().bindAndHandle(Router.routes, host, port)
 }
-

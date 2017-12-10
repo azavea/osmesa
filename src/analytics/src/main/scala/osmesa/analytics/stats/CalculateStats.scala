@@ -305,26 +305,29 @@ object CalculateStats {
                 // Figure out the countries
                 val countryOpt = countryLookup.lookup(coord)
 
-                // TODO: How to get country of way that is changed only with no node?
-                // Adds country to this chagneset, that's not right.
-                // Need to add stat country for upstream things.
                 val allInfos = (relationInfos ++ wayInfos ++ wayRelationInfos).flatten
                 for((upstreamId, upstreamInfos) <- allInfos) {
-                  sys.error(s"$changeset ${upstreamInfos.forChangeset(changeset)}")
                   upstreamInfos.forChangeset(changeset) match {
                     case Some(UpstreamChangesetInfo(upstreamChangeset, upstreamTopicSet, isNew)) =>
                       if(!upstreamTopicSet.isEmpty) {
                         val item = ChangeItem(upstreamId, changeset, isNew)
                         statCounter = statCounter + (item, upstreamTopicSet)
                       }
-                      // Add the country to the changeset of the element
-                      // by creating a new counter for that changeset containing
-                      // the country.
-                      countryOpt.foreach { country =>
-                        upstreamStatCounters =
-                          upstreamStatCounters + (upstreamChangeset -> (StatCounter() + country))
-                      }
                     case None => ()
+                  }
+
+                  // Set the country edit for all elements that contain this node.
+                  // This can be wrong: for instance, if a way started completely inside
+                  // one country border, and then moved a node outside to another country,
+                  // and then moved the node back into the first country, that way fo
+                  // each of it's changesets over all time would be counted for both
+                  // countries. This seems like a pretty good hueristic, though, as
+                  // that would be a rare case.
+                  countryOpt.foreach { country =>
+                    for(upstreamChangeset <- upstreamInfos.allChangesets) {
+                      upstreamStatCounters =
+                        upstreamStatCounters + (upstreamChangeset -> (StatCounter() + country))
+                    }
                   }
                 }
 
@@ -374,8 +377,8 @@ object CalculateStats {
                     flatMap { case (_, upstreamInfos) =>
                       upstreamInfos.forChangeset(changeset).map { info => info.topics }
                     }.
-                    reduce(_ ++ _)
-                case None => Set()
+                    foldLeft(Set[StatTopic]())(_ ++ _)
+                case None => Set[StatTopic]()
               }
             s.map((_, false)).toMap
           }
@@ -425,17 +428,6 @@ object CalculateStats {
         wayLengthStatChanges
       ).
         reduceByKey(changesetPartitioner, _ merge _)
-        // reduceByKey(changesetPartitioner, { (a, b) =>
-        //   if(!b.countries.isEmpty || !a.countries.isEmpty) {
-        //     if((a merge b).countries.isEmpty) { sys.error("booaa")}
-        //   }
-        //   a merge b
-        // })
-
-    sys.error(s"FFF ${initialChangesetStats.map(_._1).collect().toSeq} -- ${nodeStatChanges.map(_._1).collect().toSeq}")// foreach { case (_, (counter1, counter2Opt)) =>
-    //   if(!counter2Opt.isDefined) { sys.error("wahhaa") }
-    //   if(counter2Opt.get.countries.isEmpty) { sys.error("boom") }
-    // }
 
     initialChangesetStats.
       leftOuterJoin(mergedStatChanges).

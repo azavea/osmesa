@@ -28,6 +28,7 @@ libraryDependencies ++= Seq(
   hbaseServer % "provided",
   scalactic,
   gtSparkTestKit,
+  logging,
   scalatest
 )
 

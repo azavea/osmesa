@@ -137,10 +137,15 @@ object TestCases {
 
           val d2 =
             math.abs(
-              Distance.kmBetween(node1.lon, node1.lat, node2e.lon, node2e.lat) +
-                Distance.kmBetween(node2e.lon, node2e.lat, node3e.lon, node3e.lat) -
+              (Distance.kmBetween(node1.lon, node1.lat, node2e.lon, node2e.lat) +
+                Distance.kmBetween(node2e.lon, node2e.lat, node3e.lon, node3e.lat)) -
                 d1
             )
+
+          val dx = (Distance.kmBetween(node1.lon, node1.lat, node2e.lon, node2e.lat) +
+            Distance.kmBetween(node2e.lon, node2e.lat, node3.lon, node3.lat))
+          val dy = (Distance.kmBetween(node1.lon, node1.lat, node2e.lon, node2e.lat) +
+            Distance.kmBetween(node2e.lon, node2e.lat, node3e.lon, node3e.lat))
 
           Some(
             (
