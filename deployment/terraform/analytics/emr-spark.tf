@@ -10,7 +10,7 @@ resource "aws_emr_cluster" "emrSparkCluster" {
   ec2_attributes {
     instance_profile = "EMR_EC2_DefaultRole" # This seems to be the only necessary field.
     key_name         = "${var.key_name}"
-    subnet_id        = "${var.subnet_id}"
+    subnet_id        = "${var.analytics_subnet_id}"
   }
 
   # MASTER group must have an instance_count of 1.
