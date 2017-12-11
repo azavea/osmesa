@@ -20,6 +20,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import vectorpipe._
 
+import java.math.BigDecimal
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.{Date, Locale, TimeZone}
@@ -55,19 +56,6 @@ object FootprintByCampaignCommand extends CommandApp(
 )
 
 object FootprintByCampaign {
-  // These hashtags were a sensible group that had over 100K changesets.
-  val TARGET_HASHTAGS =
-    Set(
-      "missingmaps",
-      "redcross",
-      "eliminatemalaria",
-      "tanzania",
-      "apgive",
-      "peacecorps",
-      "maproulette",
-      "tanzaniadevelopmenttrust"
-    )
-
   val BASE_ZOOM = 15
   val LAYER_NAME = "hashtag_footprint"
 
@@ -130,8 +118,8 @@ object FootprintByCampaign {
       val changesetToHistoryNodes =
         historyNodes.
           map { row =>
-            val lat = row.getAs[java.math.BigDecimal]("lat").doubleValue()
-            val lon = row.getAs[java.math.BigDecimal]("lon").doubleValue()
+            val lat = Option(row.getAs[BigDecimal]("lat")).map(_.doubleValue).getOrElse(Double.NaN)
+            val lon = Option(row.getAs[BigDecimal]("lon")).map(_.doubleValue).getOrElse(Double.NaN)
             val ts = row.getAs[java.sql.Timestamp]("timestamp")
             val ageInDays = (((new Date).getTime()-ts.getTime())/(1000*60*60*24)).toInt
             val changeset = row.getAs[Long]("changeset")
@@ -235,7 +223,7 @@ object FootprintByCampaign {
     val s3PathFromKey: ((SpatialKey, String)) => String =
       { case (sk, name) =>
         val n =  URLEncoder.encode(name, "UTF-8")
-        s"s3://${bucket}/${prefix}/hashtags/${n}/${zoom}/${sk.col}/${sk.row}.mvt"
+        s"s3://${bucket}/${prefix}/hashtag/${n}/${zoom}/${sk.col}/${sk.row}.mvt"
       }
 
     vectorTiles.

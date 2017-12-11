@@ -15,7 +15,7 @@ realpath $DIR
 ASSEMBLY_PATH=$(realpath ${DIR}/../src/analytics/target/scala-2.11/osmesa-analytics.jar)
 NOTEBOOKS_PATH=$(realpath ${DIR}/../notebooks/zeppelin/)
 
-S3_JAR_PATH="s3://vectortiles/orc-emr/osmesa-analytics.jar"
+S3_JAR_PATH="s3://nome-osmesa/emr/jars/osmesa-analytics.jar"
 
 function usage() {
     echo -n \
@@ -76,7 +76,7 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
                 # TODO
                 ;;
             run-job)
-                aws emr add-steps --cluster-id ${CLUSTER_ID} --steps file://${PWD}/deployment/steps.json --region us-east-1
+                aws emr add-steps --cluster-id ${CLUSTER_ID} --steps file://${PWD}/deployment/"${2}".json --region us-east-1
                 ;;
             start-zeppelin)
                 aws emr ssh --cluster-id ${CLUSTER_ID} \

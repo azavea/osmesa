@@ -23,18 +23,16 @@ object StatTopics {
         case Some(v) if Constants.ROAD_VALUES.contains(v) => b += StatTopics.ROAD
         case _ => ()
       }
-    }
 
-    if(osmType == "way") {
       tags.get("waterway") match {
         case Some(v) if Constants.WATERWAY_VALUES.contains(v) => b += StatTopics.WATERWAY
         case _ => ()
       }
-    }
 
-    tags.get("building") match {
-      case Some(v) if v.toLowerCase != "no" => b += StatTopics.BUILDING
-      case _ => ()
+      tags.get("building") match {
+        case Some(v) if v.toLowerCase != "no" => b += StatTopics.BUILDING
+        case _ => ()
+      }
     }
 
     if(tags contains "amenity") { b += StatTopics.POI }

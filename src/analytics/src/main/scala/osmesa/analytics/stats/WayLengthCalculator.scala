@@ -7,14 +7,14 @@ import java.util.Arrays
 object WayLengthCalculator {
   /** Cacluates the sequence of lengths added or modified for ROADS or WATERWAYS.
     * nodes are tuples of [(id, changeset, instant, coordinate)]
-    * ways are tuples of [(nodeIds, changset, instant, topicToIsNew)]
+    * ways are tuples of [(nodeIds, changeset, instant, topicToIsNew)]
     *
     * instant = milliseconds from epoch
     *
     * Computes the length differences based on changests. This means if there
     * are more than one version of the way in a single changeset, this will
-    * only consider the second way and the difference of length between
-    * that second way version and a previous version from a prior changeset.
+    * only consider the last way and the difference of length between
+    * that last way version and a previous version from a prior changeset.
     * This will account for nodes that change without the way version changing,
     * where the length difference will be credited to the changeset that modified
     * the participating node(s).
@@ -94,8 +94,6 @@ object WayLengthCalculator {
                 }
 
                 val c = coords(math.max(idx, 0))
-                // Sometimes nodes can have NaN values in the ORC, which comes from missing values,
-                // e.g. node 1647000416
                 if(java.lang.Double.isNaN(c.x) || java.lang.Double.isNaN(c.y)) { None }
                 else { Some(c) }
               }
