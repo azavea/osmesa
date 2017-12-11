@@ -18,6 +18,7 @@ import s3._
 import cats._
 import cats.syntax._
 import cats.implicits._
+import org.apache.commons.io.IOUtils
 
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
@@ -43,7 +44,9 @@ object Router {
             "/hashtags/{hashtag}/",
             "/hashtags/{hashtag}/users",
             "/users/",
-            "/users/user/"
+            "/users/user/",
+            "/extent/user/",
+            "/extent/hashtag/"
           ).mkString("\n")
           HttpEntity(ContentTypes.`text/plain(UTF-8)`, endpoints)
         }
@@ -140,6 +143,26 @@ object Router {
               val content = scala.io.Source.fromInputStream(s3obj.content).mkString
               parse(content).toOption
             })
+          }
+        }
+      } ~
+      pathPrefix("extents") {
+        pathPrefix("user") {
+          pathPrefix(Segment / IntNumber / IntNumber / IntNumber) { (uid, zoom, x, y) =>
+            complete {
+              s3.get(Bucket(bucket), s"${prefix}/hashtag/${uid}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
+                IOUtils.toByteArray(s3obj.content)
+              })
+            }
+          }
+        } ~
+        pathPrefix("hashtag") {
+          pathPrefix(Segment / IntNumber / IntNumber / IntNumber) { (hashtag, zoom, x, y) =>
+            complete {
+              s3.get(Bucket(bucket), s"${prefix}/hashtag/${hashtag}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
+                IOUtils.toByteArray(s3obj.content)
+              })
+            }
           }
         }
       }
