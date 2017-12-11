@@ -124,7 +124,8 @@ object CalculateStats {
           val version = row.getAs[Long]("version")
           val topics = row.getAs[Seq[StatTopic]]("statTopics").toSet
           (changeset, StatCounter(osmId, changeset, version, topics))
-        }
+        }.
+        partitionBy(wayPartitioner)
 
     val relationMembers =
       relationInfo.
@@ -186,7 +187,8 @@ object CalculateStats {
           val nodeIds = row.getAs[Seq[Long]]("nodes").toArray
           val topics = row.getAs[Seq[StatTopic]]("statTopics").toSet
           (id, (changeset, version, instant, nodeIds, topics))
-        }
+        }.
+        partitionBy(wayPartitioner)
 
     val waysToRelations =
       wayInfo.
@@ -221,7 +223,8 @@ object CalculateStats {
           }
 
           (changeset, statCounter)
-        }
+        }.
+        partitionBy(changesetPartitioner)
 
     val wayRelationsForNodes: RDD[(Long, List[(RelationId, UpstreamInfoMap)])] =
       generateUpstreamInfoMaps {
@@ -235,13 +238,14 @@ object CalculateStats {
                     (changeset, UpstreamInfo(version, topics)) <- upstreamInfo.infoMap
                   ) yield {
                     (relationId, changeset, version, topics)
-                  }).toList
+                  })
 
-                case None => List()
+                case None => Iterable.empty
               }
 
             nodeIds map ((_, relationTopics))
-          }
+          }.
+          partitionBy(nodePartitioner)
       }
 
     /** Gather the ways from the perspective of each node.
@@ -282,7 +286,8 @@ object CalculateStats {
             row.getAs[Timestamp]("timestamp").toInstant.toEpochMilli
           val topics = row.getAs[Seq[StatTopic]]("statTopics").toSet
           (id, (changeset, version, instant, new Coordinate(lon, lat), topics))
-        }
+        }.
+        partitionBy(nodePartitioner)
 
     val groupedNodes =
       nodeInfo.
@@ -342,7 +347,8 @@ object CalculateStats {
                 (changeset, statCounter) :: (upstreamStatCounters.toList)
               }
             }
-        }
+        }.
+        partitionBy(changesetPartitioner)
 
     // Measure lenghts for roads and waterways
 
@@ -415,7 +421,8 @@ object CalculateStats {
               }
             }
           changesetsToCounters.toSeq
-        }
+        }.
+        partitionBy(changesetPartitioner)
 
     // Put it all together
 

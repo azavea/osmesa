@@ -21,7 +21,7 @@ object StatsJobCommand extends CommandApp(
     val bucketO = Opts.option[String]("bucket", help = "Bucket to write results to")
     val prefixO = Opts.option[String]("prefix", help = "Prefix of keys path for results.")
     val hashtagsO = Opts.option[String]("hashtags", help = "Comma separated list of hashtags to consider.").orNone
-    val changesetPartitionsO = Opts.option[Int]("changset_partitions", help = "Number of partitions for the changeset partitioner.").orNone
+    val changesetPartitionsO = Opts.option[Int]("changeset_partitions", help = "Number of partitions for the changeset partitioner.").orNone
     val wayPartitionsO = Opts.option[Int]("way_partitions", help = "Number of partitions for the way partitioner.").orNone
     val nodePartitionsO = Opts.option[Int]("node_partitions", help = "Number of partitions for the node partitioner.").orNone
 
@@ -36,7 +36,6 @@ object StatsJobCommand extends CommandApp(
       nodePartitionsO
     ).mapN { (historyUri, changesetsUri, bucket, prefix, hashtagsOpt, cspOpt, wpOpt, npOpt) =>
       val hashtags = hashtagsOpt.map(_.split(",").map(_.toLowerCase).toSet)
-      assert(hashtags.size > 0)
 
       StatsJob.run(historyUri, changesetsUri, bucket, prefix, hashtags, cspOpt, wpOpt, npOpt)
     }
@@ -83,7 +82,7 @@ object StatsJob {
         CalculateStats.compute(history, filteredChangesets, options)
 
       val userToPath: User => String = { user =>
-        val p = new java.io.File(prefix, "users").getPath
+        val p = new java.io.File(prefix, "user").getPath
         s"${p}/${user.uid}.json"
       }
 

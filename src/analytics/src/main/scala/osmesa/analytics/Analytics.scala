@@ -14,8 +14,10 @@ object Analytics {
       .set("spark.sql.parquet.mergeSchema", "false")
       .set("spark.sql.parquet.filterPushdown", "true")
       .set("spark.sql.hive.metastorePartitionPruning", "true")
-      .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-      .set("spark.kryo.registrator", classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
+    // Commenting out the kryo serialization, as it was causing stack overflow exceptions
+    // for the vector tile generation jobs.
+      // .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+      // .set("spark.kryo.registrator", classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
 
     SparkSession.builder
         .config(conf)
