@@ -32,6 +32,7 @@ object Router {
 
   val settings =
     CorsSettings.defaultSettings.copy(
+      allowGenericHttpRequests = true,
       allowedMethods = scala.collection.immutable.Seq(GET, POST, PUT, HEAD, OPTIONS, DELETE)
     )
 
@@ -150,8 +151,8 @@ object Router {
         pathPrefix("user") {
           pathPrefix(Segment / IntNumber / IntNumber / IntNumber) { (uid, zoom, x, y) =>
             complete {
-              s3.get(Bucket(bucket), s"${prefix}/hashtag/${uid}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
-                IOUtils.toByteArray(s3obj.content)
+              s3.get(Bucket(bucket), s"${prefix}/user/${uid}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
+                vtResponse(IOUtils.toByteArray(s3obj.content))
               })
             }
           }
@@ -160,11 +161,22 @@ object Router {
           pathPrefix(Segment / IntNumber / IntNumber / IntNumber) { (hashtag, zoom, x, y) =>
             complete {
               s3.get(Bucket(bucket), s"${prefix}/hashtag/${hashtag}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
-                IOUtils.toByteArray(s3obj.content)
+                vtResponse(IOUtils.toByteArray(s3obj.content))
               })
             }
           }
         }
       }
     }
+
+  def vtResponse(bytes: Array[Byte]) =
+    HttpResponse(
+      entity =
+        HttpEntity(
+          new ContentType.Binary(
+            MediaType.customBinary("application", "vnd.mapbox-vector-tile", new MediaType.Compressibility(false))
+          ),
+          bytes
+        )
+    )
 }
