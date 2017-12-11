@@ -108,16 +108,19 @@ case class HashtagStats(
   def toCoreType: osmesa.common.model.Campaign =
     osmesa.common.model.Campaign(
       tag = tag,
-      geoExtent = extentUri,
-      roadCountAdd = roadsAdd,
-      roadsCountMod = roadsMod,
-      buildingCountAdd = buildingsAdd,
-      buildingCountMod = buildingsMod,
-      waterwayCountAdd = waterwayAdd,
-      poiCountAdd = poiAdd,
-      roadKmAdd = kmRoadAdd,
-      roadKmMod = kmRoadMod,
-      waterwayKmAdd = kmWaterwayAdd
+      extentUri = extentUri,
+      buildingsAdd = buildingsAdd,
+      buildingsMod = buildingsMod,
+      roadsAdd = roadsAdd,
+      kmRoadsAdd = kmRoadAdd,
+      roadsMod = roadsMod,
+      kmRoadsMod = kmRoadMod,
+      waterwaysAdd = waterwayAdd,
+      kmWaterwaysAdd = kmWaterwayAdd,
+      poiAdd = poiAdd,
+      users = {
+        users.map { u => osmesa.common.model.CampaignParticipation(u.id, u.name, u.count) }
+      }
     )
 }
 
@@ -239,26 +242,29 @@ case class UserStats(
     osmesa.common.model.User(
       uid = uid,
       name = name,
-      geoExtent = extent,
-      buildingCountAdd = buildingCountAdd,
-      buildingCountMod = buildingCountMod,
-      poiCountAdd = poiCountAdd,
-      waterwayKmAdd = kmWaterwayAdd,
-      waterwayCountAdd = waterwayCountAdd,
-      roadKmAdd = kmRoadAdd,
-      roadKmMod = kmRoadMod,
-      roadCountAdd = roadCountAdd,
-      roadCountMod = roadCountMod,
+      extentUri = extent,
+      buildingsAdd = buildingCountAdd,
+      buildingsMod = buildingCountMod,
+      roadsAdd = roadCountAdd,
+      kmRoadsAdd = kmRoadAdd,
+      roadsMod = roadCountMod,
+      kmRoadsMod = kmRoadMod,
+      waterwaysAdd = waterwayCountAdd,
+      kmWaterwaysAdd = kmWaterwayAdd,
+      poiAdd = poiCountAdd,
       changesetCount = changesetCount,
       editCount = changesetCount,
+      editors = {
+        editors.map { e => osmesa.common.model.EditorCount(e.editor, e.count) }
+      },
       editTimes = editTimes.map { case DayCount(instant, count) =>
-        osmesa.common.model.Day(instant, count)
+        osmesa.common.model.DayCount(instant, count)
       },
       countryList = countries.map { case CountryCount(CountryId(name, _), count) =>
-        osmesa.common.model.Country(name, count)
+        osmesa.common.model.CountryCount(name, count)
       },
       hashtags = hashtags.map { case HashtagCount(tag, count) =>
-        osmesa.common.model.Hashtag(tag, count)
+        osmesa.common.model.HashtagCount(tag, count)
       }
     )
 }

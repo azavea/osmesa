@@ -225,13 +225,6 @@ object FootprintByCampaign {
         val n =  URLEncoder.encode(name, "UTF-8")
         s"s3://${bucket}/${prefix}/hashtag/${n}/${zoom}/${sk.col}/${sk.row}.mvt"
       }
-  def save(zoom: Int, vectorTiles: RDD[((SpatialKey, String), VectorTile)]) = {
-    val s3PathFromKey: ((SpatialKey, String)) => String =
-      { case (sk, name) =>
-        // val n =  URLEncoder.encode(name, "UTF-8")
-        val n =  name
-        s"s3://osmesa-osm-pds/test/results/hashtag-extent-vts/${n}/${zoom}/${sk.col}/${sk.row}.mvt"
-      }
 
     vectorTiles.
       mapValues(_.toBytes).

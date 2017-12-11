@@ -58,7 +58,7 @@ object Router {
               }
               val request = new ListObjectsV2Request()
                 .withBucketName(bucket)
-                .withPrefix(s"${prefix}/campaigns/")
+                .withPrefix(s"${prefix}/hashtag/")
                 .withStartAfter(start)
                 .withDelimiter("/")
                 .withMaxKeys(maxKeys)
@@ -82,7 +82,7 @@ object Router {
         pathPrefix(Segment) { tag =>
           pathEndOrSingleSlash {
             complete {
-              s3.get(Bucket(bucket), s"${prefix}/campaigns/${tag}.json").flatMap({ s3obj =>
+              s3.get(Bucket(bucket), s"${prefix}/hashtag/${tag}.json").flatMap({ s3obj =>
                 val content = scala.io.Source.fromInputStream(s3obj.content).mkString
                 parse(content).toOption
               })
@@ -92,7 +92,7 @@ object Router {
             pathEndOrSingleSlash {
               complete {
                 val contributors: Option[List[CampaignParticipation]] =
-                  s3.get(Bucket(bucket), s"${prefix}/campaigns/${tag}.json").flatMap({ s3obj =>
+                  s3.get(Bucket(bucket), s"${prefix}/hashtag/${tag}.json").flatMap({ s3obj =>
                     val content = scala.io.Source.fromInputStream(s3obj.content).mkString
                     val decoded: Either[Error, Campaign] = decode[Campaign](content)
                     decoded.map({ _.users.toList }).toOption
@@ -113,7 +113,7 @@ object Router {
               }
               val request = new ListObjectsV2Request()
                 .withBucketName(bucket)
-                .withPrefix(s"${prefix}/users/")
+                .withPrefix(s"${prefix}/user/")
                 .withStartAfter(start)
                 .withDelimiter("/")
                 .withMaxKeys(maxKeys)
@@ -136,7 +136,7 @@ object Router {
         } ~
         pathPrefix(Segment) { uid =>
           complete {
-            s3.get(Bucket(bucket), s"${prefix}/users/${uid}.json").flatMap({ s3obj =>
+            s3.get(Bucket(bucket), s"${prefix}/user/${uid}.json").flatMap({ s3obj =>
               val content = scala.io.Source.fromInputStream(s3obj.content).mkString
               parse(content).toOption
             })
@@ -145,4 +145,3 @@ object Router {
       }
     }
 }
-

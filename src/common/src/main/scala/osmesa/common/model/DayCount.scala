@@ -3,13 +3,14 @@ package osmesa.common.model
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto._
 import io.circe.{Decoder, Encoder}
+import io.circe.java8.time._
 
 import scala.util.Random
-import java.time.Instant
+import java.time._
 
 
 case class DayCount(
-  day: Instant,
+  day: LocalDate,
   count: Int
 )
 
@@ -20,8 +21,7 @@ object DayCount {
 
   def random =
     DayCount(
-      Instant.now,
-      Random.nextInt(10000)
+      new java.util.Date(scala.util.Random.nextInt(Int.MaxValue).toLong + 1199999999999L).toInstant.atOffset(ZoneOffset.UTC).toLocalDate,
+      Random.nextInt(10)
     )
 }
-
