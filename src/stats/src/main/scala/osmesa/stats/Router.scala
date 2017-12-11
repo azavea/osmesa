@@ -7,6 +7,7 @@ import io.circe._
 import io.circe.syntax._
 import io.circe.parser._
 import akka.http.scaladsl.model._
+import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.model.HttpMethods._
 import ch.megard.akka.http.cors.scaladsl.CorsDirectives._
@@ -150,33 +151,37 @@ object Router {
       pathPrefix("extents") {
         pathPrefix("user") {
           pathPrefix(Segment / IntNumber / IntNumber / IntNumber) { (uid, zoom, x, y) =>
-            complete {
-              s3.get(Bucket(bucket), s"${prefix}/user/${uid}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
-                vtResponse(IOUtils.toByteArray(s3obj.content))
-              })
-            }
+            s3.get(Bucket(bucket), s"${prefix}/user/${uid}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
+              vtResponse(IOUtils.toByteArray(s3obj.content))
+            }).getOrElse { complete { None } }
           }
         } ~
         pathPrefix("hashtag") {
           pathPrefix(Segment / IntNumber / IntNumber / IntNumber) { (hashtag, zoom, x, y) =>
-            complete {
-              s3.get(Bucket(bucket), s"${prefix}/hashtag/${hashtag}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
-                vtResponse(IOUtils.toByteArray(s3obj.content))
-              })
-            }
+            s3.get(Bucket(bucket), s"${prefix}/hashtag/${hashtag}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
+              vtResponse(IOUtils.toByteArray(s3obj.content))
+            }).getOrElse { complete { None } }
           }
         }
       }
     }
 
   def vtResponse(bytes: Array[Byte]) =
-    HttpResponse(
-      entity =
-        HttpEntity(
-          new ContentType.Binary(
-            MediaType.customBinary("application", "vnd.mapbox-vector-tile", new MediaType.Compressibility(false))
-          ),
-          bytes
-        )
-    )
+    respondWithHeaders(
+      `Access-Control-Allow-Origin`(HttpOriginRange.*),
+      `Access-Control-Allow-Credentials`(true),
+      `Access-Control-Allow-Headers`("Authorization", "Content-Type", "X-Requested-With")
+    ) {
+      complete {
+        HttpResponse(
+          entity =
+            HttpEntity(
+              new ContentType.Binary(
+                MediaType.customBinary("application", "vnd.mapbox-vector-tile", new MediaType.Compressibility(false))
+              ),
+              bytes
+            )
+        ).withHeaders(`Access-Control-Allow-Methods`(OPTIONS, POST, PUT, GET, DELETE))
+      }
+    }
 }
