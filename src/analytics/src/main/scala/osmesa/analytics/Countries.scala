@@ -46,6 +46,9 @@ object Countries {
     polys ++ mps
   }
 
+  def byName: Map[String, MultiPolygonFeature[CountryId]] =
+    all.map { f => (f.data.name, f) }.toMap
+
   def indexed: SpatialIndex[MultiPolygonFeature[CountryId]] =
     SpatialIndex.fromExtents(all) { mpf => mpf.geom.envelope }
 
