@@ -2,6 +2,8 @@ package osmesa.stats
 
 import osmesa.common.model._
 
+import geotrellis.spark.SpatialKey
+import geotrellis.vectortile.VectorTile
 import de.heikoseeberger.akkahttpcirce.ErrorAccumulatingCirceSupport._
 import io.circe._
 import io.circe.syntax._
@@ -36,6 +38,11 @@ object Router {
       allowGenericHttpRequests = true,
       allowedMethods = scala.collection.immutable.Seq(GET, POST, PUT, HEAD, OPTIONS, DELETE)
     )
+
+  def emptyVT(z: Int, x: Int, y: Int) = {
+    val extent = TileLayouts(z).mapTransform(SpatialKey(x, y))
+    VectorTile(Map(), extent)
+  }
 
   def routes(bucket: String, prefix: String) =
     cors(settings) {
@@ -147,41 +154,45 @@ object Router {
             })
           }
         }
-      } ~
-      pathPrefix("extents") {
+      }
+    } ~
+    pathPrefix("extents") {
+      respondWithHeaders(
+        `Access-Control-Allow-Origin`(HttpOriginRange.*),
+        `Access-Control-Allow-Credentials`(true),
+        `Access-Control-Allow-Headers`("Authorization", "Content-Type", "X-Requested-With"),
+        `Access-Control-Allow-Methods`(OPTIONS, POST, PUT, GET, DELETE)
+      ) {
         pathPrefix("user") {
           pathPrefix(Segment / IntNumber / IntNumber / IntNumber) { (uid, zoom, x, y) =>
-            s3.get(Bucket(bucket), s"${prefix}/user/${uid}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
-              vtResponse(IOUtils.toByteArray(s3obj.content))
-            }).getOrElse { complete { None } }
+            complete {
+              s3.get(Bucket(bucket), s"${prefix}/user/${uid}/${zoom}/${x}/${y}.mvt") match {
+                case Some(s3obj) => vtResponse(IOUtils.toByteArray(s3obj.content))
+                case None => vtResponse(emptyVT(zoom, x, y).toBytes)
+              }
+            }
           }
         } ~
         pathPrefix("hashtag") {
           pathPrefix(Segment / IntNumber / IntNumber / IntNumber) { (hashtag, zoom, x, y) =>
-            s3.get(Bucket(bucket), s"${prefix}/hashtag/${hashtag}/${zoom}/${x}/${y}.mvt").map({ s3obj =>
-              vtResponse(IOUtils.toByteArray(s3obj.content))
-            }).getOrElse { complete { None } }
+            complete {
+              s3.get(Bucket(bucket), s"${prefix}/hashtag/${hashtag}/${zoom}/${x}/${y}.mvt") match {
+                case Some(s3obj) => vtResponse(IOUtils.toByteArray(s3obj.content))
+                case None => vtResponse(emptyVT(zoom, x, y).toBytes)
+              }
+            }
           }
         }
       }
     }
 
   def vtResponse(bytes: Array[Byte]) =
-    respondWithHeaders(
-      `Access-Control-Allow-Origin`(HttpOriginRange.*),
-      `Access-Control-Allow-Credentials`(true),
-      `Access-Control-Allow-Headers`("Authorization", "Content-Type", "X-Requested-With")
-    ) {
-      complete {
-        HttpResponse(
-          entity =
-            HttpEntity(
-              new ContentType.Binary(
-                MediaType.customBinary("application", "vnd.mapbox-vector-tile", new MediaType.Compressibility(false))
-              ),
-              bytes
-            )
-        ).withHeaders(`Access-Control-Allow-Methods`(OPTIONS, POST, PUT, GET, DELETE))
-      }
-    }
+    HttpResponse(
+      entity = HttpEntity(
+        new ContentType.Binary(
+          MediaType.customBinary("application", "vnd.mapbox-vector-tile", new MediaType.Compressibility(false))
+        ),
+        bytes
+      )
+    )
 }
