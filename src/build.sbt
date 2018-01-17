@@ -60,6 +60,11 @@ lazy val stats =
     .settings(commonSettings: _*)
     .dependsOn(common)
 
+lazy val bm =
+  project
+    .settings(commonSettings: _*)
+    .dependsOn(common)
+
 /* Run with
       jmh:run -t 1 -f 1 -wi 5 -i 5 .*Bench.*
  */
