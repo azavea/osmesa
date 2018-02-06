@@ -2,15 +2,25 @@ import Dependencies._
 
 name := "osmesa-common"
 
+addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 
 libraryDependencies ++= Seq(
 //  gtGeomesa exclude("com.google.protobuf", "protobuf-java") exclude("org.locationtech.geomesa", "geomesa-accumulo-datastore"),
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
+  "com.github.seratch" %% "awscala"     % "0.6.1",
+  "org.scalaj"         %% "scalaj-http" % "2.3.0",
+  decline,
   jaiCore,
   gtVector,
   cats,
   scalactic,
-  scalatest
+  scalatest,
+  circeCore,
+  circeGeneric,
+  circeExtras,
+  circeParser,
+  circeOptics,
+  circeJava8
 )
 
 

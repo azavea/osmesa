@@ -5,7 +5,7 @@ resource "aws_emr_cluster" "emrSparkCluster" {
   # This it will work if only `Spark` is named here, but booting the cluster seems
   # to be much faster when `Hadoop` is included. Ingests, etc., will succeed
   # even if `Hadoop` is missing here.
-  applications = ["Hadoop", "Spark", "Zeppelin", "HBase"]
+  applications = ["Hadoop", "Spark", "Zeppelin", "HBase", "Ganglia"]
 
   ec2_attributes {
     instance_profile = "EMR_EC2_DefaultRole" # This seems to be the only necessary field.
@@ -25,7 +25,7 @@ resource "aws_emr_cluster" "emrSparkCluster" {
 
   instance_group {
     bid_price      = "0.10"
-    instance_count = 20
+    instance_count = "${var.slave_count}"
     instance_role  = "CORE"
     instance_type  = "m3.xlarge"
     name           = "OsmesaAnalytics-CoreGroup"

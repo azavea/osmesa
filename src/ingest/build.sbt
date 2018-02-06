@@ -8,7 +8,7 @@ dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.
 
 libraryDependencies ++= Seq(
   decline,
-  hive % "provided",
+  sparkHive % "provided",
   //gtGeomesa exclude("com.google.protobuf", "protobuf-java"),
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
   gtS3 exclude("com.google.protobuf", "protobuf-java"),
