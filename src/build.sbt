@@ -4,7 +4,7 @@ lazy val commonSettings = Seq(
   organization := "com.azavea",
   version := Version.osmesa,
   cancelable in Global := true,
-  scalaVersion := Version.scala,
+  scalaVersion in ThisBuild := Version.scala,
   scalacOptions := Seq(
     "-deprecation",
     "-unchecked",
@@ -26,7 +26,8 @@ lazy val commonSettings = Seq(
     "locationtech-releases" at "https://repo.locationtech.org/content/repositories/releases/",
     "locationtech-snapshots" at "https://repo.locationtech.org/content/repositories/snapshots/",
     "geosolutions" at "http://maven.geo-solutions.it/",
-    "osgeo" at "http://download.osgeo.org/webdav/geotools/"
+    "osgeo" at "http://download.osgeo.org/webdav/geotools/",
+    "apache.commons.io" at "https://mvnrepository.com/artifact/commons-io/commons-io"
   ),
   shellPrompt := { s => Project.extract(s).currentProject.id + " > " }
 )
@@ -38,7 +39,8 @@ lazy val commonSettings = Seq(
 lazy val root = Project("osmesa", file("."))
   .aggregate(
     common,
-    ingest
+    ingest,
+    stats
   ).settings(commonSettings: _*)
 
 lazy val common = project.settings(commonSettings: _*)
@@ -52,11 +54,16 @@ lazy val analytics =
     .settings(commonSettings: _*)
     .dependsOn(common)
 
+lazy val stats =
+  project
+    .settings(commonSettings: _*)
+    .dependsOn(common)
+
 /* Run with
       jmh:run -t 1 -f 1 -wi 5 -i 5 .*Bench.*
  */
-lazy val bench =
-  project.in(file("bench"))
-    .settings(commonSettings)
-    .dependsOn(analytics)
-    .enablePlugins(JmhPlugin)
+// lazy val bench =
+//   project.in(file("bench"))
+//     .settings(commonSettings)
+//     .dependsOn(analytics)
+//     .enablePlugins(JmhPlugin)

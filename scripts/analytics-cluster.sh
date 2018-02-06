@@ -15,6 +15,9 @@ realpath $DIR
 ASSEMBLY_PATH=$(realpath ${DIR}/../src/analytics/target/scala-2.11/osmesa-analytics.jar)
 NOTEBOOKS_PATH=$(realpath ${DIR}/../notebooks/zeppelin/)
 
+# Be sure to add jar path here prior to use
+S3_JAR_PATH=""
+
 function usage() {
     echo -n \
 "Usage: $(basename "$0") COMMAND OPTION[S]
@@ -63,7 +66,6 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
                 zip -d ${ASSEMBLY_PATH} META-INF/*.RSA META-INF/*.DSA META-INF/*.SF || true
 
                 aws emr put --cluster-id ${CLUSTER_ID} \
-                    --profile osmesa \
 		    --key-pair-file ${KEY_PAIR_FILE} \
 		    --region us-east-1 \
 	            --src ${ASSEMBLY_PATH} --dest /home/hadoop/osmesa-analytics.jar
@@ -71,11 +73,11 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
             upload-code)
                 zip -d ${ASSEMBLY_PATH} META-INF/*.RSA META-INF/*.DSA META-INF/*.SF || true
 
-                aws s3 cp ${ASSEMBLY_PATH} s3://vectortiles/orc-emr/osmesa-analytics.jar
+                aws s3 cp ${ASSEMBLY_PATH} ${S3_JAR_PATH}
                 # TODO
                 ;;
             run-job)
-                aws emr add-steps --cluster-id ${CLUSTER_ID} --steps file://${PWD}/deployment/steps.json --region us-east-1
+                aws emr add-steps --cluster-id ${CLUSTER_ID} --steps file://${PWD}/deployment/"${2}".json --region us-east-1
                 ;;
             start-zeppelin)
                 aws emr ssh --cluster-id ${CLUSTER_ID} \

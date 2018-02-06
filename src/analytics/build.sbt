@@ -6,14 +6,14 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
-// dependencyOverrides += "org.json4s" % "json4s-jackson" % "3.2.11"
-// dependencyOverrides += "org.json4s" % "json4s-core" % "3.2.11"
-// dependencyOverrides += "org.json4s" % "json4s-ast" % "3.2.11"
-
-
 libraryDependencies ++= Seq(
+  // Deal with GeoMesa dependency that breaks Spark 2.2
+  "org.json4s" %% "json4s-native" % "3.2.11",
+  "org.json4s" %% "json4s-core" % "3.2.11",
+  "org.json4s" %% "json4s-ast" % "3.2.11",
+
   decline,
-  hive % "provided",
+  sparkHive % "provided",
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
   gtS3 exclude("com.google.protobuf", "protobuf-java"),
   gtSpark exclude("com.google.protobuf", "protobuf-java"),
@@ -27,14 +27,17 @@ libraryDependencies ++= Seq(
   hbaseCommon % "provided",
   hbaseServer % "provided",
   scalactic,
-  scalatest,
-  "com.madhukaraphatak" %% "java-sizeof" % "0.1"
+  gtSparkTestKit,
+  logging,
+  scalatest
 )
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */
 fork in run := true
 
 fork in Test := true
+
+test in assembly := {}
 
 javaOptions ++= Seq("-Xmx5G")
 
