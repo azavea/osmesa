@@ -4,9 +4,6 @@ import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollection
 
-import spray.json._
-import spray.json.DefaultJsonProtocol._
-
 
 object VertexMatching {
 
