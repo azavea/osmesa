@@ -3,7 +3,7 @@ object Version {
   val osmesa = "0.1.0"
   val geotrellis = "1.2.0-RC2"
   val geomesa = "1.4.0-SNAPSHOT"
-  val vectorpipe = "1.0.0-SNAPSHOT"
+  val vectorpipe = "0.2.2" //"1.0.0-SNAPSHOT"
   val decline = "0.4.0-RC1"
   val cats = "1.0.0-RC1"
   val scalactic = "3.0.3"
