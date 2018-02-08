@@ -1,0 +1,31 @@
+[
+    {
+        "Classification": "spark",
+        "Properties": {
+            "maximizeResourceAllocation": "true"
+        }
+    },
+    {
+        "Classification": "spark-defaults",
+        "Properties": {
+            "spark.driver.maxResultSize": "3G",
+            "spark.dynamicAllocation.enabled": "true",
+            "spark.shuffle.service.enabled": "true",
+            "spark.shuffle.compress": "true",
+            "spark.shuffle.spill.compress": "true",
+            "spark.rdd.compress": "true",
+            "spark.yarn.executor.memoryOverhead": "1G",
+            "spark.yarn.driver.memoryOverhead": "1G",
+            "spark.driver.maxResultSize": "3G",
+            "spark.executor.extraJavaOptions" : "-XX:+UseParallelGC -Dgeotrellis.s3.threads.rdd.write=64"
+        }
+    },
+    {
+        "Classification": "yarn-site",
+        "Properties": {
+            "yarn.resourcemanager.am.max-attempts": "1",
+            "yarn.nodemanager.vmem-check-enabled": "false",
+            "yarn.nodemanager.pmem-check-enabled": "false"
+        }
+    }
+]
