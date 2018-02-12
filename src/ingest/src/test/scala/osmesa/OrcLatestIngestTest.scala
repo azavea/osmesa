@@ -130,12 +130,11 @@ object OrcLatestIngestTest {
 
       /* Assumes that OSM ORC is in LatLng */
       val feats: RDD[osm.OSMFeature] =
-        osm.toFeatures(
-          VectorPipe.logToLog4j,
-          ns.map(_._2).repartition(100),
-          ws.map(_._2).repartition(10),
-          rs.map(_._2)
-        )
+        osm.features(
+          ns.repartition(100),
+          ws.repartition(10),
+          rs
+        ).geometries
 
       feats.foreachPartition { part =>
         val mDsConf = getHBaseDataStoreConf()
