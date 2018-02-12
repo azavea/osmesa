@@ -15,10 +15,11 @@ import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import vectorpipe._
-import vectorpipe.util.LayerMetadata
+import vectorpipe.LayerMetadata
 import cats.implicits._
 import com.monovore.decline._
 
+import java.time.Instant
 import spray.json._
 
 import org.geotools.data.DataStore
@@ -27,7 +28,6 @@ object Util {
   import spray.json._
   import spray.json.DefaultJsonProtocol._
   import vectorpipe.osm._
-  import vectorpipe.util._
   import java.io.ByteArrayInputStream
   import geotrellis.spark.io.s3.S3Client
   import com.amazonaws.services.s3.model.{ObjectMetadata, AmazonS3Exception}
@@ -124,7 +124,7 @@ object IngestApp extends CommandApp(
       val targetDf = df//.repartition(1000)
 
       // Test log clip fail
-      val ff = Feature(Point(1,1), osm.ElementMeta(1L, "Asdf", 12345, 2L, 3L, 32423423L, true, Map()))
+      val ff = Feature(Point(1,1), osm.ElementMeta(1L, "Asdf", 12345, 2L, 3L, 32423423L, Instant.now, true, Map()))
 
       Util.logClipFail(Extent(0, 0, 1, 1), ff)
 
@@ -145,19 +145,19 @@ object IngestApp extends CommandApp(
         }, preservesPartitioning = true)
 
       /* Assumes that OSM ORC is in LatLng */
-      val feats: RDD[osm.OSMFeature] =
-        // osm.toFeatures(VectorPipe.logToLog4j, reprojectedNodes, ws.partitionBy(wayPartitioner), rs)
-        osm.toFeatures(VectorPipe.logToLog4j, reprojectedNodes.map(_._2), ws.partitionBy(wayPartitioner).map(_._2), rs.map(_._2))
+      val feats =
+        osm.features(/*VectorPipe.logToLog4j,*/ reprojectedNodes, ws.partitionBy(wayPartitioner), rs)
+        // osm.features(/*VectorPipe.logToLog4j,*/ reprojectedNodes.map(_._2), ws.partitionBy(wayPartitioner).map(_._2), rs.map(_._2))
 
       /* Associated each Feature with a SpatialKey */
       val fgrid: RDD[(SpatialKey, Iterable[osm.OSMFeature])] =
         //        VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats, new HashPartitioner(numPartitions))
         //        VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats)
-        VectorPipe.toGrid(Clip.byHybrid, VectorPipe.logToLog4j, layout, feats)
+        grid(Clip.byHybrid, logToLog4j, layout, feats.geometries)
 
       /* Create the VectorTiles */
       val tiles: RDD[(SpatialKey, VectorTile)] =
-        VectorPipe.toVectorTile(Collate.byOSM, layout, fgrid).cache()
+        vectortiles(Collate.byOSM, layout, fgrid).cache()
 
       val bounds: KeyBounds[SpatialKey] =
         tiles.map({ case (key, _) => KeyBounds(key, key) }).reduce(_ combine _)
