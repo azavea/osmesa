@@ -63,9 +63,11 @@ object ProcessOSM {
 
     // Create a "planet" equivalent for currently-valid nodes
     // "planet" snapshot nodes
-    ns.where('validUntil.isNull and 'visible)
-      .drop('validUntil)
-      .drop('visible)
+    // ns.where('validUntil.isNull and 'visible)
+    //   .drop('validUntil)
+    //   .drop('visible)
+
+    ns
   }
 
   def preprocessWays(history: DataFrame): DataFrame = {
@@ -115,9 +117,11 @@ object ProcessOSM {
     // Create a “planet” equivalent for currently-valid ways
     // "planet" snapshot ways
     // NOTE: nds is array<long> rather than array<struct<ref:long>> (as in the PDS ORC files)
-    ws.where('validUntil.isNull and 'visible)
-      .drop('validUntil)
-      .drop('visible)
+    // ws.where('validUntil.isNull and 'visible)
+    //   .drop('validUntil)
+    //   .drop('visible)
+
+    ws
   }
 
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
@@ -180,7 +184,7 @@ object ProcessOSM {
       .distinct
 
     val fullReferencedWays = allReferencedWays
-      .select('changeset, 'id, 'version, 'updated, 'visible, posexplode_outer('nds).as(Seq("idx", "ref")))
+      .select('changeset, 'id, 'version, 'updated, 'visible, posexplode('nds).as(Seq("idx", "ref")))
       .repartition('id, 'updated) // repartition including updated timestamp to avoid skew (version is insufficient, as
                                   // multiple instances may exist with the same version)
 
