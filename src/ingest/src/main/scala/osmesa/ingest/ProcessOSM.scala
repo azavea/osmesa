@@ -184,7 +184,7 @@ object ProcessOSM {
       .distinct
 
     val fullReferencedWays = allReferencedWays
-      .select('changeset, 'id, 'version, 'updated, 'visible, posexplode('nds).as(Seq("idx", "ref")))
+      .select('changeset, 'id, 'version, 'updated, 'visible, posexplode_outer('nds).as(Seq("idx", "ref")))
       .repartition('id, 'updated) // repartition including updated timestamp to avoid skew (version is insufficient, as
                                   // multiple instances may exist with the same version)
 
@@ -285,7 +285,7 @@ object ProcessOSM {
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'minorVersion)
   }
 
-  def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row], useS3: Boolean): DataFrame = {
+  def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {
     import nodeGeoms.sparkSession.implicits._
 
     // Geocode geometries by country
@@ -382,12 +382,6 @@ object ProcessOSM {
     }
     .toDF("changeset", "type", "id", "country")
     .cache
-
-    // if (!useS3) {
-    //   geomCountries.repartition(1).write.format("orc").save("data/geom-countries")
-    // } else {
-    //   geomCountries.repartition(10).write.format("orc").save("s3://osm-pds-tmp/geom-countries-20180108")
-    // }
 
     geomCountries
       .where('country.isNotNull)
