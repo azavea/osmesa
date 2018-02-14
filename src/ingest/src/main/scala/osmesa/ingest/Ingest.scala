@@ -121,14 +121,22 @@ object IngestApp extends CommandApp(
       // val southAmerica =
       //   df.where("type != 'node' OR (lon <= -34.767608642578125 AND lon >= -81.33865356445312 AND lat <= 12.623252653219012 AND lat >= -55.98609153380838)")
 
-      val targetDf = df//.repartition(1000)
+      // val targetDf = df//.repartition(1000)
 
       // Test log clip fail
-      val ff = Feature(Point(1,1), osm.ElementMeta(1L, "Asdf", 12345, 2L, 3L, 32423423L, Instant.now, true, Map()))
+      // val ff = Feature(Point(1,1), osm.ElementMeta(1L, "Asdf", 12345, 2L, 3L, 32423423L, Instant.now, true, Map()))
 
-      Util.logClipFail(Extent(0, 0, 1, 1), ff)
+      // Util.logClipFail(Extent(0, 0, 1, 1), ff)
 
-      val (ns, ws, rs) = osm.fromDataFrame(targetDf)
+      // val (ns, ws, rs) = osm.fromDataFrame(targetDf)
+
+      val ppnodes = ProcessOSM.prepreocessNodes(df)
+      val ppways = ProcessOSM.preprocessWays(df)
+      val nodeGeoms = ProcessOSM.constructPointGeometries(ppnodes)
+      val wayGeoms = ProcessOSM.reconstructWayGeometries(ppnodes, ppways)
+      val geoms = nodeGeoms.union(wayGeoms)
+
+
 
       val numPartitions = 10000
       val nodePartitioner = new HashPartitioner(numPartitions)
