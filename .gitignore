@@ -78,3 +78,6 @@ dist/
 
 *.orc
 *.jar
+
+# Temporary credentials
+emr/terraform/auth.json
