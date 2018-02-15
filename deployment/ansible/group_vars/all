@@ -1,8 +1,0 @@
----
-docker_version: "17.*"
-docker_compose_version: "1.13.0"
-
-shellcheck_version: "0.3.*"
-
-aws_profile: "osmesa"
-aws_cli_version: "1.11.30"

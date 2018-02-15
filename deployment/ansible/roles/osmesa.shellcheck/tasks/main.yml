@@ -1,4 +1,0 @@
----
-- name: Install ShellCheck
-  apt: pkg="shellcheck={{ shellcheck_version }}"
-       state=present
