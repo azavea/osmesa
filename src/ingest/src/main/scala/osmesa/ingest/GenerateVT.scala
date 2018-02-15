@@ -18,7 +18,7 @@ object GenerateVT {
   def save(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) = {
     vectorTiles
       .mapValues(_.toBytes)
-      .saveToS3({ sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.zip" },
+      .saveToS3({ sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.mvt" },
                 putObjectModifier = { o => o.withCannedAcl(PublicRead) })
   }
 
