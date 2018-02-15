@@ -1,0 +1,6 @@
+# temporary credentials
+auth.json
+
+# terraform state
+terraform.tfstate
+
