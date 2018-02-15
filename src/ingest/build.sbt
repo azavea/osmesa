@@ -17,7 +17,7 @@ libraryDependencies ++= Seq(
   gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
-  geomesaHbaseDatastore,
+  //geomesaHbaseDatastore,
   cats,
   hbaseClient % "provided",
   hbaseCommon % "provided",
