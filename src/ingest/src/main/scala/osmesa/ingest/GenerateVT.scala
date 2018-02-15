@@ -1,9 +1,11 @@
 package osmesa
 
+import com.amazonaws.services.s3.model.CannedAccessControlList._
 import geotrellis.raster._
 import geotrellis.raster.rasterize._
 import geotrellis.raster.rasterize.polygon._
 import geotrellis.spark._
+import geotrellis.spark.io.s3._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vectortile._
@@ -11,13 +13,19 @@ import org.apache.spark.rdd.RDD
 
 object GenerateVT {
 
-  type VTF[D <: Geometry] = Feature[D, ElementMeta]
+  type VTF[G <: Geometry] = Feature[G, Map[String, Value]]
 
-  def apply(features: RDD[VTF[Geometry]], layout: LayoutDefinition) = {
-    val re = RasterExtent(layout.extent, layout.layoutCols, layout.layoutRows)
+  def save(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) = {
+    vectorTiles
+      .mapValues(_.toBytes)
+      .saveToS3({ sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.zip" },
+                putObjectModifier = { o => o.withCannedAcl(PublicRead) })
+  }
+
+  def apply[G <: Geometry](features: RDD[VTF[G]], layout: LayoutDefinition, layerName: String): RDD[(SpatialKey, VectorTile)] = {
     val keyedGeoms = features.flatMap{ feat =>
       val g = feat.geom
-      val keys = geometryToGridCells(g, re)
+      val keys = layout.mapTransform.keysForGeometry(g)
       keys.map{ k => (k, feat) }
     }
 
@@ -28,7 +36,7 @@ object GenerateVT {
       case l: Line => (Seq.empty, Seq(LineFeature(l, feat.data)), Seq.empty, Seq.empty, Seq.empty)
       case ml: MultiLine => (Seq.empty, Seq.empty, Seq(MultiLineFeature(ml, feat.data)), Seq.empty, Seq.empty)
       case p: Polygon => (Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(p, feat.data)), Seq.empty)
-      case mp: MultiPoly => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(mp, feat.data)))
+      case mp: MultiPolygon => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(mp, feat.data)))
     }
 
     def merge(tup: FeatureTup, feat: VTF[Geometry]) =
@@ -40,63 +48,27 @@ object GenerateVT {
       (pt1 ++ pt2, l1 ++ l2, ml1 ++ ml2, p1 ++ p2, mp1 ++ mp2)
     }
 
-    def vtFeatureToElement[G <: Geometry](feat: VTF[G]): Feature[G, Map[String, Value]] = {
-
-    }
-
-    def tupToLayer(tup: FeatureTup): Layer = {
-      val (pts, ls, mls, ps, mps) = tup
-
-    }
-
     keyedGeoms
       .combineByKey(create, merge, combine)
-      .map(
-  }
+      .map { case (sk, tup) => {
+        val (pts, ls, mls, ps, mps) = tup
+        val extent = layout.mapTransform(sk)
 
-  private def geometryToGridCells(g: Geometry, re: RasterExtent): Seq[SpatialKey] = {
-    g match {
-      case pt: Point => pointToGridCells(pt, re)
-      case l: Line => lineToGridCells(l, re)
-      case ml: MultiLine => multiLineToGridCells(ml, re)
-      case p: Polygon => polygonToGridCells(p, re)
-      case mp: MultiPolygon => multiPolygonToGridCells(mp, re)
-    }
-  }
+        val layer = StrictLayer(
+          name=layerName,
+          tileWidth=4096,
+          version=2,
+          tileExtent=extent,
+          points=pts,
+          multiPoints=Seq.empty,
+          lines=ls,
+          multiLines=mls,
+          polygons=ps,
+          multiPolygons=mps
+        )
 
-  private def pointToGridCells(point: Point, re: RaterExtent): Seq[SpatialKey] = {
-    val (x, y) = re.mapToGrid(point)
-    Seq(SpatialKey(x, y))
-  }
-
-  private def polygonToGridCells(poly: Polygon, re: RasterExtent): Seq[SpatialKey] = {
-    val keys = collection.mutable.Set.empty[SpatialKey]
-    FractionalRasterizer.foreachCellByPolygon(poly, re)( new FractionCallback {
-      def callback(col: Int, row: Int, fraction:Double) = keys += SpatialKey(col, row)
-    })
-    keys.toSeq
-  }
-
-  private def multiPolygonToGridCells(mp: MultiPolygon, re: RasterExtent): Seq[SpatialKey] = {
-    val keys = collection.mutable.Set.empty[SpatialKey]
-    FractionalRasterizer.foreachCellByMultiPolygon(mp, re)( new FractionCallback {
-      def callback(col: Int, row: Int, fraction:Double) = keys += SpatialKey(col, row)
-    })
-    keys.toSeq
-  }
-
-  private def lineToGridCells(line: Line, re: RasterExtent): Seq[SpatialKey] = {
-    val keys = collection.mutable.Set.empty[SpatialKey]
-    Rasterizer.foreachCellByLineStringDouble(line, re){ (x, y) => keys += SpatialKey(x, y) }
-    keys.toSeq
-  }
-
-  private def multiLineToGridCells(ml: MultiLine, re: RasterExtent): Seq[SpatialKey] = {
-    val keys = collection.mutable.Set.empty[SpatialKey]
-    ml.lines.foreach { line =>
-      Rasterizer.foreachCellByLineStringDouble(line, re){ (x, y) => keys += SpatialKey(x, y) }
-    }
-    keys.toSeq
+        (sk, VectorTile(Map(layerName -> layer), extent))
+      }}
   }
 
 }

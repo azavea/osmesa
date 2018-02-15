@@ -9,11 +9,13 @@ import geotrellis.spark.io.s3.{S3AttributeStore, S3LayerWriter}
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vector.io._
-import geotrellis.vectortile.VectorTile
+import geotrellis.vectortile._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
+import org.apache.spark.sql.functions.lit
+import org.apache.spark.sql.types.IntegerType
 import vectorpipe._
 import vectorpipe.LayerMetadata
 import cats.implicits._
@@ -106,11 +108,13 @@ object IngestApp extends CommandApp(
       Logger.getRootLogger().setLevel(Level.ERROR)
 
       /* For writing a compressed Tile Layer */
-      val writer = S3LayerWriter(S3AttributeStore(bucket, prefix))
-      // val writer = FileLayerWriter(FileAttributeStore("/home/colin/tiles/"))
+      // val writer = S3LayerWriter(S3AttributeStore(bucket, prefix))
+      // val writer = FileLayerWriter(FileAttributeStore("/tmp/tiles/"))
+
+      val ZOOM_LEVEL = 14
 
       val layout: LayoutDefinition =
-        ZoomedLayoutScheme.layoutForZoom(14, WebMercator.worldExtent, 512)
+        ZoomedLayoutScheme.layoutForZoom(ZOOM_LEVEL, WebMercator.worldExtent, 512)
 
       val df = ss.read.orc(orc)
       //      val df = ss.read.orc("s3://osm-pds/planet/planet-latest.orc")
@@ -130,14 +134,44 @@ object IngestApp extends CommandApp(
 
       // val (ns, ws, rs) = osm.fromDataFrame(targetDf)
 
-      val ppnodes = ProcessOSM.prepreocessNodes(df)
+      val ppnodes = ProcessOSM.preprocessNodes(df)
       val ppways = ProcessOSM.preprocessWays(df)
       val nodeGeoms = ProcessOSM.constructPointGeometries(ppnodes)
       val wayGeoms = ProcessOSM.reconstructWayGeometries(ppnodes, ppways)
-      val geoms = nodeGeoms.union(wayGeoms)
+      val geoms = wayGeoms.union(nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)))
 
+      val features: RDD[GenerateVT.VTF[Geometry]] = geoms
+        .rdd
+        .map { row =>
+          val changeset = row.getAs[Long]("changeset")
+          val id = row.getAs[Long]("id")
+          val version = row.getAs[Long]("version")
+          val minorVersion = row.getAs[Int]("minorVersion")
+          val tags = row.getAs[Map[String, String]]("tags")
+          val geom = row.getAs[scala.Array[Byte]]("geom")
+          val updated = row.getAs[java.sql.Timestamp]("updated")
+          val validUntil = row.getAs[java.sql.Timestamp]("validUntil")
 
+          // TODO check validity of reprojected geometry + change this to a flatMap so those can be omitted
 
+          Feature(
+            geom.readWKB.reproject(LatLng, WebMercator),
+            tags.map {
+              case (k, v) => (k, VString(v))
+            } ++ Map(
+              "__changeset" -> VInt64(changeset),
+              "__id" -> VInt64(id),
+              "__version" -> VInt64(version),
+              "__minorVersion" -> VInt64(minorVersion),
+              "__updated" -> VInt64(updated.getTime),
+              "__validUntil" -> VInt64(Option(validUntil).map(_.getTime).getOrElse(0))
+            )
+          )
+        }
+
+      GenerateVT.save(GenerateVT(features, layout, layer), ZOOM_LEVEL, "geotrellis-test", "jpolchlopek/vectortiles/iom")
+
+      /*
       val numPartitions = 10000
       val nodePartitioner = new HashPartitioner(numPartitions)
       val wayPartitioner = new HashPartitioner(numPartitions)
@@ -175,6 +209,7 @@ object IngestApp extends CommandApp(
 
       /* Write the tiles */
       writer.write(LayerId(layer, 14), ContextRDD(tiles, meta), ZCurveKeyIndexMethod)
+      */
 
       ss.stop()
 
