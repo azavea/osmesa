@@ -14,7 +14,7 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions.lit
+import org.apache.spark.sql.functions.{isnull, lit}
 import org.apache.spark.sql.types.IntegerType
 import vectorpipe._
 import vectorpipe.LayerMetadata
@@ -74,6 +74,15 @@ object Util {
 //   def getDataStore(table: String):
 // }
 
+/*
+ * Usage example:
+ *
+ * sbt "project ingest" assembly
+ *
+ * spark-submit --class osmesa.IngestApp ingest/target/scala-2.11/osmesa-ingest.jar --orc=$HOME/data/osm/isle-of-man.orc --bucket=geotrellis-test --key=jpolchlopek/vectortiles --layer=history
+ *
+ */
+
 object IngestApp extends CommandApp(
   name = "osmesa-ingest",
   header = "Ingest OSM ORC into GeoMesa instance",
@@ -104,6 +113,8 @@ object IngestApp extends CommandApp(
         .enableHiveSupport
         .getOrCreate
 
+      import ss.implicits._
+
       /* Silence the damn INFO logger */
       Logger.getRootLogger().setLevel(Level.ERROR)
 
@@ -111,10 +122,10 @@ object IngestApp extends CommandApp(
       // val writer = S3LayerWriter(S3AttributeStore(bucket, prefix))
       // val writer = FileLayerWriter(FileAttributeStore("/tmp/tiles/"))
 
-      val ZOOM_LEVEL = 14
+      val ZOOM_LEVEL = 8
 
       val layout: LayoutDefinition =
-        ZoomedLayoutScheme.layoutForZoom(ZOOM_LEVEL, WebMercator.worldExtent, 512)
+        ZoomedLayoutScheme(WebMercator, 512).levelForZoom(ZOOM_LEVEL).layout
 
       val df = ss.read.orc(orc)
       //      val df = ss.read.orc("s3://osm-pds/planet/planet-latest.orc")
@@ -138,7 +149,7 @@ object IngestApp extends CommandApp(
       val ppways = ProcessOSM.preprocessWays(df)
       val nodeGeoms = ProcessOSM.constructPointGeometries(ppnodes)
       val wayGeoms = ProcessOSM.reconstructWayGeometries(ppnodes, ppways)
-      val geoms = wayGeoms.union(nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)))
+      val geoms = wayGeoms.union(nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType))).where(!isnull('geom))
 
       val features: RDD[GenerateVT.VTF[Geometry]] = geoms
         .rdd
