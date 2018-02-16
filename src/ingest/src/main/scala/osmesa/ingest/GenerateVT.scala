@@ -30,33 +30,44 @@ object GenerateVT {
                 putObjectModifier = { o => o.withCannedAcl(PublicRead) })
   }
 
-  def apply[G <: Geometry](features: RDD[VTF[G]], layout: LayoutDefinition, layerName: String): RDD[(SpatialKey, VectorTile)] = {
-    val keyedGeoms = features.flatMap{ feat =>
+  def keyToLayout[G <: Geometry](features: RDD[VTF[G]], layout: LayoutDefinition): RDD[(SpatialKey, (SpatialKey, VTF[G]))] = {
+    features.flatMap{ feat =>
       val g = feat.geom
       val keys = layout.mapTransform.keysForGeometry(g)
       keys.map{ k => (k, (k, feat)) }
     }
+  }
 
+  def upLevel[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, VTF[G]))]): RDD[(SpatialKey, (SpatialKey, VTF[G]))] = {
+    keyedGeoms.map{ case (key, (_, feat)) => {
+      val SpatialKey(x, y) = key
+      val newKey = SpatialKey(x/2, y/2)
+      (newKey, (newKey, feat))
+    }}
+  }
+
+  def makeVectorTiles[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, VTF[G]))], layout: LayoutDefinition, layerName: String): RDD[(SpatialKey, VectorTile)] = {
     type FeatureTup = (Seq[VTF[Point]], Seq[VTF[MultiPoint]], Seq[VTF[Line]], Seq[VTF[MultiLine]], Seq[VTF[Polygon]], Seq[VTF[MultiPolygon]])
 
-    def timedIntersect[G <: Geometry](geom: G, ex: Extent) = {
+    def timedIntersect[G <: Geometry](geom: G, ex: Extent, id: Long) = {
       val future = Future { geom.intersection(ex) }
       Try(Await.result(future, 500 milliseconds)) match {
         case Success(res) => res
         case Failure(_) =>
-          logger.warn(s"Could not intersect $geom with $ex")
+          logger.warn(s"Could not intersect $geom with $ex [feature id=$id]")
           NoResult
       }
     }
 
     def create(arg: (SpatialKey, VTF[Geometry])): FeatureTup = {
       val (sk, feat) = arg
+      val fid = feat.data("__id").asInstanceOf[VInt64].value
       val baseEx = layout.mapTransform(sk)
       val ex = Extent(baseEx.xmin - baseEx.width, baseEx.ymin - baseEx.height, baseEx.xmax + baseEx.width, baseEx.ymax + baseEx.height)
       feat.geom match {
         case pt: Point => (Seq(PointFeature(pt, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
         case l: Line =>
-          timedIntersect(l, ex) match {
+          timedIntersect(l, ex, fid) match {
             // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
             // case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
             // case MultiLineResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(res, feat.data)), Seq.empty, Seq.empty)
@@ -72,7 +83,7 @@ object GenerateVT {
             case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
           }
         case ml: MultiLine =>
-          timedIntersect(ml, ex) match {
+          timedIntersect(ml, ex, fid) match {
             // non results and point results should not happen due to buffering
             // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
             // case PointResult(res) => (Seq(PointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
@@ -89,7 +100,7 @@ object GenerateVT {
             case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
           }
         case p: Polygon =>
-          timedIntersect(p, ex) match {
+          timedIntersect(p, ex, fid) match {
             // should only see (or care about) polygon intersection results
             // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
             // case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
@@ -108,7 +119,7 @@ object GenerateVT {
             case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
           }
         case mp: MultiPolygon => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(mp, feat.data)))
-          timedIntersect(mp, ex) match {
+          timedIntersect(mp, ex, fid) match {
             // should only see (or care about) polygon intersection results
             // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
             // case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
