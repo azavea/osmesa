@@ -1,3 +1,0 @@
----
-- name: Adding JAVA_HOME
-  lineinfile: dest=/home/vagrant/.bashrc line='export JAVA_HOME=`jrunscript -e \'java.lang.System.out.println(java.lang.System.getProperty("java.home"));\'`' insertafter='EOF' state=present

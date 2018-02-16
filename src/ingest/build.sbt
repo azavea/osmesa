@@ -15,6 +15,7 @@ libraryDependencies ++= Seq(
   gtSpark exclude("com.google.protobuf", "protobuf-java"),
   gtVector exclude("com.google.protobuf", "protobuf-java"),
   gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
+  gtShapefile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
   geomesaHbaseDatastore,

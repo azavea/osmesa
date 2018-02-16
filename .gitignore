@@ -52,7 +52,6 @@ deployment/ansible/roles/azavea.*
 # Node and Webpack
 node_modules/
 npm-debug.log
-index.html
 pgw.communitymapping*.js
 pgw.communitymapping*.js.map
 vendor.bundle.js
@@ -78,3 +77,6 @@ dist/
 
 *.orc
 *.jar
+
+# Temporary credentials
+emr/terraform/auth.json
