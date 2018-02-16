@@ -47,8 +47,6 @@ object Homography {
     val h = svd(2).getColumn(8).reshape(3,3)
     val h33 = h.get(2,2)
 
-    // println(m.mmul(h))
-
     h.div(h33)
   }
 
@@ -65,15 +63,6 @@ object Homography {
     }
 
     dlt(vs, ws)
-  }
-
-  def kappa(h: DoubleMatrix): Double = {
-    val spectrum = Eigen.eigenvalues(h).getReal.toArray
-    spectrum(0) / spectrum(2)
-  }
-
-  def kappa(left: Geometry, right: Geometry): Double = {
-    kappa(dlt(left, right))
   }
 
 }

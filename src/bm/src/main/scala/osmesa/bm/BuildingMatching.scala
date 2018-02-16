@@ -38,13 +38,6 @@ object BuildingMatching {
       .getOrCreate
   }
 
-  // def pred(a: (OSMFeature, Null), b: (OSMFeature, Null)): Boolean =
-  //   a._1.geom.intersects(b._1.geom)
-
-  // def metapred(a: Envelope, b: Envelope): Boolean = a.intersects(b)
-
-  // implicit def conversion(a: OSMFeature): Geometry = a.geom
-
   def filterfn1(clipGeometry: Option[Geometry])(feature: OSMFeature): Boolean = {
     clipGeometry match {
       case Some(g) => feature.geom.intersects(g)
@@ -151,8 +144,8 @@ object BuildingMatching {
       println(s"POSSIBLE MATCHES: ${possibleMatches.count}")
 
       val data = possibleMatches.map({ case (left: OSMFeature, right: OSMFeature) =>
-        val h1 = VertexMatching.geometryToGeometry(left.geom, right.geom)
-        val h2 = VertexMatching.geometryToGeometry(right.geom, left.geom)
+        val h1 = VertexProjection.geometryToGeometry(left.geom, right.geom)
+        val h2 = VertexProjection.geometryToGeometry(right.geom, left.geom)
         (left.geom.toGeoJson, right.geom.toGeoJson, h1.toArray.toList, h2.toArray.toList)
       })
 

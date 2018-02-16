@@ -5,7 +5,7 @@ import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollection
 
 
-object VertexMatching {
+object VertexProjection {
 
   def pointToPolygon(p: Point, right: Polygon) = {
 
