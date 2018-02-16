@@ -93,9 +93,10 @@ object IngestApp extends CommandApp(
     val bucketO = Opts.option[String]("bucket", help = "S3 bucket to write VTs to")
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
     val layerO = Opts.option[String]("layer", help = "Name of the output Layer")
+    val zoomO = Opts.option[Int]("zoom", help = "Zoom level to ingest into (default=10)").withDefault(10)
     val localF = Opts.flag("local", help = "Is this to be run locally, not on EMR?").orFalse
 
-    (orcO, bucketO, prefixO, layerO, localF).mapN { (orc, bucket, prefix, layer, local) =>
+    (orcO, bucketO, prefixO, layerO, zoomO, localF).mapN { (orc, bucket, prefix, layer, zoomLevel, local) =>
 
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
@@ -116,16 +117,14 @@ object IngestApp extends CommandApp(
       import ss.implicits._
 
       /* Silence the damn INFO logger */
-      Logger.getRootLogger().setLevel(Level.ERROR)
+      Logger.getRootLogger().setLevel(Level.WARN)
 
       /* For writing a compressed Tile Layer */
       // val writer = S3LayerWriter(S3AttributeStore(bucket, prefix))
       // val writer = FileLayerWriter(FileAttributeStore("/tmp/tiles/"))
 
-      val ZOOM_LEVEL = 8
-
       val layout: LayoutDefinition =
-        ZoomedLayoutScheme(WebMercator, 512).levelForZoom(ZOOM_LEVEL).layout
+        ZoomedLayoutScheme(WebMercator, 512).levelForZoom(zoomLevel).layout
 
       val df = ss.read.orc(orc)
       //      val df = ss.read.orc("s3://osm-pds/planet/planet-latest.orc")
@@ -180,7 +179,7 @@ object IngestApp extends CommandApp(
           )
         }
 
-      GenerateVT.save(GenerateVT(features, layout, layer), ZOOM_LEVEL, "geotrellis-test", "jpolchlopek/vectortiles/iom")
+      GenerateVT.save(GenerateVT(features, layout, layer), zoomLevel, "geotrellis-test", "jpolchlopek/vectortiles/iom")
 
       /*
       val numPartitions = 10000
