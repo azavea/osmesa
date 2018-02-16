@@ -93,10 +93,11 @@ object IngestApp extends CommandApp(
     val bucketO = Opts.option[String]("bucket", help = "S3 bucket to write VTs to")
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
     val layerO = Opts.option[String]("layer", help = "Name of the output Layer")
-    val zoomO = Opts.option[Int]("zoom", help = "Zoom level to ingest into (default=10)").withDefault(10)
+    val maxzoomO = Opts.option[Int]("zoom", help = "Maximum zoom level for ingest (default=14)").withDefault(14)
     val localF = Opts.flag("local", help = "Is this to be run locally, not on EMR?").orFalse
+    val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
 
-    (orcO, bucketO, prefixO, layerO, zoomO, localF).mapN { (orc, bucket, prefix, layer, zoomLevel, local) =>
+    (orcO, bucketO, prefixO, layerO, maxzoomO, localF, pyramidF).mapN { (orc, bucket, prefix, layer, maxZoomLevel, local, pyramid) =>
 
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
@@ -119,30 +120,7 @@ object IngestApp extends CommandApp(
       /* Silence the damn INFO logger */
       Logger.getRootLogger().setLevel(Level.WARN)
 
-      /* For writing a compressed Tile Layer */
-      // val writer = S3LayerWriter(S3AttributeStore(bucket, prefix))
-      // val writer = FileLayerWriter(FileAttributeStore("/tmp/tiles/"))
-
-      val layout: LayoutDefinition =
-        ZoomedLayoutScheme(WebMercator, 512).levelForZoom(zoomLevel).layout
-
       val df = ss.read.orc(orc)
-      //      val df = ss.read.orc("s3://osm-pds/planet/planet-latest.orc")
-
-      // val southAmericaBeforeJune =
-      //   df.where("timestamp <= '2017-06-01 00:00:00.0' AND (type != 'node' OR (lon <= -34.767608642578125 AND lon >= -81.33865356445312 AND lat <= 12.623252653219012 AND lat >= -55.98609153380838))")
-
-      // val southAmerica =
-      //   df.where("type != 'node' OR (lon <= -34.767608642578125 AND lon >= -81.33865356445312 AND lat <= 12.623252653219012 AND lat >= -55.98609153380838)")
-
-      // val targetDf = df//.repartition(1000)
-
-      // Test log clip fail
-      // val ff = Feature(Point(1,1), osm.ElementMeta(1L, "Asdf", 12345, 2L, 3L, 32423423L, Instant.now, true, Map()))
-
-      // Util.logClipFail(Extent(0, 0, 1, 1), ff)
-
-      // val (ns, ws, rs) = osm.fromDataFrame(targetDf)
 
       val ppnodes = ProcessOSM.preprocessNodes(df)
       val ppways = ProcessOSM.preprocessWays(df)
@@ -179,47 +157,21 @@ object IngestApp extends CommandApp(
           )
         }
 
-      GenerateVT.save(GenerateVT(features, layout, layer), zoomLevel, "geotrellis-test", "jpolchlopek/vectortiles/iom")
+      val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
 
-      /*
-      val numPartitions = 10000
-      val nodePartitioner = new HashPartitioner(numPartitions)
-      val wayPartitioner = new HashPartitioner(numPartitions)
+      def build[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, GenerateVT.VTF[G]))], layoutLevel: LayoutLevel): Unit = {
+        val LayoutLevel(zoom, layout) = layoutLevel
 
-      /* Reproject nodes */
-      val reprojectedNodes =
-        ns.partitionBy(nodePartitioner).mapPartitions({ partition =>
-          val transform = Transform(LatLng, WebMercator)
-          partition.map { case (nodeId, node) =>
-            val (lon, lat) = transform(node.lon, node.lat)
-            (nodeId, node.copy(lon = lon, lat = lat))
-          }
-        }, preservesPartitioning = true)
+        GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, layer), zoom, bucket, prefix)
 
-      /* Assumes that OSM ORC is in LatLng */
-      val feats =
-        osm.features(/*VectorPipe.logToLog4j,*/ reprojectedNodes, ws.partitionBy(wayPartitioner), rs)
-        // osm.features(/*VectorPipe.logToLog4j,*/ reprojectedNodes.map(_._2), ws.partitionBy(wayPartitioner).map(_._2), rs.map(_._2))
+        if (pyramid && zoom > 0)
+          build(GenerateVT.upLevel(keyedGeoms), layoutScheme.zoomOut(layoutLevel))
+      }
 
-      /* Associated each Feature with a SpatialKey */
-      val fgrid: RDD[(SpatialKey, Iterable[osm.OSMFeature])] =
-        //        VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats, new HashPartitioner(numPartitions))
-        //        VectorPipe.toGrid(Clip.byHybrid, Util.logClipFail, layout, feats)
-        grid(Clip.byHybrid, logToLog4j, layout, feats.geometries)
+      val maxLayoutLevel = layoutScheme.levelForZoom(maxZoomLevel)
+      val keyed = GenerateVT.keyToLayout(features, maxLayoutLevel.layout)
 
-      /* Create the VectorTiles */
-      val tiles: RDD[(SpatialKey, VectorTile)] =
-        vectortiles(Collate.byOSM, layout, fgrid).cache()
-
-      val bounds: KeyBounds[SpatialKey] =
-        tiles.map({ case (key, _) => KeyBounds(key, key) }).reduce(_ combine _)
-
-      /* Construct metadata for the Layer */
-      val meta = LayerMetadata(layout, bounds)
-
-      /* Write the tiles */
-      writer.write(LayerId(layer, 14), ContextRDD(tiles, meta), ZCurveKeyIndexMethod)
-      */
+      build(keyed, maxLayoutLevel)
 
       ss.stop()
 
