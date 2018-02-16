@@ -108,18 +108,3 @@ class QuadTreePartitioner(divisionSet: Set[Int], partitions: Int) extends Partit
 
   override def hashCode: Int = numPartitions
 }
-
-// object QuadTreePartitionerMain {
-
-//   def main(args: Array[String]): Unit = {
-//     val p1 = new QuadTreePartitioner(3, 1031)
-//     val p2 = new QuadTreePartitioner(16, 1031)
-//     var g = Line(Point(-180,-90), Point(-160, -90))
-
-//     println(s"$g ${p1.getAddress(g)} ${p2.getAddress(g)}")
-
-//     g = Line(Point(-180,-90), Point(-161, -90))
-//     println(s"$g ${p1.getAddress(g)} ${p2.getAddress(g)}")
-//   }
-
-// }
