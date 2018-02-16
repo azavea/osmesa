@@ -25,6 +25,21 @@ object Homography {
     )
   }
 
+  def dlt(pairs: Seq[(Point, Point)], cx: Double, cy: Double): DoubleMatrix = {
+    val m = new DoubleMatrix(pairs.length * 2, 9)
+
+    pairs
+      .flatMap({ case (a: Point, b: Point) => pairToRows(a, b, cx, cy, 1e-5, 1e-5) })
+      .zipWithIndex
+      .map({ case (c: DoubleMatrix, i: Int) => m.putRow(i, c) })
+
+    val svd = Singular.fullSVD(m)
+    val h = svd(2).getColumn(8).reshape(3,3).transpose()
+    val h33 = h.get(2,2)
+
+    h.div(h33)
+  }
+
   def dlt(vs: Seq[Point], ws: Seq[Point]): DoubleMatrix = {
     val xmin = vs.map({ p: Point => p.x }).reduce(math.min(_,_))
     val xmax = vs.map({ p: Point => p.x }).reduce(math.max(_,_))
@@ -44,7 +59,7 @@ object Homography {
       .map({ case (c: DoubleMatrix, i: Int) => m.putRow(i, c) })
 
     val svd = Singular.fullSVD(m)
-    val h = svd(2).getColumn(8).reshape(3,3)
+    val h = svd(2).getColumn(8).reshape(3,3).transpose()
     val h33 = h.get(2,2)
 
     h.div(h33)
