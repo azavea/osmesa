@@ -8,9 +8,10 @@ import geotrellis.vector.{Feature, Line, Point}
 import geotrellis.util.Haversine
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
-import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd._
 import org.apache.spark.sql._
 import vectorpipe._
+import vectorpipe.osm._
 
 // --- //
 
@@ -83,7 +84,8 @@ object Analysis {
         .filter { case (_, iter) => iter.size === 1 }
         .map { case (l, ws) => (l, ws.head) }
 
-      val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.toHistory(nodes, news)._2
+      val lines: RDD[Feature[Line, osm.ElementMeta]] = osm.features(nodes, news, ss.sparkContext.emptyRDD[(Long, Relation)]).lines
+      //PlanetHistory.features(nodes, news).lines
 
       /* The `Long` is now the user's unchanging unique ID */
       val byUsers: RDD[(Long, Iterable[Feature[Line, osm.ElementMeta]])] =

@@ -1,3 +1,0 @@
----
-dependencies:
-  - { role: azavea.aws-cli,0.1.0 }
