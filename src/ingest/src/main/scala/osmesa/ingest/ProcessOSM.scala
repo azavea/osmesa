@@ -289,7 +289,15 @@ object ProcessOSM {
     import nodeGeoms.sparkSession.implicits._
 
     // Geocode geometries by country
-    val geoms = nodeGeoms.union(wayGeoms)
+    val geoms = nodeGeoms
+      .withColumn("minorVersion", lit(0))
+      .withColumn("type", lit("node"))
+      .where('geom.isNotNull and size('tags) > 0)
+      .union(wayGeoms
+        .withColumn("type", lit("way"))
+        .where('geom.isNotNull and size('tags) > 0)
+      )
+      .repartition()
 
     object Resource {
       def apply(name: String): String = {
@@ -367,21 +375,24 @@ object ProcessOSM {
         map(_._2)
       }
     }
-    val geomCountries = geoms
+    geoms
       .mapPartitions { partition =>
-      val countryLookup = new CountryLookup()
+        val countryLookup = new CountryLookup()
 
-      partition.flatMap { row =>
-        val changeset = row.getAs[Long]("changeset")
-        val t = row.getAs[String]("type")
-        val id = row.getAs[Long]("id")
-        val geom = row.getAs[scala.Array[Byte]]("geom")
+        partition.flatMap { row =>
+          val changeset = row.getAs[Long]("changeset")
+          val t = row.getAs[String]("type")
+          val id = row.getAs[Long]("id")
+          val geom = row.getAs[scala.Array[Byte]]("geom")
 
-        countryLookup.lookup(geom.readWKB).map(x => (changeset, t, id, x.code))
+          countryLookup.lookup(geom.readWKB).map(x => (changeset, t, id, x.code))
+        }
       }
-    }
-    .toDF("changeset", "type", "id", "country")
-    .cache
+      .toDF("changeset", "type", "id", "country")
+  }
+
+  def regionsByChangeset(geomCountries: Dataset[Row]): DataFrame = {
+    import geomCountries.sparkSession.implicits._
 
     geomCountries
       .where('country.isNotNull)
