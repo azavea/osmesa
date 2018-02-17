@@ -99,7 +99,7 @@ object BuildingMatching {
         .filter({ f: OSMFeature =>
           f.geom match {
             case p: Polygon => (p.vertices.length > 4)
-            case mp: MultiPolygon => (mp.vertices.length > 4)
+            // case mp: MultiPolygon => (mp.vertices.length > 4)
             case _ => false
           }
         })
@@ -112,7 +112,7 @@ object BuildingMatching {
         .filter({ f: OSMFeature =>
           f.geom match {
             case p: Polygon => (p.vertices.length > 4)
-            case mp: MultiPolygon => (mp.vertices.length > 4)
+            // case mp: MultiPolygon => (mp.vertices.length > 4)
             case _ => false
           }
         })
@@ -131,7 +131,7 @@ object BuildingMatching {
             val left = a(i)
             var j = i+1; while (j < a.length) {
               val right = a(j)
-              if (left._2 != right._2 && left._1.geom.intersects(right._1.geom))
+              if (left._2 != right._2)
                 ab.append((left._1, right._1))
               j = j + 1
             }
@@ -144,15 +144,14 @@ object BuildingMatching {
       println(s"POSSIBLE MATCHES: ${possibleMatches.count}")
 
       val data = possibleMatches.map({ case (left: OSMFeature, right: OSMFeature) =>
-        val h1 = VertexProjection.geometryToGeometry(left.geom, right.geom)
-        val h2 = VertexProjection.geometryToGeometry(right.geom, left.geom)
-        (left.geom.toGeoJson, right.geom.toGeoJson, h1.toArray.toList, h2.toArray.toList)
+        val h = VertexMatching(left.geom.asInstanceOf[Polygon], right.geom.asInstanceOf[Polygon])
+        (left.geom.toGeoJson, right.geom.toGeoJson, h.toArray.toList)
       })
 
-      data.take(100).foreach({ case (left: String, right: String, h1: List[Double], h2: List[Double]) =>
+      data.collect.foreach({ case (left: String, right: String, h: List[Double]) =>
         println(left)
         println(right)
-        println(s"$h1 $h2")
+        println(h)
         println
       })
 

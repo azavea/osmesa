@@ -10,36 +10,18 @@ import com.vividsolutions.jts.geom.Coordinate
 object VertexMatching {
 
   private def matcher(
-    points1: Array[Point], points2: Array[Point], skips: Int,
+    points1: Array[Point], points2: Array[Point],
     offsetx: Double, offsety: Double,
-    best: Double = Double.MaxValue, current: Double = 0.0,
     list: List[(Point, Point)] = List.empty[(Point, Point)]
-  ): (Double, List[(Point, Point)]) = {
-    val end = (Double.MaxValue, List.empty[(Point, Point)])
-    if (points1.isEmpty) {
-      if (current < best) (current, list)
-      else end
-    }
-    else if (points2.isEmpty) end
+  ): List[(Point, Point)] = {
+    if (points1.isEmpty || points2.isEmpty) list
     else {
-      val doSkip =
-        if (skips > 0) matcher(
-          points1.drop(1), points2, skips-1,
-          offsetx, offsety,
-          best, current, list
-        )
-        else end
-
-      val dontSkip = {
-        val (d, i) = argmin(points1.head, points2, offsetx, offsety)
-        matcher(
-          points1.drop(1), points2.drop(i+1), skips,
-          offsetx, offsety,
-          best, current+d, list ++ List((points1.head, points2(i)))
-        )
-      }
-      if (doSkip._1 < dontSkip._1) doSkip
-      else dontSkip
+      val (_, i) = argmin(points1.head, points2, offsetx, offsety)
+      matcher(
+        points1.drop(1), points2.drop(i+1),
+        offsetx, offsety,
+        list ++ List((points1.head, points2(i)))
+      )
     }
   }
 
@@ -91,9 +73,12 @@ object VertexMatching {
       points.drop(i) ++ points.take(i)
     }
 
-    val (_, pairs) = matcher(points1, points2, points1.length-4, offsetx, offsety)
+    val pairs = matcher(points1, points2, offsetx, offsety)
 
-    Homography.dlt(pairs, centroidx, centroidy)
+    Homography.dlt(
+      if (pairs.length >= 4) pairs; else points1.zip(points2).take(4).toList,
+      centroidx, centroidy
+    )
   }
 
   def main(args: Array[String]): Unit = {
