@@ -297,7 +297,7 @@ object ProcessOSM {
         .withColumn("type", lit("way"))
         .where('geom.isNotNull and size('tags) > 0)
       )
-      .repartition()
+      .repartition('id, 'type, 'updated)
 
     object Resource {
       def apply(name: String): String = {
