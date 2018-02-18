@@ -58,7 +58,7 @@ object RegionStatsApp extends CommandApp(
 
       val geometriesByRegion = ProcessOSM.geometriesByRegion(nodeGeoms, wayGeoms).cache
 
-      geometriesByRegion.repartition(1).write.format("orc").save(outRegions)
+      geometriesByRegion.repartition(10).write.format("orc").save(outRegions)
 
       val regionsByChangeset = ProcessOSM.regionsByChangeset(geometriesByRegion)
 
