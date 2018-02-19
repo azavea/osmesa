@@ -47,6 +47,8 @@ object Homography {
     val h = svd(2).getColumn(8).reshape(3,3)
     val h33 = h.get(2,2)
 
+    // println(m.mmul(h))
+
     h.div(h33)
   }
 

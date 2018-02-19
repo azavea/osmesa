@@ -7,18 +7,17 @@ import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vector.io._
 
+import org.apache.log4j.{Level, Logger}
+import org.apache.spark._
+import org.apache.spark.rdd._
 import org.apache.spark.SparkConf
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 
 import vectorpipe._
 import vectorpipe.osm._
-import monocle.macros.GenLens // XXX
 
 import com.vividsolutions.jts.geom.Envelope
-
-import org.apache.spark._
-import org.apache.spark.rdd._
 
 
 object BuildingMatching {
@@ -39,46 +38,71 @@ object BuildingMatching {
       .getOrCreate
   }
 
-  // def match1(a: OSMFeature, b: OSMFeature): Boolean =
-  //   (a.data.uid == b.data.uid) || (a.geom == b.geom)
+  // def pred(a: (OSMFeature, Null), b: (OSMFeature, Null)): Boolean =
+  //   a._1.geom.intersects(b._1.geom)
 
   // def metapred(a: Envelope, b: Envelope): Boolean = a.intersects(b)
 
-  implicit def conversion(a: OSMFeature): Geometry = a.geom
+  // implicit def conversion(a: OSMFeature): Geometry = a.geom
+
+  def filterfn1(clipGeometry: Option[Geometry])(feature: OSMFeature): Boolean = {
+    clipGeometry match {
+      case Some(g) => feature.geom.intersects(g)
+      case None => true
+    }
+  }
+
+  def filterfn2(clipGeometry: Option[Geometry])(pair: (Long, Node)): Boolean = {
+    clipGeometry match {
+      case Some(g) =>
+        val node = pair._2
+        Point(node.lon, node.lat).intersects(g)
+      case None => true
+    }
+  }
+
+  def calculateEnvelope(pairs: Iterator[(OSMFeature, Null)]): Iterator[Envelope] =
+    VectorJoin.calculateEnvelope(pairs.map({ pair => pair._1 }))
 
   def main(args: Array[String]): Unit = {
-    val ss = sparkSession("Building Matching")
+    val ss = sparkSession("Building-Matching")
+
+    Logger.getLogger("org").setLevel(Level.ERROR)
+    Logger.getLogger("akka").setLevel(Level.ERROR)
+
     val layout = ZoomedLayoutScheme.layoutForZoom(15, WebMercator.worldExtent, 512)
-    val (ns1, ws1, rs1) = vectorpipe.osm.fromORC(args(0))(ss).get // old
-    val (ns2, ws2, rs2) = vectorpipe.osm.fromORC(args(1))(ss).get // new
+
     val clipGeometry: Option[Geometry] =
-      if (args.length >= 3) Some(scala.io.Source.fromFile(args(2)).mkString.parseGeoJson[Geometry])
+      if (args.length >= 4) Some(scala.io.Source.fromFile(args(3)).mkString.parseGeoJson[Geometry])
       else None
-    val oldFeatures = vectorpipe
-      .osm.features(ns1, ws1, rs1).geometries
-      .filter({ feature => feature.data.tags.contains("building") })
-      .filter({ feature =>
-        clipGeometry match {
-          case Some(g) => feature.geom.intersects(g)
-          case None => true
-        } })
-    val newFeatures = vectorpipe
-      .osm.features(ns2, ws2, rs2).geometries
-      .filter({ feature => feature.data.tags.contains("building") })
-      .filter({ feature =>
-        clipGeometry match {
-          case Some(g) => feature.geom.intersects(g)
-          case None => true
-        } })
 
-    if (clipGeometry == None) { // No clip geometry supplied
-      val possibleAdditions = newFeatures.map({ f => (f.data.uid, f) })
-        .subtractByKey(oldFeatures.map({ f => (f.data.uid, f) }))
+    val osmFeatures =
+      if (args(1).endsWith(".orc")) {
+        val (ns1, ws1, rs1) = vectorpipe.osm.fromORC(args(1))(ss).get
+        vectorpipe
+          .osm.features(ns1.filter(filterfn2(clipGeometry)), ws1, rs1).geometries
+          .filter({ feature => feature.data.tags.contains("building") })
+          .filter(filterfn1(clipGeometry))
+      }
+      else ss.sparkContext.objectFile[OSMFeature](args(1))
+
+    val nomeFeatures =
+      if (args(2).endsWith(".orc")) {
+        val (ns2, ws2, rs2) = vectorpipe.osm.fromORC(args(2))(ss).get
+        vectorpipe
+          .osm.features(ns2.filter(filterfn2(clipGeometry)), ws2, rs2).geometries
+          .filter({ feature => feature.data.tags.contains("building") })
+          .filter(filterfn1(clipGeometry))
+      }
+      else ss.sparkContext.objectFile[OSMFeature](args(2))
+
+    if (args(0) == "match") { // No clip geometry supplied
+
+      val nomeNotOsm = nomeFeatures.map({ f => (f.data.uid, f) })
+        .subtractByKey(osmFeatures.map({ f => (f.data.uid, f) }))
         .values.map({ f => (f.geom, f) })
-        .subtractByKey(oldFeatures.map({ f => (f.geom, f) }))
+        .subtractByKey(osmFeatures.map({ f => (f.geom, f) }))
         .values
-
-      val some = possibleAdditions
         .filter({ f: OSMFeature =>
           f.geom match {
             case p: Polygon => (p.vertices.length > 4)
@@ -87,23 +111,74 @@ object BuildingMatching {
           }
         })
 
-      some.saveAsObjectFile("/tmp/some")
-      val some1 = ss.sparkContext.objectFile[OSMFeature]("/tmp/some")
+      val osmNotNome = osmFeatures.map({ f => (f.data.uid, f) })
+        .subtractByKey(nomeFeatures.map({ f => (f.data.uid, f) }))
+        .values.map({ f => (f.geom, f) })
+        .subtractByKey(nomeFeatures.map({ f => (f.geom, f) }))
+        .values
+        .filter({ f: OSMFeature =>
+          f.geom match {
+            case p: Polygon => (p.vertices.length > 4)
+            case mp: MultiPolygon => (mp.vertices.length > 4)
+            case _ => false
+          }
+        })
 
-      println(s"POSSIBLE ADDITIONS: ${possibleAdditions.count}")
+      println(s"NOME NOT OSM: ${nomeNotOsm.count}")
+      println(s"OSM NOT NOME: ${osmNotNome.count}")
 
-      val homographies =
-        some1.map({ f: OSMFeature => Homography.kappa(f,f) })
+      val possibleMatches = nomeNotOsm.map({ f => (f, 0) })
+        .union(osmNotNome.map({ f => (f, 1) }))
+        .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 1031))
+        .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
+          val a = it.toArray
+          val ab = scala.collection.mutable.ArrayBuffer.empty[(OSMFeature, OSMFeature)]
 
-      println(s"RDD: ${homographies.collect().toList}")
+          var i = 0; while (i < a.length) {
+            val left = a(i)
+            var j = i+1; while (j < a.length) {
+              val right = a(j)
+              if (left._2 != right._2 && left._1.geom.intersects(right._1.geom))
+                ab.append((left._1, right._1))
+              j = j + 1
+            }
+            i = i + 1
+          }
+
+          ab.toIterator
+        }, preservesPartitioning = true)
+
+      println(s"POSSIBLE MATCHES: ${possibleMatches.count}")
+
+      val data = possibleMatches.map({ case (left: OSMFeature, right: OSMFeature) =>
+        val h1 = VertexMatching.geometryToGeometry(left.geom, right.geom)
+        val h2 = VertexMatching.geometryToGeometry(right.geom, left.geom)
+        (left.geom.toGeoJson, right.geom.toGeoJson, h1.toArray.toList, h2.toArray.toList)
+      })
+
+      data.take(100).foreach({ case (left: String, right: String, h1: List[Double], h2: List[Double]) =>
+        println(left)
+        println(right)
+        println(s"$h1 $h2")
+        println
+      })
+
+      // println(s"DATA: ${data.take(100).toList}")
+
+      // val homographies =
+      //   some.map({ f: OSMFeature => Homography.kappa(f,f) })
+
+      // println(s"RDD: ${homographies.collect().toList}")
     }
-    else { // Clip geometry supplied
-      if (args.length >= 4)
-        oldFeatures.saveAsObjectFile(args(3))
+    else if (args(0) == "save") { // Clip geometry supplied
       if (args.length >= 5)
-        newFeatures.saveAsObjectFile(args(4))
+        osmFeatures.saveAsObjectFile(args(4))
+      if (args.length >= 6)
+        nomeFeatures.saveAsObjectFile(args(5))
     }
-
+    else {
+      throw new Exception("Unknown activity")
+    }
   }
 
 }
