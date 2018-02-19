@@ -52,9 +52,8 @@ object VertexMatching {
     }
 
     val (offsetx, offsety) = {
-      val centroid1 = Centroid.getCentroid(p1.jtsGeom)
-      val centroid2 = Centroid.getCentroid(p2.jtsGeom)
-      (centroid2.x - centroidx, centroid2.y - centroidy)
+      val centroid = Centroid.getCentroid(p2.jtsGeom)
+      (centroid.x - centroidx, centroid.y - centroidy)
     }
 
     val points1 = {

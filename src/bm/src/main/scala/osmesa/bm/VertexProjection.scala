@@ -4,12 +4,15 @@ import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollection
 
+import com.vividsolutions.jts.algorithm.Centroid
+
 
 object VertexProjection {
 
-  def pointToPolygon(p: Point, right: Polygon) = {
+  private def pointToPolygon(p: Point, offsetx: Double, offsety: Double, right: Polygon) = {
 
     right.vertices
+      .map({ p => Point(p.x - offsetx, p.y - offsety) })
       .sliding(2)
       .map({ case Array(a, b) =>
         val px: Double = p.x - a.x
@@ -32,14 +35,24 @@ object VertexProjection {
       })._2
   }
 
-  def polygonToPolygon(left: Polygon, right: Polygon, debug: Boolean = false) = {
+  def polygonToPolygon(left: Polygon, right: Polygon) = {
+    val (centroidx, centroidy) = {
+      val centroid = Centroid.getCentroid(left.jtsGeom)
+      (centroid.x, centroid.y)
+    }
+
+    val (offsetx, offsety) = {
+      val centroid = Centroid.getCentroid(right.jtsGeom)
+      (centroid.x - centroidx, centroid.y - centroidy)
+    }
+
     val xs1 = left.vertices
-    val xs2 = xs1.map({ point => pointToPolygon(point, right) })
-    if (debug) println(xs1.zip(xs2).map({ case (p1: Point, p2: Point) => p1.distance(p2) }).toList)
-    Homography.dlt(xs1, xs2)
+    val xs2 = xs1.map({ point => pointToPolygon(point, offsetx, offsety, right) })
+
+    Homography.dlt(xs1.zip(xs2), centroidx, centroidy)
   }
 
-  def geometryToGeometry(left: Geometry, right: Geometry, debug: Boolean = false) = {
+  def geometryToGeometry(left: Geometry, right: Geometry) = {
     val polygon1 = left match {
       case p: Polygon => p
       case mp: MultiPolygon =>
@@ -50,7 +63,7 @@ object VertexProjection {
       case mp: MultiPolygon =>
         mp.polygons.reduce({ (p1, p2) => if (p1.vertices.length > p2.vertices.length) p1; else p2 })
     }
-    polygonToPolygon(polygon1, polygon2, debug)
+    polygonToPolygon(polygon1, polygon2)
   }
 
   def main(args: Array[String]): Unit = {
@@ -66,8 +79,8 @@ object VertexProjection {
       else
         args(1).parseGeoJson[Geometry]
 
-    println(geometryToGeometry(polygon1, polygon2, debug = true))
-    println(geometryToGeometry(polygon2, polygon1, debug = true))
- }
+    println(geometryToGeometry(polygon1, polygon2))
+    println(geometryToGeometry(polygon2, polygon1))
+  }
 
 }
