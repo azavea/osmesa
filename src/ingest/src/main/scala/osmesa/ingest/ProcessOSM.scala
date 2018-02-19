@@ -137,6 +137,12 @@ object ProcessOSM {
       }
     )
 
+    val nodeCreations = nodes
+      .groupBy('id)
+      .agg(min('version))
+      .join(nodes, Seq("id"), "inner")
+      .select('id, 'timestamp.as('creation_time))
+
     // Create point geometries
     // "Uninteresting" (untagged) nodes are not created as points, as creation is simple enough that this can be done when
     // assembling way and relation geometries.
@@ -144,6 +150,8 @@ object ProcessOSM {
       .where(size('tags) > 0)
       .select('changeset, 'id, 'version, 'tags, asWKB('lon, 'lat).as('geom), 'timestamp.as('updated), 'validUntil, 'visible)
       .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
+      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
+      .join(nodeCreations, Seq("id"), "inner")
 
   }
 
@@ -280,11 +288,18 @@ object ProcessOSM {
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
+    val wayCreations = ppways
+      .groupBy('id)
+      .agg(min('version))
+      .join(ppways, Seq("id"), "inner")
+      .select('id, 'timestamp.as('creation_time))
+
     wayGeoms
       .withColumn("validUntil", lead('updated, 1) over idByUpdated)
       .withColumn("minorVersion", (row_number() over idAndVersionByUpdated) - 1)
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'minorVersion)
       .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
+      .join(wayCreations, Seq("id"), "inner")
   }
 
   def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {
