@@ -20,11 +20,9 @@ import vectorpipe.osm._
 
 object BuildingMatching {
 
-  val MAGIC1 = 0.25
-  val MAGIC2 = 1e-3
-  val MAGIC3 = 50.0
+  val MAGIC = 1e-4
 
-  def sparkSession(appName: String): SparkSession = {
+  private def sparkSession(appName: String): SparkSession = {
     val conf = new SparkConf()
       .setIfMissing("spark.master", "local[*]")
       .setAppName(s"OSMesa Analytics - ${appName}")
@@ -40,20 +38,30 @@ object BuildingMatching {
       .getOrCreate
   }
 
-  def filterfn1(clipGeometry: Option[Geometry])(feature: OSMFeature): Boolean = {
+  private def filterfn1(clipGeometry: Option[Geometry])(feature: OSMFeature): Boolean = {
     clipGeometry match {
       case Some(g) => feature.geom.intersects(g)
       case None => true
     }
   }
 
-  def filterfn2(clipGeometry: Option[Geometry])(pair: (Long, Node)): Boolean = {
+  private def filterfn2(clipGeometry: Option[Geometry])(pair: (Long, Node)): Boolean = {
     clipGeometry match {
       case Some(g) =>
         val node = pair._2
         Point(node.lon, node.lat).intersects(g)
       case None => true
     }
+  }
+
+  // https://en.wikipedia.org/wiki/Error_function#Approximation_with_elementary_functions
+  private def erf(x: Double): Double = {
+    val a1 = 0.278393
+    val a2 = 0.230389
+    val a3 = 0.000972
+    val a4 = 0.078108
+    val denom = (1 + a1*x + a2*x*x + a3*x*x*x + a4*x*x*x*x)
+    1.0 / (denom*denom*denom*denom)
   }
 
   def main(args: Array[String]): Unit = {
@@ -88,11 +96,7 @@ object BuildingMatching {
 
     if (args(0) == "match") { // MATCH
 
-      val nomeNotOsm = nomeFeatures.map({ f => (f.data.uid, f) })
-        .subtractByKey(osmFeatures.map({ f => (f.data.uid, f) }))
-        .values.map({ f => (f.geom, f) })
-        .subtractByKey(osmFeatures.map({ f => (f.geom, f) }))
-        .values
+      val nomeNotOsm = nomeFeatures
         .filter({ f: OSMFeature =>
           f.geom match {
             case p: Polygon => (p.vertices.length > 4)
@@ -100,11 +104,7 @@ object BuildingMatching {
           }
         })
 
-      val osmNotNome = osmFeatures.map({ f => (f.data.uid, f) })
-        .subtractByKey(nomeFeatures.map({ f => (f.data.uid, f) }))
-        .values.map({ f => (f.geom, f) })
-        .subtractByKey(nomeFeatures.map({ f => (f.geom, f) }))
-        .values
+      val osmNotNome = osmFeatures
         .filter({ f: OSMFeature =>
           f.geom match {
             case p: Polygon => (p.vertices.length > 4)
@@ -112,56 +112,64 @@ object BuildingMatching {
           }
         })
 
-      val data: RDD[(Geometry, Array[(Double, Array[Double], Geometry)])] = nomeNotOsm.map({ f => (f, 0) })
+      val data = nomeNotOsm.map({ f => (f, 0) })
         .union(osmNotNome.map({ f => (f, 1) }))
-        .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 1031))
+        .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 4099))
         .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
           val a = it.toArray
-          val ab = scala.collection.mutable.ArrayBuffer.empty[(Geometry, (Double, Array[Double], Geometry))]
+          var ab = scala.collection.mutable.ArrayBuffer.empty[(Polygon, (String, Double, Polygon))]
 
           var i = 0; while (i < a.length) {
             val left = a(i)
             val leftFeature = left._1
-            val leftGeom = leftFeature.geom
+            val leftGeom = leftFeature.geom.asInstanceOf[Polygon]
+            var eligible = true
             var j = i+1; while (j < a.length) {
               val right = a(j)
               val rightFeature = right._1
-              val rightGeom = rightFeature.geom
-              if (left._2 != right._2) {
-                val h = VertexMatching(
-                  leftGeom.asInstanceOf[Polygon],
-                  rightGeom.asInstanceOf[Polygon]
-                ).toArray
-                val trace = h(0) + h(4) + h(8)
-                val unused = math.abs(h(2)) + math.abs(h(5))
-                val translation = math.abs(h(6)) + math.abs(h(7))
-                val tuple = (leftGeom, (translation, h, rightGeom))
+              val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
+              if (left._2 != right._2) { // Ensure that pairs are from different datasets
+                if (leftGeom == rightGeom) eligible = false // Not interested in trivial matches (shared history)
+                else {
+                  val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
+                  lazy val dist = leftGeom.distance(rightGeom) / MAGIC
+                  lazy val vm = VertexMatching.score(leftGeom, rightGeom) + dist*dist*dist
+                  lazy val vp = VertexProjection.score(leftGeom, rightGeom) + dist*dist*dist
 
-                if ((math.abs(trace - 3.0) < MAGIC1) && (unused < MAGIC2))
-                  ab.append(tuple)
+                  if (math.min(a1, a2) > 0.90) // Volume match
+                    ab.append((leftGeom, ("0 volume match", math.min(a1,a2), rightGeom)))
+                  else if (a1 > 0.90) // superset
+                    ab.append((leftGeom, ("1 superset", a1, rightGeom)))
+                  else if (a2 > 0.90) // subset
+                    ab.append((leftGeom, ("2 subset", a2, rightGeom)))
+                  else if (vm < 0.15) // strong volume match
+                    ab.append((leftGeom, ("3 strong vertex match", vm, rightGeom)))
+                  else if (vm < 0.60) // weak volume match
+                    ab.append((leftGeom, ("4 weak vertex match", vm, rightGeom)))
+                  else if (vp < 0.15) // strong projection match
+                    ab.append((leftGeom, ("5 strong projection match", vp, rightGeom)))
+                  else if (vp < 0.60) // weak volume match
+                    ab.append((leftGeom, ("6 weak projection match", vp, rightGeom)))
+                }
               }
               j = j + 1
             }
+            if (!eligible) ab = ab.filter(_._1 != leftGeom) // XXX
             i = i + 1
           }
-
           ab.toIterator
         }, preservesPartitioning = true)
-        .groupByKey
+        .groupByKey // XXX can be optimized away by changing inner loop
         .map({ case (b, itr) => (b, itr.toArray.sortBy({ _._1 })) })
 
-      println(s"POSSIBLE MATCHES: ${data.count}")
-      println
-
-      data.collect.foreach({ case (b: Geometry, bm: Array[(Double, Array[Double], Geometry)]) =>
-        println(b.toGeoJson)
+      data.collect.foreach({ case (b: Polygon, bm: Array[(String, Double, Polygon)]) =>
+        println(s"${b.toGeoJson.hashCode} ${b.toGeoJson}")
         bm.sortBy(_._1)
-          .foreach({ case (d, h, b2) =>
-            println(s"\t $d ${h.toList} ${b2.toGeoJson}")
+          .foreach({ case (str, x, b2) =>
+            println(s"\t ${b2.toGeoJson.hashCode} ${b2.toGeoJson} $str $x")
           })
         println
       })
-
     }
     else if (args(0) == "save") { // SAVE
       if (args.length >= 5)
