@@ -32,26 +32,42 @@ object VertexMatching {
       })._2
   }
 
-  def polygonToPolygon(left: Polygon, right: Polygon) = {
+  def polygonToPolygon(left: Polygon, right: Polygon, debug: Boolean = false) = {
     val xs1 = left.vertices
     val xs2 = xs1.map({ point => pointToPolygon(point, right) })
+    if (debug) println(xs1.zip(xs2).map({ case (p1: Point, p2: Point) => p1.distance(p2) }).toList)
     Homography.dlt(xs1, xs2)
   }
 
-  def main(args: Array[String]): Unit = {
-    val polygon1 = scala.io.Source.fromFile(args(0)).mkString.parseGeoJson[Geometry] match {
+  def geometryToGeometry(left: Geometry, right: Geometry, debug: Boolean = false) = {
+    val polygon1 = left match {
       case p: Polygon => p
       case mp: MultiPolygon =>
         mp.polygons.reduce({ (p1, p2) => if (p1.vertices.length > p2.vertices.length) p1; else p2 })
     }
-    val polygon2 = scala.io.Source.fromFile(args(1)).mkString.parseGeoJson[Geometry] match {
+    val polygon2 = right match {
       case p: Polygon => p
       case mp: MultiPolygon =>
         mp.polygons.reduce({ (p1, p2) => if (p1.vertices.length > p2.vertices.length) p1; else p2 })
     }
+    polygonToPolygon(polygon1, polygon2, debug)
+  }
 
-    println(polygonToPolygon(polygon1, polygon2))
-    println(polygonToPolygon(polygon2, polygon1))
+  def main(args: Array[String]): Unit = {
+    val polygon1 =
+      if (args(0).endsWith(".geojson"))
+        scala.io.Source.fromFile(args(0)).mkString.parseGeoJson[Geometry]
+      else
+        args(0).parseGeoJson[Geometry]
+
+    val polygon2 =
+      if (args(1).endsWith(".geojson"))
+        scala.io.Source.fromFile(args(1)).mkString.parseGeoJson[Geometry]
+      else
+        args(1).parseGeoJson[Geometry]
+
+    println(geometryToGeometry(polygon1, polygon2, debug = true))
+    println(geometryToGeometry(polygon2, polygon1, debug = true))
  }
 
 }
