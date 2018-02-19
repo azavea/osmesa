@@ -41,7 +41,7 @@ object VertexMatching {
       })
   }
 
-  def apply(_p1: Polygon, _p2: Polygon) = {
+  private def polygonToPolygon(_p1: Polygon, _p2: Polygon, relative: Boolean) = {
     val (p1, p2) =
       if (_p1.vertices.length < _p2.vertices.length) (_p1, _p2)
       else (_p2, _p1)
@@ -51,10 +51,12 @@ object VertexMatching {
       (centroid.x, centroid.y)
     }
 
-    val (offsetx, offsety) = {
-      val centroid = Centroid.getCentroid(p2.jtsGeom)
-      (centroid.x - centroidx, centroid.y - centroidy)
-    }
+    val (offsetx: Double, offsety: Double) =
+      if (relative) {
+        val centroid = Centroid.getCentroid(p2.jtsGeom)
+        (centroid.x - centroidx, centroid.y - centroidy)
+      }
+      else (0.0, 0.0)
 
     val points1 = {
       val pts = p1.jtsGeom.getCoordinates
@@ -80,6 +82,16 @@ object VertexMatching {
     )
   }
 
+  def score(p1: Polygon, p2: Polygon): Double = {
+    val h1 = polygonToPolygon(p1, p2, false).toArray
+    val Δ1 = math.abs(h1(0)-1.0) + math.abs(h1(1)) + math.abs(h1(2)) + math.abs(h1(3)) + math.abs(h1(4)-1.0) + math.abs(h1(5))
+
+    val h2 = polygonToPolygon(p1, p2, true).toArray
+    val Δ2 = math.abs(h2(0)-1.0) + math.abs(h2(1)) + math.abs(h2(2)) + math.abs(h2(3)) + math.abs(h2(4)-1.0) + math.abs(h2(5))
+
+    math.min(Δ1, Δ2)
+  }
+
   def main(args: Array[String]): Unit = {
     val polygon1 =
       if (args(0).endsWith(".geojson"))
@@ -93,7 +105,10 @@ object VertexMatching {
       else
         args(1).parseGeoJson[Polygon]
 
-    println(apply(polygon1, polygon2))
+    println(polygon1.distance(polygon2))
+    println(Centroid.getCentroid(polygon1.jtsGeom).distance(Centroid.getCentroid(polygon2.jtsGeom)))
+    println(polygonToPolygon(polygon1, polygon2, false))
+    println(polygonToPolygon(polygon1, polygon2, true))
   }
 
 }

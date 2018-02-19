@@ -31,7 +31,7 @@ object Homography {
     pairs
       .flatMap({ case (a: Point, b: Point) => pairToRows(a, b, cx, cy, 1e-5, 1e-5) })
       .zipWithIndex
-      .map({ case (c: DoubleMatrix, i: Int) => m.putRow(i, c) })
+      .foreach({ case (c: DoubleMatrix, i: Int) => m.putRow(i, c) })
 
     val svd = Singular.fullSVD(m)
     val h = svd(2).getColumn(8).reshape(3,3).transpose()
