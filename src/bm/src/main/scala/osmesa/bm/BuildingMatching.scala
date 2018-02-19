@@ -17,10 +17,12 @@ import org.apache.spark.sql.functions._
 import vectorpipe._
 import vectorpipe.osm._
 
-import com.vividsolutions.jts.geom.Envelope
-
 
 object BuildingMatching {
+
+  val MAGIC1 = 0.25
+  val MAGIC2 = 1e-3
+  val MAGIC3 = 50.0
 
   def sparkSession(appName: String): SparkSession = {
     val conf = new SparkConf()
@@ -54,16 +56,11 @@ object BuildingMatching {
     }
   }
 
-  def calculateEnvelope(pairs: Iterator[(OSMFeature, Null)]): Iterator[Envelope] =
-    VectorJoin.calculateEnvelope(pairs.map({ pair => pair._1 }))
-
   def main(args: Array[String]): Unit = {
     val ss = sparkSession("Building-Matching")
 
     Logger.getLogger("org").setLevel(Level.ERROR)
     Logger.getLogger("akka").setLevel(Level.ERROR)
-
-    val layout = ZoomedLayoutScheme.layoutForZoom(15, WebMercator.worldExtent, 512)
 
     val clipGeometry: Option[Geometry] =
       if (args.length >= 4) Some(scala.io.Source.fromFile(args(3)).mkString.parseGeoJson[Geometry])
@@ -89,7 +86,7 @@ object BuildingMatching {
       }
       else ss.sparkContext.objectFile[OSMFeature](args(2))
 
-    if (args(0) == "match") { // No clip geometry supplied
+    if (args(0) == "match") { // MATCH
 
       val nomeNotOsm = nomeFeatures.map({ f => (f.data.uid, f) })
         .subtractByKey(osmFeatures.map({ f => (f.data.uid, f) }))
@@ -99,7 +96,6 @@ object BuildingMatching {
         .filter({ f: OSMFeature =>
           f.geom match {
             case p: Polygon => (p.vertices.length > 4)
-            // case mp: MultiPolygon => (mp.vertices.length > 4)
             case _ => false
           }
         })
@@ -112,27 +108,38 @@ object BuildingMatching {
         .filter({ f: OSMFeature =>
           f.geom match {
             case p: Polygon => (p.vertices.length > 4)
-            // case mp: MultiPolygon => (mp.vertices.length > 4)
             case _ => false
           }
         })
 
-      println(s"NOME NOT OSM: ${nomeNotOsm.count}")
-      println(s"OSM NOT NOME: ${osmNotNome.count}")
-
-      val possibleMatches = nomeNotOsm.map({ f => (f, 0) })
+      val data: RDD[(Geometry, Array[(Double, Array[Double], Geometry)])] = nomeNotOsm.map({ f => (f, 0) })
         .union(osmNotNome.map({ f => (f, 1) }))
         .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 1031))
         .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
           val a = it.toArray
-          val ab = scala.collection.mutable.ArrayBuffer.empty[(OSMFeature, OSMFeature)]
+          val ab = scala.collection.mutable.ArrayBuffer.empty[(Geometry, (Double, Array[Double], Geometry))]
 
           var i = 0; while (i < a.length) {
             val left = a(i)
+            val leftFeature = left._1
+            val leftGeom = leftFeature.geom
             var j = i+1; while (j < a.length) {
               val right = a(j)
-              if (left._2 != right._2)
-                ab.append((left._1, right._1))
+              val rightFeature = right._1
+              val rightGeom = rightFeature.geom
+              if (left._2 != right._2) {
+                val h = VertexMatching(
+                  leftGeom.asInstanceOf[Polygon],
+                  rightGeom.asInstanceOf[Polygon]
+                ).toArray
+                val trace = h(0) + h(4) + h(8)
+                val unused = math.abs(h(2)) + math.abs(h(5))
+                val translation = math.abs(h(6)) + math.abs(h(7))
+                val tuple = (leftGeom, (translation, h, rightGeom))
+
+                if ((math.abs(trace - 3.0) < MAGIC1) && (unused < MAGIC2))
+                  ab.append(tuple)
+              }
               j = j + 1
             }
             i = i + 1
@@ -140,37 +147,30 @@ object BuildingMatching {
 
           ab.toIterator
         }, preservesPartitioning = true)
+        .groupByKey
+        .map({ case (b, itr) => (b, itr.toArray.sortBy({ _._1 })) })
 
-      println(s"POSSIBLE MATCHES: ${possibleMatches.count}")
+      println(s"POSSIBLE MATCHES: ${data.count}")
+      println
 
-      val data = possibleMatches.map({ case (left: OSMFeature, right: OSMFeature) =>
-        val h = VertexMatching(left.geom.asInstanceOf[Polygon], right.geom.asInstanceOf[Polygon])
-        (left.geom.toGeoJson, right.geom.toGeoJson, h.toArray.toList)
-      })
-
-      data.collect.foreach({ case (left: String, right: String, h: List[Double]) =>
-        println(left)
-        println(right)
-        println(h)
+      data.collect.foreach({ case (b: Geometry, bm: Array[(Double, Array[Double], Geometry)]) =>
+        println(b.toGeoJson)
+        bm.sortBy(_._1)
+          .foreach({ case (d, h, b2) =>
+            println(s"\t $d ${h.toList} ${b2.toGeoJson}")
+          })
         println
       })
 
-      // println(s"DATA: ${data.take(100).toList}")
-
-      // val homographies =
-      //   some.map({ f: OSMFeature => Homography.kappa(f,f) })
-
-      // println(s"RDD: ${homographies.collect().toList}")
     }
-    else if (args(0) == "save") { // Clip geometry supplied
+    else if (args(0) == "save") { // SAVE
       if (args.length >= 5)
         osmFeatures.saveAsObjectFile(args(4))
       if (args.length >= 6)
         nomeFeatures.saveAsObjectFile(args(5))
     }
-    else {
-      throw new Exception("Unknown activity")
-    }
+    else throw new Exception("Unknown activity")
+
   }
 
 }
