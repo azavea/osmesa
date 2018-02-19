@@ -69,10 +69,10 @@ object GenerateVT {
         case l: Line =>
           timedIntersect(l, ex, fid) match {
             // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            // case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
-            // case MultiLineResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(res, feat.data)), Seq.empty, Seq.empty)
-            case PointResult(res) => (Seq(PointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            case MultiPointResult(res) => (Seq.empty, Seq(MultiPointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty)
+            case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
+            case MultiLineResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(res, feat.data)), Seq.empty, Seq.empty)
+            // case PointResult(res) => (Seq(PointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
+            // case MultiPointResult(res) => (Seq.empty, Seq(MultiPointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty)
             case GeometryCollectionResult(res) =>
               val gc = res.geometryCollections(0)
               gc.lines.size match {
