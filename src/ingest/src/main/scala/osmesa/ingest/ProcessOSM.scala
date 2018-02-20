@@ -38,6 +38,7 @@ object ProcessOSM {
       'changeset,
       'timestamp,
       'uid,
+      'user,
       'version,
       'visible)
 
@@ -48,6 +49,11 @@ object ProcessOSM {
       .agg(max('version).as('version))
       .drop('changeset)
 
+    // Creation times for nodes
+    val nodeCreations = nodes
+      .groupBy('id)
+      .agg(min('timestamp).as('creation), collect_set('user).as('authors))
+
     // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
     // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
     // Select full metadata for the last version of a node by changeset and add "validUntil" for joining with other types
@@ -55,6 +61,7 @@ object ProcessOSM {
     // around or adjusted to deal with edits in other changesets)
     val ns = nodes
       .join(nodeVersions, Seq("id", "version"))
+      .join(nodeCreations, Seq("id"))
       .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
 
     // Write out pre-processed nodes
@@ -89,6 +96,7 @@ object ProcessOSM {
         'changeset,
         'timestamp,
         'uid,
+        'user,
         'version,
         'visible
       )
@@ -100,6 +108,11 @@ object ProcessOSM {
       .agg(max('version).as('version))
       .drop('changeset)
 
+    // Creation times for ways
+    val wayCreations = ways
+      .groupBy('id)
+      .agg(min('timestamp).as('creation), collect_set('user).as('authors))
+
     // Add `validUntil`
     // This allows time slices to be made more effectively by filtering for ways that were valid between `timestamp` and `validUntil`.
     // Ways with `null` `validUntil` are currently valid.
@@ -108,6 +121,7 @@ object ProcessOSM {
     // around or adjusted to deal with edits in other changesets)
     val ws = ways
       .join(wayVersions, Seq("id", "version"))
+      .join(wayCreations, Seq("id"))
       .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
 
     // Write out pre-processed ways
@@ -137,19 +151,12 @@ object ProcessOSM {
       }
     )
 
-    val nodeCreations = nodes
-      .groupBy('id)
-      .agg(min('version))
-      .join(nodes, Seq("id"), "inner")
-      .select('id, 'timestamp.as('creation_time))
-
     // Create point geometries
     // "Uninteresting" (untagged) nodes are not created as points, as creation is simple enough that this can be done when
     // assembling way and relation geometries.
     nodes
       .where(size('tags) > 0)
-      .select('changeset, 'id, 'version, 'tags, asWKB('lon, 'lat).as('geom), 'timestamp.as('updated), 'validUntil, 'visible)
-      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
+      .select('changeset, 'id, 'version, 'tags, asWKB('lon, 'lat).as('geom), 'timestamp.as('updated), 'validUntil, 'visible, 'creation, 'authors, 'user.as('lastAuthor))
       .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
       .join(nodeCreations, Seq("id"), "inner")
 
@@ -284,22 +291,18 @@ object ProcessOSM {
       .withColumn("geom", asWKB('coords, isArea('tags)))
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'visible)
 
+    val augmentedFields = ways.select('id, 'version, 'creation, 'authors, 'user.as('lastAuthor))
+
     // Assign `minorVersion` and rewrite `validUntil` to match
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
-
-    val wayCreations = ppways
-      .groupBy('id)
-      .agg(min('version))
-      .join(ppways, Seq("id"), "inner")
-      .select('id, 'timestamp.as('creation_time))
 
     wayGeoms
       .withColumn("validUntil", lead('updated, 1) over idByUpdated)
       .withColumn("minorVersion", (row_number() over idAndVersionByUpdated) - 1)
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'minorVersion)
+      .join(augmentedFields, Seq("id", "version"))
       .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
-      .join(wayCreations, Seq("id"), "inner")
   }
 
   def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {
