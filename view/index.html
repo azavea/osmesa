@@ -23,27 +23,31 @@ var map = new mapboxgl.Map({
 });
 
 map.on('load', function() {
-    // Add VecTiles source
-    map.addLayer({
-        "id": "osm-history",
-        "type": "line",
-        "source": {
-            "type": "vector",
-            "tiles": [""],
-            "minzoom": 6,
-            "maxzoom": 14
-        },
-        "source-layer": "history",
-        "layout": {
-            "line-cap": "round",
-            "line-join": "round"
-        },
-        "paint": {
-            "line-opacity": 0.4,
-            "line-color": "rgb(53, 175, 109)",
-            "line-width": 1
-        }
-    });
+  // Add VecTiles source
+  map.addLayer({
+    "id": "osm-history",
+    "type": "line",
+    "source": {
+      "type": "vector",
+      "tiles": [""],
+      "minzoom": 1,
+      "maxzoom": 20
+    },
+    "source-layer": "history",
+    "layout": {
+      "line-cap": "round",
+      "line-join": "round"
+    },
+    "paint": {
+      "line-opacity": 0.4,
+      "line-color": "rgb(53, 175, 109)",
+      "line-width": 1
+    }
+  });
+
+  map.on("mousemove", "osm-history", function(e) {
+    console.log(e.features)
+  });
 });
 
 map.addControl(new mapboxgl.NavigationControl());

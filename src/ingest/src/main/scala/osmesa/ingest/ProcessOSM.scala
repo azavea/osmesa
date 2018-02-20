@@ -143,6 +143,7 @@ object ProcessOSM {
     nodes
       .where(size('tags) > 0)
       .select('changeset, 'id, 'version, 'tags, asWKB('lon, 'lat).as('geom), 'timestamp.as('updated), 'validUntil, 'visible)
+      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
 
   }
 
@@ -283,6 +284,7 @@ object ProcessOSM {
       .withColumn("validUntil", lead('updated, 1) over idByUpdated)
       .withColumn("minorVersion", (row_number() over idAndVersionByUpdated) - 1)
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'minorVersion)
+      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
   }
 
   def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {
