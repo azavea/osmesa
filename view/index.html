@@ -41,12 +41,19 @@ map.on('load', function() {
     "paint": {
       "line-opacity": 0.4,
       "line-color": "rgb(53, 175, 109)",
-      "line-width": 1
+      "line-width": 2
     }
   });
 
   map.on("mousemove", "osm-history", function(e) {
-    console.log(e.features)
+    console.log(e)
+    var osm_info = {
+      "creation": e.features[0].properties["__creation"],
+      "updated": e.features[0].properties["__updated"],
+      "lastAuthor": e.features[0].properties["__lastAuthor"],
+      "authors": e.features[0].properties["__authors"]
+    }
+    console.log(osm_info)
   });
 });
 

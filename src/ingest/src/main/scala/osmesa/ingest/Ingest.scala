@@ -126,7 +126,17 @@ object IngestApp extends CommandApp(
       val ppways = ProcessOSM.preprocessWays(df)
       val nodeGeoms = ProcessOSM.constructPointGeometries(ppnodes)
       val wayGeoms = ProcessOSM.reconstructWayGeometries(ppnodes, ppways)
-      val geoms = wayGeoms.union(nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType))).where(!isnull('geom))
+      println("PRIOR TO WAY/NODE UNION")
+      nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)).printSchema
+      wayGeoms.printSchema
+      val orderedColumns: List[Column] = List('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'creation, 'authors, 'minorVersion, 'lastAuthor)
+      val geoms = wayGeoms
+        .select(orderedColumns: _*)
+        .union(
+          nodeGeoms
+            .withColumn("minorVersion", lit(null).cast(IntegerType))
+            .select(orderedColumns: _*)
+        ).where(!isnull('geom))
 
       val features: RDD[GenerateVT.VTF[Geometry]] = geoms
         .rdd
@@ -138,7 +148,10 @@ object IngestApp extends CommandApp(
           val tags = row.getAs[Map[String, String]]("tags")
           val geom = row.getAs[scala.Array[Byte]]("geom")
           val updated = row.getAs[java.sql.Timestamp]("updated")
+          val creation = row.getAs[java.sql.Timestamp]("creation")
+          val authors = row.getAs[Set[String]]("authors").toList.mkString(",")
           val validUntil = row.getAs[java.sql.Timestamp]("validUntil")
+          val lastAuthor = row.getAs[String]("lastAuthor")
 
           // TODO check validity of reprojected geometry + change this to a flatMap so those can be omitted
 
@@ -152,7 +165,11 @@ object IngestApp extends CommandApp(
               "__version" -> VInt64(version),
               "__minorVersion" -> VInt64(minorVersion),
               "__updated" -> VInt64(updated.getTime),
-              "__validUntil" -> VInt64(Option(validUntil).map(_.getTime).getOrElse(0))
+              "__validUntil" -> VInt64(Option(validUntil).map(_.getTime).getOrElse(0)),
+              "__vtileGen" -> VInt64(new java.sql.Timestamp(System.currentTimeMillis()).getTime),
+              "__creation" -> VInt64(creation.getTime),
+              "__authors" -> VString(authors),
+              "__lastAuthor" -> VString(lastAuthor)
             )
           )
         }
