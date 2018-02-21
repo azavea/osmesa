@@ -38,6 +38,14 @@ object GenerateVT {
     }
   }
 
+  def keyToLayoutWithFilter[G <: Geometry](features: RDD[VTF[G]], layout: LayoutDefinition, includeKey: SpatialKey => Boolean): RDD[(SpatialKey, (SpatialKey, VTF[G]))] = {
+    features.flatMap{ feat =>
+      val g = feat.geom
+      val keys = layout.mapTransform.keysForGeometry(g).filter(includeKey)
+      keys.map{ k => (k, (k, feat)) }
+    }
+  }
+
   def upLevel[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, VTF[G]))]): RDD[(SpatialKey, (SpatialKey, VTF[G]))] = {
     keyedGeoms.map{ case (key, (_, feat)) => {
       val SpatialKey(x, y) = key
