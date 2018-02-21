@@ -158,7 +158,6 @@ object ProcessOSM {
       .where(size('tags) > 0)
       .select('changeset, 'id, 'version, 'tags, asWKB('lon, 'lat).as('geom), 'timestamp.as('updated), 'validUntil, 'visible, 'creation, 'authors, 'user.as('lastAuthor))
       .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
-      .join(nodeCreations, Seq("id"), "inner")
 
   }
 
