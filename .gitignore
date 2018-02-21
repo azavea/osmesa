@@ -6,6 +6,7 @@ services/geoserver/geomesa-hbase-dist.tar.gz
 
 metastore_db
 third_party_sources
+derby.log
 
 # Test Data #
 src/test-data
