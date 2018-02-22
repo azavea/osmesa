@@ -1,5 +1,7 @@
 package osmesa
 
+import osmesa.ingest.util.Caching
+
 import geotrellis.proj4.{LatLng, WebMercator, Transform}
 import geotrellis.spark._
 import geotrellis.spark.io._
@@ -94,10 +96,10 @@ object IngestApp extends CommandApp(
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
     val layerO = Opts.option[String]("layer", help = "Name of the output Layer")
     val maxzoomO = Opts.option[Int]("zoom", help = "Maximum zoom level for ingest (default=14)").withDefault(14)
-    val localF = Opts.flag("local", help = "Is this to be run locally, not on EMR?").orFalse
+    val localCacheO = Opts.option[String]("lcache", help = "Location to cache ORC to if on local FS").orNone
     val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
 
-    (orcO, bucketO, prefixO, layerO, maxzoomO, localF, pyramidF).mapN { (orc, bucket, prefix, layer, maxZoomLevel, local, pyramid) =>
+    (orcO, bucketO, prefixO, layerO, maxzoomO, pyramidF, localCacheO).mapN { (orc, bucket, prefix, layer, maxZoomLevel, pyramid, localCache) =>
 
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
@@ -122,21 +124,29 @@ object IngestApp extends CommandApp(
 
       val df = ss.read.orc(orc)
 
-      val ppnodes = ProcessOSM.preprocessNodes(df)
-      val ppways = ProcessOSM.preprocessWays(df)
-      val nodeGeoms = ProcessOSM.constructPointGeometries(ppnodes)
-      val wayGeoms = ProcessOSM.reconstructWayGeometries(ppnodes, ppways)
+      val cache = localCache
+        .map(Caching.onFs(_))
+        .getOrElse(Caching.onS3(bucket, prefix))
+
+      val ppnodes = cache.orc("prepared_nodes.orc")({ ProcessOSM.preprocessNodes(df) })
+      val ppways = cache.orc("prepared_ways.orc")({ ProcessOSM.preprocessWays(df) })
+      val nodeGeoms = cache.orc("node_geoms.orc")({ ProcessOSM.constructPointGeometries(ppnodes) })
+      val wayGeoms = cache.orc("way_geoms.orc")({ ProcessOSM.reconstructWayGeometries(ppnodes, ppways) })
+
       println("PRIOR TO WAY/NODE UNION")
       nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)).printSchema
       wayGeoms.printSchema
       val orderedColumns: List[Column] = List('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'creation, 'authors, 'minorVersion, 'lastAuthor)
-      val geoms = wayGeoms
-        .select(orderedColumns: _*)
-        .union(
-          nodeGeoms
-            .withColumn("minorVersion", lit(null).cast(IntegerType))
-            .select(orderedColumns: _*)
-        ).where(!isnull('geom))
+      val geoms = cache.orc(s"compputed_geoms_z${maxZoomLevel}.orc")({
+        wayGeoms
+          .select(orderedColumns: _*)
+          .union(
+            nodeGeoms
+              .withColumn("minorVersion", lit(null).cast(IntegerType))
+              .select(orderedColumns: _*)
+          ).where(!isnull('geom))
+      })
+
 
       val features: RDD[GenerateVT.VTF[Geometry]] = geoms
         .rdd
