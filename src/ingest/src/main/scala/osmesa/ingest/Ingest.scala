@@ -96,14 +96,16 @@ object IngestApp extends CommandApp(
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
     val layerO = Opts.option[String]("layer", help = "Name of the output Layer")
     val maxzoomO = Opts.option[Int]("zoom", help = "Maximum zoom level for ingest (default=14)").withDefault(14)
-    val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
     val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
+    val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
 
     (orcO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO).mapN { (orc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir) =>
 
+      println("ALL", orc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir)
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
       println(s"LAYER: ${layer}")
+      println(s"CACHE: ${cacheDir}")
 
       /* Settings compatible for both local and EMR execution */
       val conf = new SparkConf()
@@ -124,22 +126,24 @@ object IngestApp extends CommandApp(
 
       val df = ss.read.orc(orc)
 
+      println("caching...")
       val cache = Option(new URI(cacheDir).getScheme) match {
         case Some("file") => Caching.onFs(cacheDir)
         case Some("s3") => Caching.onS3(cacheDir)
         case _ => Caching.none
       }
 
-      val ppnodes = cache.orc("prepared_nodes.orc")({ ProcessOSM.preprocessNodes(df) })
-      val ppways = cache.orc("prepared_ways.orc")({ ProcessOSM.preprocessWays(df) })
-      val nodeGeoms = cache.orc("node_geoms.orc")({ ProcessOSM.constructPointGeometries(ppnodes) })
-      val wayGeoms = cache.orc("way_geoms.orc")({ ProcessOSM.reconstructWayGeometries(ppnodes, ppways) })
+      val orcFileRepr = orc.split("/").last.split('.').head
+      val ppnodes = cache.orc(s"prepared_nodes-$orcFileRepr.orc")({ ProcessOSM.preprocessNodes(df) })
+      val ppways = cache.orc(s"prepared_ways-$orcFileRepr.orc")({ ProcessOSM.preprocessWays(df) })
+      val nodeGeoms = cache.orc(s"node_geoms-$orcFileRepr.orc")({ ProcessOSM.constructPointGeometries(ppnodes) })
+      val wayGeoms = cache.orc(s"way_geoms-$orcFileRepr.orc")({ ProcessOSM.reconstructWayGeometries(ppnodes, ppways) })
 
       println("PRIOR TO WAY/NODE UNION")
       nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)).printSchema
       wayGeoms.printSchema
       val orderedColumns: List[Column] = List('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'creation, 'authors, 'minorVersion, 'lastAuthor)
-      val geoms = cache.orc(s"compputed_geoms_z${maxZoomLevel}.orc")({
+      val geoms = cache.orc(s"computed_geoms_z${maxZoomLevel}-$orcFileRepr.orc")({
         wayGeoms
           .select(orderedColumns: _*)
           .union(
