@@ -81,3 +81,5 @@ dist/
 
 # Temporary credentials
 emr/terraform/auth.json
+
+derby.log
