@@ -51,7 +51,7 @@ object GenerateVT {
 
     def timedIntersect[G <: Geometry](geom: G, ex: Extent, id: Long) = {
       val future = Future { geom.intersection(ex) }
-      Try(Await.result(future, 500 milliseconds)) match {
+      Try(Await.result(future, 2000 milliseconds)) match {
         case Success(res) => res
         case Failure(_) =>
           logger.warn(s"Could not intersect $geom with $ex [feature id=$id]")
@@ -74,11 +74,16 @@ object GenerateVT {
             // case PointResult(res) => (Seq(PointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
             // case MultiPointResult(res) => (Seq.empty, Seq(MultiPointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty)
             case GeometryCollectionResult(res) =>
-              val gc = res.geometryCollections(0)
-              gc.lines.size match {
-                case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
-                case 1 => (Seq.empty, Seq.empty, Seq(LineFeature(gc.lines(0), feat.data)), Seq.empty, Seq.empty, Seq.empty)
-                case _ => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(MultiLine(gc.lines), feat.data)), Seq.empty, Seq.empty)
+              Try(res.geometryCollections(0)).toOption match {
+                case Some(gc) =>
+                  gc.lines.size match {
+                    case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
+                    case 1 => (Seq.empty, Seq.empty, Seq(LineFeature(gc.lines(0), feat.data)), Seq.empty, Seq.empty, Seq.empty)
+                    case _ => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(MultiLine(gc.lines), feat.data)), Seq.empty, Seq.empty)
+                  }
+                case None =>
+                  logger.warn(s"Unexpected result intersecting $l with $ex")
+                  (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
               }
             case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
           }
@@ -91,11 +96,16 @@ object GenerateVT {
             case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
             case MultiLineResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(res, feat.data)), Seq.empty, Seq.empty)
             case GeometryCollectionResult(res) =>
-              val gc = res.geometryCollections(0)
-              gc.lines.size match {
-                case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
-                case 1 => (Seq.empty, Seq.empty, Seq(LineFeature(gc.lines(0), feat.data)), Seq.empty, Seq.empty, Seq.empty)
-                case _ => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(MultiLine(gc.lines), feat.data)), Seq.empty, Seq.empty)
+              Try(res.geometryCollections(0)).toOption match {
+                case Some(gc) =>
+                  gc.lines.size match {
+                    case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
+                    case 1 => (Seq.empty, Seq.empty, Seq(LineFeature(gc.lines(0), feat.data)), Seq.empty, Seq.empty, Seq.empty)
+                    case _ => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(MultiLine(gc.lines), feat.data)), Seq.empty, Seq.empty)
+                  }
+                case None =>
+                  logger.warn(s"Unexpected result intersecting $ml with $ex")
+                  (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
               }
             case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
           }
@@ -110,11 +120,16 @@ object GenerateVT {
             case PolygonResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(res, feat.data)), Seq.empty)
             case MultiPolygonResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(res, feat.data)))
             case GeometryCollectionResult(res) =>
-              val gc = res.geometryCollections(0)
-              gc.polygons.size match {
-                case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
-                case 1 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(gc.polygons(0), feat.data)), Seq.empty)
-                case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(MultiPolygon(gc.polygons), feat.data)))
+              Try(res.geometryCollections(0)).toOption match {
+                case Some(gc) =>
+                  gc.polygons.size match {
+                    case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
+                    case 1 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(gc.polygons(0), feat.data)), Seq.empty)
+                    case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(MultiPolygon(gc.polygons), feat.data)))
+                  }
+                case None =>
+                  logger.warn(s"Unexpected result intersecting $p with $ex")
+                  (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
               }
             case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
           }
@@ -129,11 +144,16 @@ object GenerateVT {
             case PolygonResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(res, feat.data)), Seq.empty)
             case MultiPolygonResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(res, feat.data)))
             case GeometryCollectionResult(res) =>
-              val gc = res.geometryCollections(0)
-              gc.polygons.size match {
-                case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
-                case 1 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(gc.polygons(0), feat.data)), Seq.empty)
-                case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(MultiPolygon(gc.polygons), feat.data)))
+              Try(res.geometryCollections(0)).toOption match {
+                case Some(gc) =>
+                  gc.polygons.size match {
+                    case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
+                    case 1 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(gc.polygons(0), feat.data)), Seq.empty)
+                    case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(MultiPolygon(gc.polygons), feat.data)))
+                  }
+                case None =>
+                  logger.warn(s"Unexpected result intersecting $mp with $ex")
+                  (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
               }
             case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
           }

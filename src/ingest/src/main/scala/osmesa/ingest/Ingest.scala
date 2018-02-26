@@ -143,7 +143,7 @@ object IngestApp extends CommandApp(
       nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)).printSchema
       wayGeoms.printSchema
       val orderedColumns: List[Column] = List('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'creation, 'authors, 'minorVersion, 'lastAuthor)
-      val geoms = cache.orc(s"computed_geoms_z${maxZoomLevel}-$orcFileRepr.orc")({
+      val geoms = cache.orc(s"combined_geoms-$orcFileRepr.orc")({
         wayGeoms
           .select(orderedColumns: _*)
           .union(
