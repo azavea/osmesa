@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>Add a third party vector tile source</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.44.1/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.44.1/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body { margin:0; padding:0; }
+        #map { position:absolute; top:0; bottom:0; width:100%; }
+    </style>
+</head>
+<body>
+
+<div id='map'></div>
+<script>
+var map = new mapboxgl.Map({
+    container: 'map',
+    style: 'http://osm-liberty.lukasmartinelli.ch/style.json',
+    zoom: 19,
+    center: [-71.5237372,41.4857846]
+});
+
+map.on('load', function() {
+  // Add VecTiles source
+  map.addLayer({
+    "id": "osm-history",
+    "type": "fill",
+    "source": {
+      "type": "vector",
+      "tiles": ["http://localhost:8080/{z}/{x}/{y}.mvt"],
+      "minzoom": 1,
+      "maxzoom": 19
+    },
+    "source-layer": "name",
+    "paint": {
+      "fill-color": "rgb(53, 175, 109)"
+    }
+  });
+
+  map.on("mousemove", "osm-history", function(e) {
+    console.log(e)
+    var osm_info = {
+      "matches": e.features[0].properties["matches"]
+    }
+    console.log(osm_info)
+  });
+});
+
+map.addControl(new mapboxgl.NavigationControl());
+</script>
+
+</body>
+</html>
