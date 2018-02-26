@@ -2,6 +2,7 @@ package osmesa.ingest.util
 
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import org.apache.spark.sql._
+import org.apache.log4j.{Level, Logger}
 
 import java.io.File
 
@@ -11,6 +12,8 @@ trait Caching {
 }
 
 class S3Caching(cacheDir: String) extends Caching {
+  lazy val logger = Logger.getRootLogger()
+
   private val s3client = AmazonS3ClientBuilder.defaultClient()
 
   private val bucket = cacheDir.split("/")(2)
@@ -22,13 +25,18 @@ class S3Caching(cacheDir: String) extends Caching {
     cacheDir + "/" + filename
 
   private def s3exists(filename: String): Boolean =
-    s3client.doesObjectExist(bucket, prefix(filename))
+    s3client.doesObjectExist(bucket, prefix(filename) + "/_SUCCESS").getKeyCount > 0
 
   def orc(filename: String)(sparkjob: => DataFrame)(implicit ss: SparkSession): DataFrame = {
+    logger.warn("in cache func")
+    logger.warn("bucket: " ++ bucket)
+    logger.warn(prefix(filename))
+    logger.warn(fileUri(filename))
+    logger.warn("s3exists: " ++ s3exists(filename).toString)
     if (s3exists(filename)) {
-      ss.read.orc(fileUri(filename))
+      ss.read.orc(fileUri(filename)).repartition(10000)
     } else {
-      sparkjob.repartition(1).write.format("orc").save(fileUri(filename))
+      sparkjob.write.format("orc").save(fileUri(filename))
       sparkjob
     }
   }
@@ -61,4 +69,3 @@ object Caching {
   def none = NoCaching
 
 }
-
