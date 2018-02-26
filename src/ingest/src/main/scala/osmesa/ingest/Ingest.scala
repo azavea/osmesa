@@ -93,11 +93,12 @@ object IngestApp extends CommandApp(
     val bucketO = Opts.option[String]("bucket", help = "S3 bucket to write VTs to")
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
     val layerO = Opts.option[String]("layer", help = "Name of the output Layer")
+    val countryO = Opts.option[String]("country", help = "Filter to metro areas in specified country").withDefault("")
     val maxzoomO = Opts.option[Int]("zoom", help = "Maximum zoom level for ingest (default=14)").withDefault(14)
     val localF = Opts.flag("local", help = "Is this to be run locally, not on EMR?").orFalse
     val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
 
-    (orcO, bucketO, prefixO, layerO, maxzoomO, localF, pyramidF).mapN { (orc, bucket, prefix, layer, maxZoomLevel, local, pyramid) =>
+    (orcO, bucketO, prefixO, layerO, countryO, maxzoomO, localF, pyramidF).mapN { (orc, bucket, prefix, layer, country, maxZoomLevel, local, pyramid) =>
 
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
@@ -126,9 +127,7 @@ object IngestApp extends CommandApp(
       val ppways = ProcessOSM.preprocessWays(df)
       val nodeGeoms = ProcessOSM.constructPointGeometries(ppnodes)
       val wayGeoms = ProcessOSM.reconstructWayGeometries(ppnodes, ppways)
-      println("PRIOR TO WAY/NODE UNION")
-      nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)).printSchema
-      wayGeoms.printSchema
+
       val orderedColumns: List[Column] = List('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'creation, 'authors, 'minorVersion, 'lastAuthor)
       val geoms = wayGeoms
         .select(orderedColumns: _*)
@@ -186,7 +185,14 @@ object IngestApp extends CommandApp(
       }
 
       val maxLayoutLevel = layoutScheme.levelForZoom(maxZoomLevel)
-      val keyed = GenerateVT.keyToLayout(features, maxLayoutLevel.layout)
+
+      val keyed =
+        if (country == "") {
+          GenerateVT.keyToLayout(features, maxLayoutLevel.layout)
+        } else {
+          val countryKeys = SpatialKeys.keysForCountry(country, maxLayoutLevel.layout)
+          GenerateVT.keyToLayoutWithFilter(features, maxLayoutLevel.layout, countryKeys.contains(_))
+        }
 
       build(keyed, maxLayoutLevel)
 
