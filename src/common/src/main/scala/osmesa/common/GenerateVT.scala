@@ -6,6 +6,7 @@ import geotrellis.raster.rasterize._
 import geotrellis.raster.rasterize.polygon._
 import geotrellis.spark._
 import geotrellis.spark.io.s3._
+import geotrellis.spark.io.hadoop._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vectortile._
@@ -28,6 +29,12 @@ object GenerateVT {
       .mapValues(_.toBytes)
       .saveToS3({ sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.mvt" },
                 putObjectModifier = { o => o.withCannedAcl(PublicRead) })
+  }
+
+  def saveHadoop(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, uri: String) = {
+    vectorTiles
+      .mapValues(_.toBytes)
+      .saveToHadoop({ sk: SpatialKey => s"${uri}/${zoom}/${sk.col}/${sk.row}.mvt" })
   }
 
   def keyToLayout[G <: Geometry](features: RDD[VTF[G]], layout: LayoutDefinition): RDD[(SpatialKey, (SpatialKey, VTF[G]))] = {
