@@ -25,6 +25,11 @@ class S3Caching(cacheDir: String) extends Caching {
     s3client.doesObjectExist(bucket, prefix(filename))
 
   def orc(filename: String)(sparkjob: => DataFrame)(implicit ss: SparkSession): DataFrame = {
+    println("in cache func")
+    println("bucket", bucket)
+    println(prefix(filename))
+    println(fileUri(filename))
+    println("s3exists", s3exists(filename))
     if (s3exists(filename)) {
       ss.read.orc(fileUri(filename))
     } else {
