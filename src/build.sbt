@@ -27,6 +27,7 @@ lazy val commonSettings = Seq(
     "locationtech-releases" at "https://repo.locationtech.org/content/repositories/releases/",
     "locationtech-snapshots" at "https://repo.locationtech.org/content/repositories/snapshots/",
     "geosolutions" at "http://maven.geo-solutions.it/",
+    "boundless" at "https://repo.boundlessgeo.com/main/",
     "osgeo" at "http://download.osgeo.org/webdav/geotools/",
     "apache.commons.io" at "https://mvnrepository.com/artifact/commons-io/commons-io"
   ),
