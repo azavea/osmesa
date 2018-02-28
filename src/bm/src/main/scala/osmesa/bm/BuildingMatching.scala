@@ -151,43 +151,30 @@ object BuildingMatching extends CommandApp(
             .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 4099))
             .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
               val a = it.toArray
-              val ab = scala.collection.mutable.ArrayBuffer.empty[(OSMFeature, (String, Double, OSMFeature))]
+              val I = a.filter({ _._2 == 0 })
+              val J = a.filter({ _._2 == 1 })
+              val p = Array.ofDim[Double](I.length,J.length,2)
 
-              var i = 0; while (i < a.length) {
-                val left = a(i)
+              var i = 0; while (i < I.length) {
+                val left = I(i)
                 val leftFeature = left._1
                 val leftGeom = leftFeature.geom.asInstanceOf[Polygon]
-                var j = i+1; while (j < a.length) {
-                  val right = a(j)
+                var j = 0; while (j < J.length) {
+                  val right = J(j)
                   val rightFeature = right._1
                   val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
-                  if (left._2 != right._2) { // Ensure that pairs are from different datasets
-                    val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
-                    lazy val dist = leftGeom.distance(rightGeom) / Util.MAGIC
-                    lazy val vm = VertexMatching.score(leftGeom, rightGeom) + dist*dist*dist
-                    lazy val vp = VertexProjection.score(leftGeom, rightGeom) + dist*dist*dist
 
-                    if (math.min(a1, a2) > 0.90) // Volume match
-                      ab.append((leftFeature, ("0 volume match", math.min(a1,a2), rightFeature)))
-                    else if (a1 > 0.90) // superset
-                      ab.append((leftFeature, ("1 superset", a1, rightFeature)))
-                    else if (a2 > 0.90) // subset
-                      ab.append((leftFeature, ("2 subset", a2, rightFeature)))
-                    else if (vm < 0.15) // strong volume match
-                      ab.append((leftFeature, ("3 strong vertex match", vm, rightFeature)))
-                    else if (vm < 0.60) // weak volume match
-                      ab.append((leftFeature, ("4 weak vertex match", vm, rightFeature)))
-                    else if (vp < 0.15) // strong projection match
-                      ab.append((leftFeature, ("5 strong projection match", vp, rightFeature)))
-                    else if (vp < 0.60) // weak volume match
-                      ab.append((leftFeature, ("6 weak projection match", vp, rightFeature)))
-                  }
+                  // val dist = leftGeom.distance(rightGeom) / Util.MAGIC
+                  val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
+                  val vm = 1.0 - VertexMatching.score(leftGeom, rightGeom)
+                  p(i)(j)(0) = math.max(a1, math.max(a2, vm))
+
                   j = j + 1
                 }
                 i = i + 1
               }
-              ab.toIterator
-            }, preservesPartitioning = true)
+              Array.empty[(OSMFeature, (String, Double, OSMFeature))].toIterator // XXX
+            }) // XXX , preservesPartitioning = true)
             .groupByKey // XXX can be optimized away by changing inner loop
             .map({ case (b, itr) =>
               // val best = itr.toArray.sortBy({ _._1 }).head
