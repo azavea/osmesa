@@ -110,8 +110,9 @@ object BuildingMatching extends CommandApp(
           }
           else ss.sparkContext.objectFile[OSMFeature](dataset1)
         }.filter({ f: OSMFeature =>
-          f.geom match {
-            case p: Polygon => (p.vertices.length > 4)
+          (f.geom, clipGeometry) match {
+            case (p: Polygon, Some(g)) => (p.vertices.length > 4) && (p.intersects(g))
+            case (p: Polygon, None) => (p.vertices.length > 4)
             case _ => false
           }
         })
@@ -126,8 +127,9 @@ object BuildingMatching extends CommandApp(
           }
           else ss.sparkContext.objectFile[OSMFeature](dataset2)
         }.filter({ f: OSMFeature =>
-          f.geom match {
-            case p: Polygon => (p.vertices.length > 4)
+          (f.geom, clipGeometry) match {
+            case (p: Polygon, Some(g)) => (p.vertices.length > 4) && (p.intersects(g))
+            case (p: Polygon, None) => (p.vertices.length > 4)
             case _ => false
           }
         })
