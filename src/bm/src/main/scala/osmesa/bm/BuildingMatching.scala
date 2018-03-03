@@ -26,7 +26,7 @@ import osmesa.GenerateVT
 
 object Util {
 
-  val MAGIC = 1e-4
+  val k = 32
 
   def sparkSession(appName: String): SparkSession = {
     val conf = new SparkConf()
@@ -151,23 +151,26 @@ object BuildingMatching extends CommandApp(
             .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 4099))
             .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
               val a = it.toArray
-              val I = a.filter({ _._2 == 0 })
-              val J = a.filter({ _._2 == 1 })
+              val I = a.filter({ _._2 == 0 }).map({ _._1 })
+              val J = a.filter({ _._2 == 1 }).map({ _._1 })
               val p = Array.ofDim[Double](I.length,J.length,2)
+              val q = Array.ofDim[Double](I.length,J.length,2)
+              val r = Array.ofDim[Double](I.length,J.length,2)
+              val Ni = I.map({ f1 => I.map({ f2 => (f1.geom.distance(f2.geom), f1) }).sortBy(_._1).take(Util.k) }) // XXX quadratic, but okay for now
+              val Nj = J.map({ f1 => J.map({ f2 => (f1.geom.distance(f2.geom), f1) }).sortBy(_._1).take(Util.k) }) // XXX do.
 
               var i = 0; while (i < I.length) {
-                val left = I(i)
-                val leftFeature = left._1
+                val leftFeature = I(i)
                 val leftGeom = leftFeature.geom.asInstanceOf[Polygon]
+
                 var j = 0; while (j < J.length) {
-                  val right = J(j)
-                  val rightFeature = right._1
+                  val rightFeature = J(j)
                   val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
 
                   // val dist = leftGeom.distance(rightGeom) / Util.MAGIC
                   val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
                   val vm = 1.0 - VertexMatching.score(leftGeom, rightGeom)
-                  p(i)(j)(0) = math.max(a1, math.max(a2, vm))
+                  p(i)(j)(0) = math.max(a1, math.max(a2, vm)) // initial probabilities
 
                   j = j + 1
                 }
