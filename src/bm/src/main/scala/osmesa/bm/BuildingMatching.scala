@@ -155,9 +155,19 @@ object BuildingMatching extends CommandApp(
               val J = a.filter({ _._2 == 1 }).map({ _._1 })
               val p = Array.ofDim[Double](I.length,J.length,2)
               val q = Array.ofDim[Double](I.length,J.length,2)
-              val r = Array.ofDim[Double](I.length,J.length,2)
-              val Ni = I.map({ f1 => I.map({ f2 => (f1.geom.distance(f2.geom), f1) }).sortBy(_._1).take(Util.k) }) // XXX quadratic, but okay for now
-              val Nj = J.map({ f1 => J.map({ f2 => (f1.geom.distance(f2.geom), f1) }).sortBy(_._1).take(Util.k) }) // XXX do.
+              val r = Array.ofDim[Double](I.length,J.length,Util.k,Util.k)
+              val Ni = I.map({ f1 =>
+                I.zipWithIndex
+                  .map({ case (f2, h) => (f1.geom.distance(f2.geom), h) })
+                  .sortBy(_._1)
+                  .take(Util.k)
+              }) // XXX quadratic, but okay for now
+              val Nj = J.map({ f1 =>
+                J.zipWithIndex
+                  .map({ case (f2, k) => (f1.geom.distance(f2.geom), k) })
+                  .sortBy(_._1)
+                  .take(Util.k)
+              })
 
               var i = 0; while (i < I.length) {
                 val leftFeature = I(i)
@@ -167,10 +177,23 @@ object BuildingMatching extends CommandApp(
                   val rightFeature = J(j)
                   val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
 
-                  // val dist = leftGeom.distance(rightGeom) / Util.MAGIC
                   val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
                   val vm = 1.0 - VertexMatching.score(leftGeom, rightGeom)
                   p(i)(j)(0) = math.max(a1, math.max(a2, vm)) // initial probabilities
+
+                  val diameter: Double = {
+                    val diameter1: Double = Ni(i).map(_._1).max
+                    val diameter2: Double = Nj(j).map(_._1).max
+                    math.max(diameter1, diameter2)
+                  }
+
+                  var h = 0; while (h < Util.k) {
+                    var k = 0; while (k < Util.k) {
+                      r(i)(j)(h)(k) = (1.0 - math.abs(Ni(i)(h)._2 - Nj(j)(k)._2)) / diameter
+                      k = k + 1
+                    }
+                    h = h + 1
+                  }
 
                   j = j + 1
                 }
