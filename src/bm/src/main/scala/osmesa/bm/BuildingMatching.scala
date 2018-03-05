@@ -177,16 +177,17 @@ object BuildingMatching extends CommandApp(
                   val rightFeature = J(j)
                   val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
 
+                  // Initial Probabilities
                   val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
                   val vm = 1.0 - VertexMatching.score(leftGeom, rightGeom)
                   p(i)(j)(0) = math.max(a1, math.max(a2, vm)) // initial probabilities
 
+                  // Local Structure (Relative Similarity)
                   val diameter: Double = {
                     val diameter1: Double = Ni(i).map(_._1).max
                     val diameter2: Double = Nj(j).map(_._1).max
                     math.max(diameter1, diameter2)
                   }
-
                   var h = 0; while (h < Util.k) {
                     var k = 0; while (k < Util.k) {
                       r(i)(j)(h)(k) = (1.0 - math.abs(Ni(i)(h)._2 - Nj(j)(k)._2)) / diameter
@@ -194,11 +195,28 @@ object BuildingMatching extends CommandApp(
                     }
                     h = h + 1
                   }
+                  j = j + 1
+                }
+                i = i + 1
+              }
+
+              i = 0; while (i < I.length) {
+                var j = 0; while (j < J.length) {
+
+                  // Support
+                  q(i)(j)(0) = {
+                    Ni(i).flatMap({ case (_, h) =>
+                      Nj(j).map({ case (_, k) =>
+                        r(i)(j)(h)(k) * p(i)(j)(0)
+                      })
+                    }).sum
+                  }
 
                   j = j + 1
                 }
                 i = i + 1
               }
+
               Array.empty[(OSMFeature, (String, Double, OSMFeature))].toIterator // XXX
             }) // XXX , preservesPartitioning = true)
             .groupByKey // XXX can be optimized away by changing inner loop
