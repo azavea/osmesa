@@ -23,10 +23,10 @@ import com.monovore.decline._
 
 import osmesa.GenerateVT
 
+import scala.collection.mutable
+
 
 object Util {
-
-  val k = 32
 
   def sparkSession(appName: String): SparkSession = {
     val conf = new SparkConf()
@@ -60,16 +60,6 @@ object Util {
     }
   }
 
-  // https://en.wikipedia.org/wiki/Error_function#Approximation_with_elementary_functions
-  def erf(x: Double): Double = {
-    val a1 = 0.278393
-    val a2 = 0.230389
-    val a3 = 0.000972
-    val a4 = 0.078108
-    val denom = (1 + a1*x + a2*x*x + a3*x*x*x + a4*x*x*x*x)
-    1.0 / (denom*denom*denom*denom)
-  }
-
 }
 
 object BuildingMatching extends CommandApp(
@@ -90,9 +80,9 @@ object BuildingMatching extends CommandApp(
     val nomatch =
       Opts.flag("nomatch", help = "Disable building-matching (useful for saving clipped datasets)").orFalse
     val saveDataset1 =
-      Opts.option[String]("saveDataset1", help = "Where to save clipped dataset 1").orNone
+      Opts.option[String]("saveDataset1", help = "Where to save dataset 1").orNone
     val saveDataset2 =
-      Opts.option[String]("saveDataset2", help = "Where to save clipped dataset 2").orNone
+      Opts.option[String]("saveDataset2", help = "Where to save dataset 2").orNone
 
     (clipGeometry, dataset1, dataset2, nomatch, saveDataset1, saveDataset2)
       .mapN({ (_clipGeometry, dataset1, dataset2, nomatch, saveDataset1, saveDataset2) =>
@@ -100,7 +90,7 @@ object BuildingMatching extends CommandApp(
         val clipGeometry: Option[Geometry] = _clipGeometry
           .flatMap({ str => Some(scala.io.Source.fromFile(str).mkString.parseGeoJson[Geometry]) })
 
-        val dataset1Features = {
+        val dataset1Features = { // most-likely OSM
           if (dataset1.endsWith(".orc")) {
             val (ns1, ws1, rs1) = vectorpipe.osm.fromORC(dataset1)(ss).get
             vectorpipe
@@ -148,74 +138,128 @@ object BuildingMatching extends CommandApp(
 
           val features: RDD[GenerateVT.VTF[Geometry]] = dataset1Features.map({ f => (f, 0) })
             .union(dataset2Features.map({ f => (f, 1) }))
-            .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 4099))
+            .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 4099)) // 4099 is the smallest prime larger than 2**12 = 4096
             .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
-              val a = it.toArray
-              val I = a.filter({ _._2 == 0 }).map({ _._1 })
-              val J = a.filter({ _._2 == 1 }).map({ _._1 })
-              val p = Array.ofDim[Double](I.length,J.length,2)
-              val q = Array.ofDim[Double](I.length,J.length,2)
-              val r = Array.ofDim[Double](I.length,J.length,Util.k,Util.k)
-              val Ni = I.map({ f1 =>
-                I.zipWithIndex
-                  .map({ case (f2, h) => (f1.geom.distance(f2.geom), h) })
-                  .sortBy(_._1)
-                  .take(Util.k)
-              }) // XXX quadratic, but okay for now
-              val Nj = J.map({ f1 =>
-                J.zipWithIndex
-                  .map({ case (f2, k) => (f1.geom.distance(f2.geom), k) })
-                  .sortBy(_._1)
-                  .take(Util.k)
-              })
+              val array = it.toArray
 
-              var i = 0; while (i < I.length) {
-                val leftFeature = I(i)
-                val leftGeom = leftFeature.geom.asInstanceOf[Polygon]
+              // Venn diagram of data
+              val (left, intersection, right) = {
+                val middle = mutable.ArrayBuffer.empty[OSMFeature]
+                val middleFromLeft = mutable.Set.empty[Long]
+                val middleFromRight = mutable.Set.empty[Long]
 
-                var j = 0; while (j < J.length) {
-                  val rightFeature = J(j)
-                  val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
-
-                  // Initial Probabilities
-                  val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
-                  val vm = 1.0 - VertexMatching.score(leftGeom, rightGeom)
-                  p(i)(j)(0) = math.max(a1, math.max(a2, vm)) // initial probabilities
-
-                  // Local Structure (Relative Similarity)
-                  val diameter: Double = {
-                    val diameter1: Double = Ni(i).map(_._1).max
-                    val diameter2: Double = Nj(j).map(_._1).max
-                    math.max(diameter1, diameter2)
-                  }
-                  var h = 0; while (h < Util.k) {
-                    var k = 0; while (k < Util.k) {
-                      r(i)(j)(h)(k) = (1.0 - math.abs(Ni(i)(h)._2 - Nj(j)(k)._2)) / diameter
-                      k = k + 1
+                var i = 0; while (i < array.length) {
+                  val a = array(i)._1
+                  var j = i+1; while (j < array.length) {
+                    val b = array(i)._1
+                    if (a.geom == b.geom) {
+                      middle += a
+                      middleFromLeft += a.data.uid
+                      middleFromRight += b.data.uid
                     }
-                    h = h + 1
+                    j = j + 1
                   }
-                  j = j + 1
+                  i = i + 1
                 }
-                i = i + 1
+
+                val leftMinusMiddle = array.filter(_._2 == 0).filter({ t => !middleFromLeft.contains(t._1.data.uid) })
+                val rightMinusMiddle = array.filter(_._2 == 1).filter({ t => !middleFromRight.contains(t._1.data.uid) })
+
+                (leftMinusMiddle, middle.toArray, rightMinusMiddle)
               }
 
-              i = 0; while (i < I.length) {
-                var j = 0; while (j < J.length) {
+              // Compute relative similarities
+              val r = {
+                val data = Array.ofDim[Double](left.length, right.length, intersection.length)
 
-                  // Support
-                  q(i)(j)(0) = {
-                    Ni(i).flatMap({ case (_, h) =>
-                      Nj(j).map({ case (_, k) =>
-                        r(i)(j)(h)(k) * p(i)(j)(0)
-                      })
-                    }).sum
+                var k = 0; while (k < intersection.length) {
+                  val c = intersection(k)
+                  val cCentroid = c.centroid
+                  var i = 0; while (i < left.length) {
+                    val a = left(i)._1
+                    val aCentroid = a.centroid
+                    val dist1 = a.distance(c)
+                    val (vx, vy) = (aCentroid.x - cCentroid.x, aCentroid.y - cCentroid.y)
+                    var j = 0; while (j < right.length) {
+                      val b = right(j)._1
+                      val bCentroid = b.centroid
+                      val dist2 = b.distance(c)
+                      val (ux, uy) = (bCentroid.x - cCentroid.x, bCentroid.y - cCentroid.y)
+                      j = j + 1
+                    }
+                    i = i + 1
                   }
-
-                  j = j + 1
+                  k = k + 1
                 }
-                i = i + 1
+
+                data
               }
+
+              // val onlyDataset1 = mutable.arrayBuffer[a.filter({ _._2 == 0 }).map({ _._1 })
+              // val J = a.filter({ _._2 == 1 }).map({ _._1 })
+              // val p = Array.ofDim[Double](I.length,J.length,2)
+              // val q = Array.ofDim[Double](I.length,J.length,2)
+              // val r = Array.ofDim[Double](I.length,J.length,Util.k,Util.k)
+              // val Ni = I.map({ f1 =>
+              //   I.zipWithIndex
+              //     .map({ case (f2, h) => (f1.geom.distance(f2.geom), h) })
+              //     .sortBy(_._1)
+              //     .take(Util.k)
+              // }) // XXX quadratic, but okay for now
+              // val Nj = J.map({ f1 =>
+              //   J.zipWithIndex
+              //     .map({ case (f2, k) => (f1.geom.distance(f2.geom), k) })
+              //     .sortBy(_._1)
+              //     .take(Util.k)
+              // })
+
+              // var i = 0; while (i < I.length) {
+              //   val leftFeature = I(i)
+              //   val leftGeom = leftFeature.geom.asInstanceOf[Polygon]
+
+              //   var j = 0; while (j < J.length) {
+              //     val rightFeature = J(j)
+              //     val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
+
+              //     // Initial Probabilities
+              //     val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
+              //     val vm = 1.0 - VertexMatching.score(leftGeom, rightGeom)
+              //     p(i)(j)(0) = math.max(a1, math.max(a2, vm)) // initial probabilities
+
+              //     // Local Structure (Relative Similarity)
+              //     val diameter: Double = {
+              //       val diameter1: Double = Ni(i).map(_._1).max
+              //       val diameter2: Double = Nj(j).map(_._1).max
+              //       math.max(diameter1, diameter2)
+              //     }
+              //     var h = 0; while (h < Util.k) {
+              //       var k = 0; while (k < Util.k) {
+              //         r(i)(j)(h)(k) = (1.0 - math.abs(Ni(i)(h)._2 - Nj(j)(k)._2)) / diameter
+              //         k = k + 1
+              //       }
+              //       h = h + 1
+              //     }
+              //     j = j + 1
+              //   }
+              //   i = i + 1
+              // }
+
+              // i = 0; while (i < I.length) {
+              //   var j = 0; while (j < J.length) {
+
+              //     // Support
+              //     q(i)(j)(0) = {
+              //       Ni(i).flatMap({ case (_, h) =>
+              //         Nj(j).map({ case (_, k) =>
+              //           r(i)(j)(h)(k) * p(i)(j)(0)
+              //         })
+              //       }).sum
+              //     }
+
+              //     j = j + 1
+              //   }
+              //   i = i + 1
+              // }
 
               Array.empty[(OSMFeature, (String, Double, OSMFeature))].toIterator // XXX
             }) // XXX , preservesPartitioning = true)
