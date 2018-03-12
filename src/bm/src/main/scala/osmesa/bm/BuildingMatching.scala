@@ -23,6 +23,8 @@ import com.monovore.decline._
 
 import osmesa.GenerateVT
 
+import com.vividsolutions.jts.algorithm.Centroid
+
 import scala.collection.mutable
 
 
@@ -168,23 +170,27 @@ object BuildingMatching extends CommandApp(
                 (leftMinusMiddle, middle.toArray, rightMinusMiddle)
               }
 
-              // Compute relative similarities
+              // Compute Relative Similarities
               val r = {
                 val data = Array.ofDim[Double](left.length, right.length, intersection.length)
 
                 var k = 0; while (k < intersection.length) {
                   val c = intersection(k)
-                  val cCentroid = c.centroid
+                  val cCentroid = Centroid.getCentroid(c.jtsGeom)
                   var i = 0; while (i < left.length) {
                     val a = left(i)._1
-                    val aCentroid = a.centroid
+                    val aCentroid = Centroid.getCentroid(a.jtsGeom)
                     val dist1 = a.distance(c)
                     val (vx, vy) = (aCentroid.x - cCentroid.x, aCentroid.y - cCentroid.y)
+                    val absv = math.sqrt(vx*vx + vy*vy)
                     var j = 0; while (j < right.length) {
                       val b = right(j)._1
-                      val bCentroid = b.centroid
+                      val bCentroid = Centroid.getCentroid(b.jtsGeom)
                       val dist2 = b.distance(c)
                       val (ux, uy) = (bCentroid.x - cCentroid.x, bCentroid.y - cCentroid.y)
+                      val absu = math.sqrt(ux*ux + uy*uy)
+                      val dot = (vx*ux + vy*uy)/(absv*absu)
+                      data(i)(j)(k) = dot*math.min(dist1/dist2,dist2/dist1)
                       j = j + 1
                     }
                     i = i + 1
@@ -193,6 +199,23 @@ object BuildingMatching extends CommandApp(
                 }
 
                 data
+              }
+
+              // Compute Support
+              val q = {
+                val data = Array.ofDim[Double](left.length, right.length)
+
+                var i = 0; while (i < left.length) {
+                  var j = 0; while (j < right.length) {
+                    data(i)(j) = r(i)(j).sum
+                    j = j + 1
+                  }
+                  i = i + 1
+                }
+
+                val total = data.map(_.sum).sum
+
+                data.map({ a => a.map({ x => x/total }) })
               }
 
               // val onlyDataset1 = mutable.arrayBuffer[a.filter({ _._2 == 0 }).map({ _._1 })
