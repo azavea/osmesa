@@ -164,8 +164,14 @@ object BuildingMatching extends CommandApp(
                   i = i + 1
                 }
 
-                val leftMinusMiddle = array.filter(_._2 == 0).filter({ t => !middleFromLeft.contains(t._1.data.uid) })
-                val rightMinusMiddle = array.filter(_._2 == 1).filter({ t => !middleFromRight.contains(t._1.data.uid) })
+                val leftMinusMiddle = array
+                  .filter(_._2 == 0)
+                  .filter({ t => !middleFromLeft.contains(t._1.data.uid) })
+                  .map(_._1)
+                val rightMinusMiddle = array
+                  .filter(_._2 == 1)
+                  .filter({ t => !middleFromRight.contains(t._1.data.uid) })
+                  .map(_._1)
 
                 (leftMinusMiddle, middle.toArray, rightMinusMiddle)
               }
@@ -173,18 +179,17 @@ object BuildingMatching extends CommandApp(
               // Compute Relative Similarities
               val r = {
                 val data = Array.ofDim[Double](left.length, right.length, intersection.length)
-
                 var k = 0; while (k < intersection.length) {
                   val c = intersection(k)
                   val cCentroid = Centroid.getCentroid(c.jtsGeom)
                   var i = 0; while (i < left.length) {
-                    val a = left(i)._1
+                    val a = left(i)
                     val aCentroid = Centroid.getCentroid(a.jtsGeom)
                     val dist1 = a.distance(c)
                     val (vx, vy) = (aCentroid.x - cCentroid.x, aCentroid.y - cCentroid.y)
                     val absv = math.sqrt(vx*vx + vy*vy)
                     var j = 0; while (j < right.length) {
-                      val b = right(j)._1
+                      val b = right(j)
                       val bCentroid = Centroid.getCentroid(b.jtsGeom)
                       val dist2 = b.distance(c)
                       val (ux, uy) = (bCentroid.x - cCentroid.x, bCentroid.y - cCentroid.y)
@@ -197,14 +202,12 @@ object BuildingMatching extends CommandApp(
                   }
                   k = k + 1
                 }
-
                 data
               }
 
               // Compute Support
               val q = {
                 val data = Array.ofDim[Double](left.length, right.length)
-
                 var i = 0; while (i < left.length) {
                   var j = 0; while (j < right.length) {
                     data(i)(j) = r(i)(j).sum
@@ -212,77 +215,26 @@ object BuildingMatching extends CommandApp(
                   }
                   i = i + 1
                 }
-
-                val total = data.map(_.sum).sum
-
-                data.map({ a => a.map({ x => x/total }) })
+                val totals = data.map(_.sum)
+                data.zip(totals).map({ case (a, total) => a.map({ x => x/total }) })
               }
 
-              // val onlyDataset1 = mutable.arrayBuffer[a.filter({ _._2 == 0 }).map({ _._1 })
-              // val J = a.filter({ _._2 == 1 }).map({ _._1 })
-              // val p = Array.ofDim[Double](I.length,J.length,2)
-              // val q = Array.ofDim[Double](I.length,J.length,2)
-              // val r = Array.ofDim[Double](I.length,J.length,Util.k,Util.k)
-              // val Ni = I.map({ f1 =>
-              //   I.zipWithIndex
-              //     .map({ case (f2, h) => (f1.geom.distance(f2.geom), h) })
-              //     .sortBy(_._1)
-              //     .take(Util.k)
-              // }) // XXX quadratic, but okay for now
-              // val Nj = J.map({ f1 =>
-              //   J.zipWithIndex
-              //     .map({ case (f2, k) => (f1.geom.distance(f2.geom), k) })
-              //     .sortBy(_._1)
-              //     .take(Util.k)
-              // })
-
-              // var i = 0; while (i < I.length) {
-              //   val leftFeature = I(i)
-              //   val leftGeom = leftFeature.geom.asInstanceOf[Polygon]
-
-              //   var j = 0; while (j < J.length) {
-              //     val rightFeature = J(j)
-              //     val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
-
-              //     // Initial Probabilities
-              //     val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
-              //     val vm = 1.0 - VertexMatching.score(leftGeom, rightGeom)
-              //     p(i)(j)(0) = math.max(a1, math.max(a2, vm)) // initial probabilities
-
-              //     // Local Structure (Relative Similarity)
-              //     val diameter: Double = {
-              //       val diameter1: Double = Ni(i).map(_._1).max
-              //       val diameter2: Double = Nj(j).map(_._1).max
-              //       math.max(diameter1, diameter2)
-              //     }
-              //     var h = 0; while (h < Util.k) {
-              //       var k = 0; while (k < Util.k) {
-              //         r(i)(j)(h)(k) = (1.0 - math.abs(Ni(i)(h)._2 - Nj(j)(k)._2)) / diameter
-              //         k = k + 1
-              //       }
-              //       h = h + 1
-              //     }
-              //     j = j + 1
-              //   }
-              //   i = i + 1
-              // }
-
-              // i = 0; while (i < I.length) {
-              //   var j = 0; while (j < J.length) {
-
-              //     // Support
-              //     q(i)(j)(0) = {
-              //       Ni(i).flatMap({ case (_, h) =>
-              //         Nj(j).map({ case (_, k) =>
-              //           r(i)(j)(h)(k) * p(i)(j)(0)
-              //         })
-              //       }).sum
-              //     }
-
-              //     j = j + 1
-              //   }
-              //   i = i + 1
-              // }
+              // Compute Probabilities
+              val p = {
+                val data = Array.ofDim[Double](left.length, right.length)
+                var i = 0; while (i < left.length) {
+                  val a = left(i).geom.asInstanceOf[Polygon]
+                  var j = 0; while (j < right.length) {
+                    val b = right(j).geom.asInstanceOf[Polygon]
+                    val p1 = 1.0 - VertexMatching.score(a, b)
+                    val (p2, p3) = VolumeMatching.data(a, b)
+                    data(i)(j) = (math.max(p1, math.max(p2, p3)) + q(i)(j))/2
+                    j = j + 1
+                  }
+                  i = i + 1
+                }
+                data
+              }
 
               Array.empty[(OSMFeature, (String, Double, OSMFeature))].toIterator // XXX
             }) // XXX , preservesPartitioning = true)
