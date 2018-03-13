@@ -1,11 +1,12 @@
 package osmesa.bm
 
-import geotrellis.proj4.WebMercator
+import geotrellis.proj4.{LatLng, WebMercator, Transform}
 import geotrellis.spark._
 import geotrellis.spark.join._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vector.io._
+import geotrellis.vectortile._
 
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
@@ -17,12 +18,20 @@ import org.apache.spark.sql.functions._
 import vectorpipe._
 import vectorpipe.osm._
 
+import cats.implicits._
+import com.monovore.decline._
+import monocle.macros.GenLens
 
-object BuildingMatching {
+import osmesa.GenerateVT
 
-  val MAGIC = 1e-4
+import com.vividsolutions.jts.algorithm.Centroid
 
-  private def sparkSession(appName: String): SparkSession = {
+import scala.collection.mutable
+
+
+object Util {
+
+  def sparkSession(appName: String): SparkSession = {
     val conf = new SparkConf()
       .setIfMissing("spark.master", "local[*]")
       .setAppName(s"OSMesa Analytics - ${appName}")
@@ -38,14 +47,14 @@ object BuildingMatching {
       .getOrCreate
   }
 
-  private def filterfn1(clipGeometry: Option[Geometry])(feature: OSMFeature): Boolean = {
+  def filterfn1(clipGeometry: Option[Geometry])(feature: OSMFeature): Boolean = {
     clipGeometry match {
       case Some(g) => feature.geom.intersects(g)
       case None => true
     }
   }
 
-  private def filterfn2(clipGeometry: Option[Geometry])(pair: (Long, Node)): Boolean = {
+  def filterfn2(clipGeometry: Option[Geometry])(pair: (Long, Node)): Boolean = {
     clipGeometry match {
       case Some(g) =>
         val node = pair._2
@@ -54,131 +63,292 @@ object BuildingMatching {
     }
   }
 
-  // https://en.wikipedia.org/wiki/Error_function#Approximation_with_elementary_functions
-  private def erf(x: Double): Double = {
-    val a1 = 0.278393
-    val a2 = 0.230389
-    val a3 = 0.000972
-    val a4 = 0.078108
-    val denom = (1 + a1*x + a2*x*x + a3*x*x*x + a4*x*x*x*x)
-    1.0 / (denom*denom*denom*denom)
-  }
+}
 
-  def main(args: Array[String]): Unit = {
-    val ss = sparkSession("Building-Matching")
+object BuildingMatching extends CommandApp(
+  name = "Building-Matching",
+  header = "Match Buildings",
+  main = {
+    val ss = Util.sparkSession("Building-Matching")
+    val tags = GenLens[vectorpipe.osm.ElementMeta](_.tags)
 
     Logger.getLogger("org").setLevel(Level.ERROR)
     Logger.getLogger("akka").setLevel(Level.ERROR)
 
-    val clipGeometry: Option[Geometry] =
-      if (args.length >= 4) Some(scala.io.Source.fromFile(args(3)).mkString.parseGeoJson[Geometry])
-      else None
+    val clipGeometry =
+      Opts.option[String]("clipGeometry", help = "GeoJSON file containing clip geometry").orNone
+    val dataset1 =
+      Opts.option[String]("dataset1", help = "Where to find dataset 1")
+    val dataset2 =
+      Opts.option[String]("dataset2", help = "Where to find dataset 2")
+    val nomatch =
+      Opts.flag("nomatch", help = "Disable building-matching (useful for saving clipped datasets)").orFalse
+    val saveDataset1 =
+      Opts.option[String]("saveDataset1", help = "Where to save dataset 1").orNone
+    val saveDataset2 =
+      Opts.option[String]("saveDataset2", help = "Where to save dataset 2").orNone
+    val saveTiles =
+      Opts.option[String]("saveTiles", help = "Where to save tiles").orNone
 
-    val osmFeatures =
-      if (args(1).endsWith(".orc")) {
-        val (ns1, ws1, rs1) = vectorpipe.osm.fromORC(args(1))(ss).get
-        vectorpipe
-          .osm.features(ns1.filter(filterfn2(clipGeometry)), ws1, rs1).geometries
-          .filter({ feature => feature.data.tags.contains("building") })
-          .filter(filterfn1(clipGeometry))
-      }
-      else ss.sparkContext.objectFile[OSMFeature](args(1))
+    (clipGeometry, dataset1, dataset2, nomatch, saveDataset1, saveDataset2, saveTiles)
+      .mapN({ (_clipGeometry, dataset1, dataset2, nomatch, saveDataset1, saveDataset2, saveTiles) =>
 
-    val nomeFeatures =
-      if (args(2).endsWith(".orc")) {
-        val (ns2, ws2, rs2) = vectorpipe.osm.fromORC(args(2))(ss).get
-        vectorpipe
-          .osm.features(ns2.filter(filterfn2(clipGeometry)), ws2, rs2).geometries
-          .filter({ feature => feature.data.tags.contains("building") })
-          .filter(filterfn1(clipGeometry))
-      }
-      else ss.sparkContext.objectFile[OSMFeature](args(2))
+        val clipGeometry: Option[Geometry] = _clipGeometry
+          .flatMap({ str => Some(scala.io.Source.fromFile(str).mkString.parseGeoJson[Geometry]) })
 
-    if (args(0) == "match") { // MATCH
-
-      val nomeNotOsm = nomeFeatures
-        .filter({ f: OSMFeature =>
-          f.geom match {
-            case p: Polygon => (p.vertices.length > 4)
+        val dataset1Features = { // most-likely OSM
+          if (dataset1.endsWith(".orc")) {
+            val (ns1, ws1, rs1) = vectorpipe.osm.fromORC(dataset1)(ss).get
+            vectorpipe
+              .osm.features(ns1.filter(Util.filterfn2(clipGeometry)), ws1, rs1).geometries
+              .filter({ feature => feature.data.tags.contains("building") })
+              .filter(Util.filterfn1(clipGeometry))
+          }
+          else ss.sparkContext.objectFile[OSMFeature](dataset1)
+        }.filter({ f: OSMFeature =>
+          (f.geom, clipGeometry) match {
+            case (p: Polygon, Some(g)) => (p.vertices.length > 4) && (p.intersects(g))
+            case (p: Polygon, None) => (p.vertices.length > 4)
             case _ => false
           }
         })
 
-      val osmNotNome = osmFeatures
-        .filter({ f: OSMFeature =>
-          f.geom match {
-            case p: Polygon => (p.vertices.length > 4)
+        val dataset2Features = {
+          if (dataset2.endsWith(".orc")) {
+            val (ns1, ws1, rs1) = vectorpipe.osm.fromORC(dataset2)(ss).get
+            vectorpipe
+              .osm.features(ns1.filter(Util.filterfn2(clipGeometry)), ws1, rs1).geometries
+              .filter({ feature => feature.data.tags.contains("building") })
+              .filter(Util.filterfn1(clipGeometry))
+          }
+          else ss.sparkContext.objectFile[OSMFeature](dataset2)
+        }.filter({ f: OSMFeature =>
+          (f.geom, clipGeometry) match {
+            case (p: Polygon, Some(g)) => (p.vertices.length > 4) && (p.intersects(g))
+            case (p: Polygon, None) => (p.vertices.length > 4)
             case _ => false
           }
         })
 
-      val data = nomeNotOsm.map({ f => (f, 0) })
-        .union(osmNotNome.map({ f => (f, 1) }))
-        .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 4099))
-        .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
-          val a = it.toArray
-          var ab = scala.collection.mutable.ArrayBuffer.empty[(Polygon, (String, Double, Polygon))]
+        saveDataset1 match {
+          case Some(filename) => dataset1Features.saveAsObjectFile(filename)
+          case None =>
+        }
 
-          var i = 0; while (i < a.length) {
-            val left = a(i)
-            val leftFeature = left._1
-            val leftGeom = leftFeature.geom.asInstanceOf[Polygon]
-            var eligible = true
-            var j = i+1; while (j < a.length) {
-              val right = a(j)
-              val rightFeature = right._1
-              val rightGeom = rightFeature.geom.asInstanceOf[Polygon]
-              if (left._2 != right._2) { // Ensure that pairs are from different datasets
-                if (leftGeom == rightGeom) eligible = false // Not interested in trivial matches (shared history)
-                else {
-                  val (a1, a2) = VolumeMatching.data(leftGeom, rightGeom)
-                  lazy val dist = leftGeom.distance(rightGeom) / MAGIC
-                  lazy val vm = VertexMatching.score(leftGeom, rightGeom) + dist*dist*dist
-                  lazy val vp = VertexProjection.score(leftGeom, rightGeom) + dist*dist*dist
+        saveDataset2 match {
+          case Some(filename) => dataset2Features.saveAsObjectFile(filename)
+          case None =>
+        }
 
-                  if (math.min(a1, a2) > 0.90) // Volume match
-                    ab.append((leftGeom, ("0 volume match", math.min(a1,a2), rightGeom)))
-                  else if (a1 > 0.90) // superset
-                    ab.append((leftGeom, ("1 superset", a1, rightGeom)))
-                  else if (a2 > 0.90) // subset
-                    ab.append((leftGeom, ("2 subset", a2, rightGeom)))
-                  else if (vm < 0.15) // strong volume match
-                    ab.append((leftGeom, ("3 strong vertex match", vm, rightGeom)))
-                  else if (vm < 0.60) // weak volume match
-                    ab.append((leftGeom, ("4 weak vertex match", vm, rightGeom)))
-                  else if (vp < 0.15) // strong projection match
-                    ab.append((leftGeom, ("5 strong projection match", vp, rightGeom)))
-                  else if (vp < 0.60) // weak volume match
-                    ab.append((leftGeom, ("6 weak projection match", vp, rightGeom)))
+        if (!nomatch) {
+
+          val features = dataset1Features.map({ f => (f, 0) })
+            .union(dataset2Features.map({ f => (f, 1) }))
+            .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 4099)) // 4099 is the smallest prime larger than 2**12 = 4096
+            .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
+
+              // Data
+              val array = it.toArray
+
+              // Venn diagram of data
+              val (left, intersection, right) = {
+                val middle = mutable.Set.empty[OSMFeature]
+                val middle2 = mutable.Set.empty[OSMFeature]
+
+                var i = 0; while (i < array.length) {
+                  val a = array(i)._1
+                  var j = i+1; while (j < array.length) {
+                    val b = array(j)._1
+                    if (a.geom == b.geom) {
+                      middle += a
+                      middle2 += b
+                    }
+                    j = j + 1
+                  }
+                  i = i + 1
                 }
+
+                val leftMinusMiddle = array
+                  .filter(_._2 == 0)
+                  .filter({ case (f, _) => !(middle.contains(f) || middle2.contains(f)) })
+                  .map(_._1)
+                val rightMinusMiddle = array
+                  .filter(_._2 == 1)
+                  .filter({ case (f, _) => !(middle.contains(f) || middle2.contains(f)) })
+                  .map(_._1)
+
+                (leftMinusMiddle, middle.toArray, rightMinusMiddle)
               }
-              j = j + 1
-            }
-            if (!eligible) ab = ab.filter(_._1 != leftGeom) // XXX
-            i = i + 1
+
+              // Compute Relative Similarities
+              val r = {
+                val data = Array.ofDim[Double](left.length, right.length, intersection.length)
+                var k = 0; while (k < intersection.length) {
+                  val c = intersection(k)
+                  val cCentroid = Centroid.getCentroid(c.jtsGeom)
+                  var i = 0; while (i < left.length) {
+                    val a = left(i)
+                    val aCentroid = Centroid.getCentroid(a.jtsGeom)
+                    val dist1 = aCentroid.distance(cCentroid)
+                    val (vx, vy) = (aCentroid.x - cCentroid.x, aCentroid.y - cCentroid.y)
+                    val absv = math.sqrt(vx*vx + vy*vy)
+                    var j = 0; while (j < right.length) {
+                      val b = right(j)
+                      val bCentroid = Centroid.getCentroid(b.jtsGeom)
+                      val dist2 = bCentroid.distance(cCentroid)
+                      val (ux, uy) = (bCentroid.x - cCentroid.x, bCentroid.y - cCentroid.y)
+                      val absu = math.sqrt(ux*ux + uy*uy)
+                      val dot = ((vx*ux + vy*uy)/(absv*absu) + 1.0)/2.0
+                      val dist = math.min(dist1/dist2,dist2/dist1)
+                      data(i)(j)(k) = dot*dist
+                      j = j + 1
+                    }
+                    i = i + 1
+                  }
+                  k = k + 1
+                }
+                data
+              }
+
+              // Compute Support
+              val q = {
+                val data = Array.ofDim[Double](left.length, right.length)
+                var i = 0; while (i < left.length) {
+                  var j = 0; while (j < right.length) {
+                    data(i)(j) = r(i)(j).sum
+                    j = j + 1
+                  }
+                  i = i + 1
+                }
+                val maximum = if (left.nonEmpty && right.nonEmpty) data.map(_.max).max; else 1.0
+                data.map({ a => a.map({ x => x/maximum }) })
+              }
+
+              // Compute Probabilities
+              val p = {
+                val data = Array.ofDim[Double](left.length, right.length)
+                var i = 0; while (i < left.length) {
+                  val a = left(i).geom.asInstanceOf[Polygon]
+                  var j = 0; while (j < right.length) {
+                    val b = right(j).geom.asInstanceOf[Polygon]
+                    val p1 = 1.0 - VertexMatching.score(a, b)
+                    val (p2, p3) = VolumeMatching.data(a, b)
+                    data(i)(j) = (math.max(p1, math.max(p2, p3)) + q(i)(j))/2.0
+                    // data(i)(j) = math.max(p1, math.max(p2, p3)) // XXX
+                    j = j + 1
+                  }
+                  i = i + 1
+                }
+                data
+              }
+
+              val retval = mutable.ArrayBuffer.empty[(OSMFeature, (Double, Long))]
+              // val retval = mutable.ArrayBuffer.empty[(OSMFeature, (Double, Geometry))]
+
+              intersection.foreach({ f =>
+                val geom = f.geom
+                val data = f.data
+                val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "both"))(data))
+                val pair = (f2, (1.0, 0L))
+                retval.append(pair)
+              })
+
+              // left
+              var i = 0; while (i < left.length) {
+                val f1 = left(i)
+                val geom = f1.geom
+                val data = f1.data
+                val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "left"))(data))
+                var j = 0; while (j < right.length) {
+                  val geom2 = right(j).geom
+                  if ((p(i)(j) > 0.50) && (geom.distance(geom2) < 0.01)) { // XXX
+                    // val pair2 = (p(i)(j), geom2)
+                    val pair2 = (p(i)(j), right(j).data.uid)
+                    val pair = (f2, pair2)
+                    retval.append(pair)
+                  }
+                  j = j + 1
+                }
+                i = i + 1
+              }
+
+              // right
+              var j = 0; while (j < right.length) {
+                val f1 = right(j)
+                val geom = f1.geom
+                val data = f1.data
+                val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "right"))(data))
+                var i = 0; while (i < left.length) {
+                  val geom2 = left(i).geom
+                  if ((p(i)(j) > 0.50) && (geom.distance(geom2) < 0.01)) { // XXX
+                    // val pair2 = (p(i)(j), geom2)
+                    val pair2 = (p(i)(j), left(i).data.uid)
+                    val pair = (f2, pair2)
+                    retval.append(pair)
+                  }
+                  i = i + 1
+                }
+                j = j + 1
+              }
+
+              retval.toIterator
+            }, preservesPartitioning = true)
+            .groupByKey // XXX can be optimized away by changing inner loop
+
+          val tiles: RDD[GenerateVT.VTF[Geometry]] =
+            features
+          // .collect
+          // .foreach({ case (building, buildingsItr) =>
+          //   val buildings = buildingsItr.toArray
+          //   if (buildings.nonEmpty) {
+          //     println(s"${building.geom.toGeoJson}")
+          //     buildings.toArray.sortBy({ case (prob, _) => -prob }).foreach({ case (prob, building2) =>
+          //       println(s"\t $prob ${building2.toGeoJson}")
+          //     })
+          //   }
+          // })
+              .map({ case (building, buildingsItr) =>
+                val buildings = buildingsItr.toArray.sortBy({ case (prob, _) => -prob })
+                val bestMatch = buildings.head
+                val dataset = building.data.tags.getOrElse("dataset", throw new Exception)
+                val bestMatchProb = bestMatch._1
+                val bestMatchUid = bestMatch._2
+                val displayNumber = dataset match {
+                  case "left" => bestMatchProb
+                  case "both" => 1.0
+                  case "right" => 2.0 - bestMatchProb
+                }
+
+                Feature(
+                  building.geom.reproject(LatLng, WebMercator),
+                  Map(
+                    "__id" -> VInt64(building.data.uid),
+                    "dataset" -> VString(dataset),
+                    "totalMatches" -> VInt64(buildings.length),
+                    "bestMatchProb" -> VDouble(bestMatchProb),
+                    "bestMatchUid" -> VInt64(bestMatchUid),
+                    "displayNumber" -> VDouble(displayNumber)
+                  )
+                )
+              })
+
+          saveTiles match {
+            case Some(uri) =>
+              Range(6,20).foreach({ z =>
+                val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
+                val maxLayoutLevel = layoutScheme.levelForZoom(z)
+                val LayoutLevel(zoom, layout) = maxLayoutLevel
+                val keyed = GenerateVT.keyToLayout(tiles, layout)
+
+                GenerateVT.saveHadoop(
+                  GenerateVT.makeVectorTiles(keyed, layout, "bm"),
+                  zoom,
+                  uri
+                )
+              })
+            case _ =>
           }
-          ab.toIterator
-        }, preservesPartitioning = true)
-        .groupByKey // XXX can be optimized away by changing inner loop
-        .map({ case (b, itr) => (b, itr.toArray.sortBy({ _._1 })) })
-
-      data.collect.foreach({ case (b: Polygon, bm: Array[(String, Double, Polygon)]) =>
-        println(s"${b.toGeoJson.hashCode} ${b.toGeoJson}")
-        bm.sortBy(_._1)
-          .foreach({ case (str, x, b2) =>
-            println(s"\t ${b2.toGeoJson.hashCode} ${b2.toGeoJson} $str $x")
-          })
-        println
+        }
       })
-    }
-    else if (args(0) == "save") { // SAVE
-      if (args.length >= 5)
-        osmFeatures.saveAsObjectFile(args(4))
-      if (args.length >= 6)
-        nomeFeatures.saveAsObjectFile(args(5))
-    }
-    else throw new Exception("Unknown activity")
-
   }
-
-}
+)
