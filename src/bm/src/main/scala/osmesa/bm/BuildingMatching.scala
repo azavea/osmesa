@@ -87,9 +87,11 @@ object BuildingMatching extends CommandApp(
       Opts.option[String]("saveDataset1", help = "Where to save dataset 1").orNone
     val saveDataset2 =
       Opts.option[String]("saveDataset2", help = "Where to save dataset 2").orNone
+    val saveTiles =
+      Opts.option[String]("saveTiles", help = "Where to save tiles").orNone
 
-    (clipGeometry, dataset1, dataset2, nomatch, saveDataset1, saveDataset2)
-      .mapN({ (_clipGeometry, dataset1, dataset2, nomatch, saveDataset1, saveDataset2) =>
+    (clipGeometry, dataset1, dataset2, nomatch, saveDataset1, saveDataset2, saveTiles)
+      .mapN({ (_clipGeometry, dataset1, dataset2, nomatch, saveDataset1, saveDataset2, saveTiles) =>
 
         val clipGeometry: Option[Geometry] = _clipGeometry
           .flatMap({ str => Some(scala.io.Source.fromFile(str).mkString.parseGeoJson[Geometry]) })
@@ -140,7 +142,7 @@ object BuildingMatching extends CommandApp(
 
         if (!nomatch) {
 
-          val features/*: RDD[GenerateVT.VTF[Geometry]]*/ = dataset1Features.map({ f => (f, 0) })
+          val features = dataset1Features.map({ f => (f, 0) })
             .union(dataset2Features.map({ f => (f, 1) }))
             .partitionBy(new QuadTreePartitioner(Range(0,24).toSet, 4099)) // 4099 is the smallest prime larger than 2**12 = 4096
             .mapPartitions({ (it: Iterator[(OSMFeature, Int)]) =>
@@ -240,16 +242,16 @@ object BuildingMatching extends CommandApp(
                 data
               }
 
-              // val retval = mutable.ArrayBuffer.empty[(OSMFeature, (Double, Long))]
-              val retval = mutable.ArrayBuffer.empty[(OSMFeature, (Double, Geometry))]
+              val retval = mutable.ArrayBuffer.empty[(OSMFeature, (Double, Long))]
+              // val retval = mutable.ArrayBuffer.empty[(OSMFeature, (Double, Geometry))]
 
-              // intersection.foreach({ f =>
-              //   val geom = f.geom
-              //   val data = f.data
-              //   val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "both"))(data))
-              //   val pair = (f2, (-1L, 0.0))
-              //   retval.append(pair)
-              // })
+              intersection.foreach({ f =>
+                val geom = f.geom
+                val data = f.data
+                val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "both"))(data))
+                val pair = (f2, (1.0, 0L))
+                retval.append(pair)
+              })
 
               // left
               var i = 0; while (i < left.length) {
@@ -260,7 +262,8 @@ object BuildingMatching extends CommandApp(
                 var j = 0; while (j < right.length) {
                   val geom2 = right(j).geom
                   if ((p(i)(j) > 0.50) && (geom.distance(geom2) < 0.01)) { // XXX
-                    val pair2 = (p(i)(j), geom2)
+                    // val pair2 = (p(i)(j), geom2)
+                    val pair2 = (p(i)(j), right(j).data.uid)
                     val pair = (f2, pair2)
                     retval.append(pair)
                   }
@@ -278,7 +281,8 @@ object BuildingMatching extends CommandApp(
                 var i = 0; while (i < left.length) {
                   val geom2 = left(i).geom
                   if ((p(i)(j) > 0.50) && (geom.distance(geom2) < 0.01)) { // XXX
-                    val pair2 = (p(i)(j), geom2)
+                    // val pair2 = (p(i)(j), geom2)
+                    val pair2 = (p(i)(j), left(i).data.uid)
                     val pair = (f2, pair2)
                     retval.append(pair)
                   }
@@ -291,39 +295,59 @@ object BuildingMatching extends CommandApp(
             }, preservesPartitioning = true)
             .groupByKey // XXX can be optimized away by changing inner loop
 
-          features
-            .collect
-            .foreach({ case (building, buildingsItr) =>
-              val buildings = buildingsItr.toArray
-              if (buildings.nonEmpty) {
-                println(s"${building.geom.toGeoJson}")
-                buildings.toArray.sortBy({ case (prob, _) => -prob }).foreach({ case (prob, building2) =>
-                  println(s"\t $prob ${building2.toGeoJson}")
-                })
-              }
-            })
-          // .map({ case (b, itr) =>
-          //   // val best = itr.toArray.sortBy({ _._1 }).head
-          //   Feature(
-          //     b.geom.reproject(LatLng, WebMercator),
-          //     Map(
-          //       "__id" -> VInt64(b.data.uid),
-          //       "matches" -> VInt64(itr.toArray.length)
-          //     )
-          //   )
+          val tiles: RDD[GenerateVT.VTF[Geometry]] =
+            features
+          // .collect
+          // .foreach({ case (building, buildingsItr) =>
+          //   val buildings = buildingsItr.toArray
+          //   if (buildings.nonEmpty) {
+          //     println(s"${building.geom.toGeoJson}")
+          //     buildings.toArray.sortBy({ case (prob, _) => -prob }).foreach({ case (prob, building2) =>
+          //       println(s"\t $prob ${building2.toGeoJson}")
+          //     })
+          //   }
           // })
+              .map({ case (building, buildingsItr) =>
+                val buildings = buildingsItr.toArray.sortBy({ case (prob, _) => -prob })
+                val bestMatch = buildings.head
+                val dataset = building.data.tags.getOrElse("dataset", throw new Exception)
+                val bestMatchProb = bestMatch._1
+                val bestMatchUid = bestMatch._2
+                val displayNumber = dataset match {
+                  case "left" => bestMatchProb
+                  case "both" => 1.0
+                  case "right" => 2.0 - bestMatchProb
+                }
 
-          // val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
-          // val maxLayoutLevel = layoutScheme.levelForZoom(19)
-          // val LayoutLevel(zoom, layout) = maxLayoutLevel
-          // val keyed = GenerateVT.keyToLayout(features, layout)
+                Feature(
+                  building.geom.reproject(LatLng, WebMercator),
+                  Map(
+                    "__id" -> VInt64(building.data.uid),
+                    "dataset" -> VString(dataset),
+                    "totalMatches" -> VInt64(buildings.length),
+                    "bestMatchProb" -> VDouble(bestMatchProb),
+                    "bestMatchUid" -> VInt64(bestMatchUid),
+                    "displayNumber" -> VDouble(displayNumber)
+                  )
+                )
+              })
 
-          // GenerateVT.saveHadoop(
-          //   GenerateVT.makeVectorTiles(keyed, layout, "name"),
-          //   zoom,
-          //   "/tmp/tiles"
-          // )
+          saveTiles match {
+            case Some(uri) =>
+              Range(6,20).foreach({ z =>
+                val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
+                val maxLayoutLevel = layoutScheme.levelForZoom(z)
+                val LayoutLevel(zoom, layout) = maxLayoutLevel
+                val keyed = GenerateVT.keyToLayout(tiles, layout)
 
+                GenerateVT.saveHadoop(
+                  GenerateVT.makeVectorTiles(keyed, layout, "bm"),
+                  zoom,
+                  uri
+                )
+              })
+            case _ =>
+          }
         }
       })
   }
