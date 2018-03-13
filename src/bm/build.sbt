@@ -7,26 +7,11 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
 libraryDependencies ++= Seq(
-  // // Deal with GeoMesa dependency that breaks Spark 2.2
-  // "org.json4s" %% "json4s-native" % "3.2.11",
-  // "org.json4s" %% "json4s-core" % "3.2.11",
-  // "org.json4s" %% "json4s-ast" % "3.2.11",
-
-  // decline,
+  decline,
   sparkHive % "provided",
-  gtGeotools exclude("com.google.protobuf", "protobuf-java"),
-  gtS3 exclude("com.google.protobuf", "protobuf-java"),
-  gtSpark exclude("com.google.protobuf", "protobuf-java"),
-  gtVector exclude("com.google.protobuf", "protobuf-java"),
-  gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
-  // geomesaHbaseDatastore,
   cats,
-  // hbaseClient % "provided",
-  // hbaseCommon % "provided",
-  // hbaseServer % "provided",
-  // scalactic,
   gtSparkTestKit,
   logging,
   scalatest,
