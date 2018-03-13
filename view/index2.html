@@ -15,37 +15,68 @@
 
 <div id='map'></div>
 <script>
-var map = new mapboxgl.Map({
-    container: 'map',
-    style: 'http://osm-liberty.lukasmartinelli.ch/style.json',
-    zoom: 19,
-    center: [-71.5237372,41.4857846]
-});
-
+    var map = new mapboxgl.Map({
+        container: 'map',
+        style: {
+            "version": 8,
+            "sources": {
+                "simple-tiles": {
+                    "type": "raster",
+                    "tiles": [
+                        "http://a.tile.stamen.com/toner/{z}/{x}/{y}.png",
+                        "http://b.tile.stamen.com/toner/{z}/{x}/{y}.png",
+                        "http://c.tile.stamen.com/toner/{z}/{x}/{y}.png",
+                        "http://d.tile.stamen.com/toner/{z}/{x}/{y}.png"
+                    ],
+                    "tileSize": 256
+                }
+            },
+            "layers": [{
+                "id": "simple-tiles",
+                "type": "raster",
+                "source": "simple-tiles",
+                "minzoom": 0,
+                "maxzoom": 19
+            }]
+        },
+        zoom: 6,
+        center: [-71.5237372,41.4857846]
+    });
 map.on('load', function() {
   // Add VecTiles source
-  map.addLayer({
-    "id": "osm-history",
-    "type": "fill",
-    "source": {
-      "type": "vector",
-      "tiles": ["http://localhost:8080/{z}/{x}/{y}.mvt"],
-      "minzoom": 1,
-      "maxzoom": 19
-    },
-    "source-layer": "name",
-    "paint": {
-      "fill-color": "rgb(53, 175, 109)"
-    }
-  });
+    map.addLayer({
+        "id": "osm-history",
+        "type": "fill",
+        "source": {
+            "type": "vector",
+            "tiles": ["http://localhost:8080/{z}/{x}/{y}.mvt"],
+            "minzoom": 6,
+            "maxzoom": 19
+        },
+        "source-layer": "bm",
+        "paint": {
+            "fill-color": {
+                property: 'displayNumber',
+                stops: [
+                    [0, "rgb(255,0,0)"],
+                    [1, "rgb(255,0,255)"],
+                    [2, "rgb(0,0,255)"]
+                ]
+            }
+        }
+    });
 
-  map.on("mousemove", "osm-history", function(e) {
-    console.log(e)
-    var osm_info = {
-      "matches": e.features[0].properties["matches"]
-    }
-    console.log(osm_info)
-  });
+    map.on("click", "osm-history", function(e) {
+        console.log(e)
+        var osm_info = {
+            "bestMatchProb" : e.features[0].properties["bestMatchProb"],
+            "bestMatchUid" : e.features[0].properties["bestMatchUid"],
+            "dataset" : e.features[0].properties["dataset"],
+            "id" : e.features[0].properties["__id"],
+            "totalMatches": e.features[0].properties["totalMatches"]
+        }
+        console.log(osm_info)
+    });
 });
 
 map.addControl(new mapboxgl.NavigationControl());
