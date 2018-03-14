@@ -95,7 +95,7 @@ class QuadTreePartitioner(divisionSet: Set[Int], partitions: Int) extends Partit
 
   def getPartition(key: Any): Int = {
     key match {
-      case f: OSMFeature =>
+      case f: Feature[Geometry, Any] =>
         (getAddress(f.geom) % partitions).toInt
       case g: Geometry =>
         (getAddress(g) % partitions).toInt
