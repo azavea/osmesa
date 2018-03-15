@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset='utf-8' />
-    <title>Add a third party vector tile source</title>
+    <title>BM</title>
     <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
     <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.44.1/mapbox-gl.js'></script>
     <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.44.1/mapbox-gl.css' rel='stylesheet' />
@@ -43,14 +43,34 @@
         center: [-71.5237372,41.4857846]
     });
 map.on('load', function() {
-  // Add VecTiles source
+
+    // Add VecTiles source
     map.addLayer({
-        "id": "osm-history",
+        "id": "bm-heat",
+        "type": "heatmap",
+        "source": {
+            "type": "vector",
+            "tiles": ["http://localhost:8080/point/{z}/{x}/{y}.mvt"],
+            "minzoom": 0,
+            "maxzoom": 19
+        },
+        "source-layer": "bm-heat",
+        "paint": {
+            "heatmap-weight": {
+                "type": "identity",
+                "property": "multiplicity"
+            }
+        }
+    });
+
+    // Add VecTiles source
+    map.addLayer({
+        "id": "bm",
         "type": "fill",
         "source": {
             "type": "vector",
-            "tiles": ["http://localhost:8080/{z}/{x}/{y}.mvt"],
-            "minzoom": 6,
+            "tiles": ["http://localhost:8080/poly/{z}/{x}/{y}.mvt"],
+            "minzoom": 15,
             "maxzoom": 19
         },
         "source-layer": "bm",
@@ -66,7 +86,7 @@ map.on('load', function() {
         }
     });
 
-    map.on("click", "osm-history", function(e) {
+    map.on("click", "bm", function(e) {
         console.log(e)
         var osm_info = {
             "bestMatchProb" : e.features[0].properties["bestMatchProb"],
