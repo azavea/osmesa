@@ -50,7 +50,7 @@ map.on('load', function() {
         "type": "heatmap",
         "source": {
             "type": "vector",
-            "tiles": ["http://localhost:8080/{z}/{x}/{y}.mvt"],
+            "tiles": ["http://localhost:8080/point/{z}/{x}/{y}.mvt"],
             "minzoom": 0,
             "maxzoom": 19
         },
@@ -63,28 +63,28 @@ map.on('load', function() {
         }
     });
 
-    // // Add VecTiles source
-    // map.addLayer({
-    //     "id": "bm",
-    //     "type": "fill",
-    //     "source": {
-    //         "type": "vector",
-    //         "tiles": ["http://localhost:8080/{z}/{x}/{y}.mvt"],
-    //         "minzoom": 6,
-    //         "maxzoom": 19
-    //     },
-    //     "source-layer": "bm",
-    //     "paint": {
-    //         "fill-color": {
-    //             property: 'displayNumber',
-    //             stops: [
-    //                 [0, "rgb(255,0,0)"],
-    //                 [1, "rgb(255,0,255)"],
-    //                 [2, "rgb(0,0,255)"]
-    //             ]
-    //         }
-    //     }
-    // });
+    // Add VecTiles source
+    map.addLayer({
+        "id": "bm",
+        "type": "fill",
+        "source": {
+            "type": "vector",
+            "tiles": ["http://localhost:8080/poly/{z}/{x}/{y}.mvt"],
+            "minzoom": 15,
+            "maxzoom": 19
+        },
+        "source-layer": "bm",
+        "paint": {
+            "fill-color": {
+                property: 'displayNumber',
+                stops: [
+                    [0, "rgb(255,0,0)"],
+                    [1, "rgb(255,0,255)"],
+                    [2, "rgb(0,0,255)"]
+                ]
+            }
+        }
+    });
 
     map.on("click", "bm", function(e) {
         console.log(e)
