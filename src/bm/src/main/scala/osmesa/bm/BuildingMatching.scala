@@ -245,13 +245,13 @@ object BuildingMatching extends CommandApp(
               val retval = mutable.ArrayBuffer.empty[(OSMFeature, (Double, Long))]
               // val retval = mutable.ArrayBuffer.empty[(OSMFeature, (Double, Geometry))]
 
-              intersection.foreach({ f =>
-                val geom = f.geom
-                val data = f.data
-                val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "both"))(data))
-                val pair = (f2, (1.0, 0L))
-                retval.append(pair)
-              })
+              // intersection.foreach({ f =>
+              //   val geom = f.geom
+              //   val data = f.data
+              //   val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "both"))(data))
+              //   val pair = (f2, (1.0, 0L))
+              //   retval.append(pair)
+              // })
 
               // left
               var i = 0; while (i < left.length) {
@@ -272,82 +272,117 @@ object BuildingMatching extends CommandApp(
                 i = i + 1
               }
 
-              // right
-              var j = 0; while (j < right.length) {
-                val f1 = right(j)
-                val geom = f1.geom
-                val data = f1.data
-                val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "right"))(data))
-                var i = 0; while (i < left.length) {
-                  val geom2 = left(i).geom
-                  if ((p(i)(j) > 0.50) && (geom.distance(geom2) < 0.01)) { // XXX
-                    // val pair2 = (p(i)(j), geom2)
-                    val pair2 = (p(i)(j), left(i).data.uid)
-                    val pair = (f2, pair2)
-                    retval.append(pair)
-                  }
-                  i = i + 1
-                }
-                j = j + 1
-              }
+              // // right
+              // var j = 0; while (j < right.length) {
+              //   val f1 = right(j)
+              //   val geom = f1.geom
+              //   val data = f1.data
+              //   val f2 = new OSMFeature(geom, tags.set(data.tags + ("dataset" -> "right"))(data))
+              //   var i = 0; while (i < left.length) {
+              //     val geom2 = left(i).geom
+              //     if ((p(i)(j) > 0.50) && (geom.distance(geom2) < 0.01)) { // XXX
+              //       // val pair2 = (p(i)(j), geom2)
+              //       val pair2 = (p(i)(j), left(i).data.uid)
+              //       val pair = (f2, pair2)
+              //       retval.append(pair)
+              //     }
+              //     i = i + 1
+              //   }
+              //   j = j + 1
+              // }
 
               retval.toIterator
             }, preservesPartitioning = true)
             .groupByKey // XXX can be optimized away by changing inner loop
 
-          val tiles: RDD[GenerateVT.VTF[Geometry]] =
-            features
-          // .collect
-          // .foreach({ case (building, buildingsItr) =>
-          //   val buildings = buildingsItr.toArray
-          //   if (buildings.nonEmpty) {
-          //     println(s"${building.geom.toGeoJson}")
-          //     buildings.toArray.sortBy({ case (prob, _) => -prob }).foreach({ case (prob, building2) =>
-          //       println(s"\t $prob ${building2.toGeoJson}")
-          //     })
-          //   }
-          // })
-              .map({ case (building, buildingsItr) =>
-                val buildings = buildingsItr.toArray.sortBy({ case (prob, _) => -prob })
-                val bestMatch = buildings.head
-                val dataset = building.data.tags.getOrElse("dataset", throw new Exception)
-                val bestMatchProb = bestMatch._1
-                val bestMatchUid = bestMatch._2
-                val displayNumber = dataset match {
-                  case "left" => bestMatchProb
-                  case "both" => 1.0
-                  case "right" => 2.0 - bestMatchProb
-                }
-
-                Feature(
-                  building.geom.reproject(LatLng, WebMercator),
-                  Map(
-                    "__id" -> VInt64(building.data.uid),
-                    "dataset" -> VString(dataset),
-                    "totalMatches" -> VInt64(buildings.length),
-                    "bestMatchProb" -> VDouble(bestMatchProb),
-                    "bestMatchUid" -> VInt64(bestMatchUid),
-                    "displayNumber" -> VDouble(displayNumber)
-                  )
-                )
-              })
-
           saveTiles match {
-            case Some(uri) =>
-              Range(6,20).foreach({ z =>
+            case Some(uri) => {
+              var points = Downsample.transmute(features.keys)
+
+              Range(19,-1,-1).foreach({ z =>
+                points = Downsample(points, z)
+                println(s"Heatmap Level $z: ${points.count} points")
+
+                val heatmapTiles: RDD[GenerateVT.VTF[Geometry]] = points.map({ point =>
+                  val dataset = point.data.tags.getOrElse("dataset", throw new Exception)
+                  val multiplicity = point.data.tags.getOrElse("multiplicity", throw new Exception).toLong
+                  Feature(
+                    point.geom.reproject(LatLng, WebMercator),
+                    Map(
+                      "__id" -> VInt64(point.data.uid),
+                      "dataset" -> VString(dataset),
+                      "multiplicity" -> VInt64(multiplicity)
+                    )
+                  )
+                })
                 val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
                 val maxLayoutLevel = layoutScheme.levelForZoom(z)
                 val LayoutLevel(zoom, layout) = maxLayoutLevel
-                val keyed = GenerateVT.keyToLayout(tiles, layout)
+                val keyed = GenerateVT.keyToLayout(heatmapTiles, layout)
 
                 GenerateVT.saveHadoop(
-                  GenerateVT.makeVectorTiles(keyed, layout, "bm"),
+                  GenerateVT.makeVectorTiles(keyed, layout, "bm-heat"),
                   zoom,
                   uri
                 )
               })
+            }
             case _ =>
           }
+
+          // val tiles: RDD[GenerateVT.VTF[Geometry]] =
+          //   features
+          // // .collect
+          // // .foreach({ case (building, buildingsItr) =>
+          // //   val buildings = buildingsItr.toArray
+          // //   if (buildings.nonEmpty) {
+          // //     println(s"${building.geom.toGeoJson}")
+          // //     buildings.toArray.sortBy({ case (prob, _) => -prob }).foreach({ case (prob, building2) =>
+          // //       println(s"\t $prob ${building2.toGeoJson}")
+          // //     })
+          // //   }
+          // // })
+          //     .map({ case (building, buildingsItr) =>
+          //       val buildings = buildingsItr.toArray.sortBy({ case (prob, _) => -prob })
+          //       val bestMatch = buildings.head
+          //       val dataset = building.data.tags.getOrElse("dataset", throw new Exception)
+          //       val bestMatchProb = bestMatch._1
+          //       val bestMatchUid = bestMatch._2
+          //       val displayNumber = dataset match {
+          //         case "left" => bestMatchProb
+          //         case "both" => 1.0
+          //         case "right" => 2.0 - bestMatchProb
+          //       }
+
+          //       Feature(
+          //         building.geom.reproject(LatLng, WebMercator),
+          //         Map(
+          //           "__id" -> VInt64(building.data.uid),
+          //           "dataset" -> VString(dataset),
+          //           "totalMatches" -> VInt64(buildings.length),
+          //           "bestMatchProb" -> VDouble(bestMatchProb),
+          //           "bestMatchUid" -> VInt64(bestMatchUid),
+          //           "displayNumber" -> VDouble(displayNumber)
+          //         )
+          //       )
+          //     })
+
+          // saveTiles match {
+          //   case Some(uri) =>
+          //     Range(6,20).foreach({ z =>
+          //       val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
+          //       val maxLayoutLevel = layoutScheme.levelForZoom(z)
+          //       val LayoutLevel(zoom, layout) = maxLayoutLevel
+          //       val keyed = GenerateVT.keyToLayout(tiles, layout)
+
+          //       GenerateVT.saveHadoop(
+          //         GenerateVT.makeVectorTiles(keyed, layout, "bm"),
+          //         zoom,
+          //         uri
+          //       )
+          //     })
+          //   case _ =>
+          // }
         }
       })
   }
