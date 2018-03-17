@@ -288,7 +288,7 @@ object BuildingMatching extends CommandApp(
                     if ((p(i)(j) > 0.50) && (geom.distance(geom2) < 0.01)) { // XXX
                       // val pair2 = (p(i)(j), geom2)
                       unmatched = false
-                      val pair2 = (p(i)(j), right(j).data.uid)
+                      val pair2 = (p(i)(j), right(j).data.id)
                       val pair = (f2, pair2)
                       if (matched1) retval.append(pair)
                     }
@@ -315,7 +315,7 @@ object BuildingMatching extends CommandApp(
                     if ((p(i)(j) > 0.50) && (geom.distance(geom2) < 0.01)) { // XXX
                       // val pair2 = (p(i)(j), geom2)
                       unmatched = false
-                      val pair2 = (p(i)(j), left(i).data.uid)
+                      val pair2 = (p(i)(j), left(i).data.id)
                       val pair = (f2, pair2)
                       if (matched2)
                         retval.append(pair)
@@ -344,7 +344,7 @@ object BuildingMatching extends CommandApp(
                     val bestMatch = buildings.head
                     val dataset = building.data.tags.getOrElse("dataset", throw new Exception)
                     val bestMatchProb = bestMatch._1
-                    val bestMatchUid = bestMatch._2
+                    val bestMatchId = bestMatch._2
                     val displayNumber = dataset match {
                       case "left" => bestMatchProb
                       case "both" => 1.0
@@ -354,11 +354,11 @@ object BuildingMatching extends CommandApp(
                     Feature(
                       building.geom.reproject(LatLng, WebMercator),
                       Map(
-                        "__id" -> VInt64(building.data.uid),
+                        "__id" -> VInt64(building.data.id),
                         "dataset" -> VString(dataset),
                         "totalMatches" -> VInt64(buildings.length),
                         "bestMatchProb" -> VDouble(bestMatchProb),
-                        "bestMatchUid" -> VInt64(bestMatchUid),
+                        "bestMatchId" -> VInt64(bestMatchId),
                         "displayNumber" -> VDouble(displayNumber)
                       )
                     )
@@ -398,7 +398,7 @@ object BuildingMatching extends CommandApp(
                   Feature(
                     point.geom.reproject(LatLng, WebMercator),
                     Map(
-                      "__id" -> VInt64(point.data.uid),
+                      "__id" -> VInt64(point.data.id),
                       "dataset" -> VString(dataset),
                       "multiplicity" -> VInt64(multiplicity)
                     )
