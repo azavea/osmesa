@@ -16,7 +16,7 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions.{isnull, lit}
+import org.apache.spark.sql.functions.{isnull, lit, udf}
 import org.apache.spark.sql.types.IntegerType
 import vectorpipe._
 import vectorpipe.LayerMetadata
@@ -134,25 +134,37 @@ object IngestApp extends CommandApp(
       }
 
       val orcFileRepr = orc.split("/").last.split('.').head
-      val ppnodes = cache.orc(s"prepared_nodes-$orcFileRepr.orc")({ ProcessOSM.preprocessNodes(df) })
-      val ppways = cache.orc(s"prepared_ways-$orcFileRepr.orc")({ ProcessOSM.preprocessWays(df) })
-      val nodeGeoms = cache.orc(s"node_geoms-$orcFileRepr.orc")({ ProcessOSM.constructPointGeometries(ppnodes) })
-      val wayGeoms = cache.orc(s"way_geoms-$orcFileRepr.orc")({ ProcessOSM.reconstructWayGeometries(ppnodes, ppways) })
 
-      println("PRIOR TO WAY/NODE UNION")
-      nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)).printSchema
-      wayGeoms.printSchema
+      val clippedWorldExtent = Extent(-180, -75, 180, 85).reproject(LatLng, WebMercator)
+      val north_of_antarctica = udf{ geom: Array[Byte] =>
+        clippedWorldExtent.intersects(geom.readWKB.envelope)
+      }
+
       val orderedColumns: List[Column] = List('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'creation, 'authors, 'minorVersion, 'lastAuthor)
       val geoms = cache.orc(s"combined_geoms-$orcFileRepr.orc")({
+        val ppnodes = cache.orc(s"prepared_nodes-$orcFileRepr.orc")({ ProcessOSM.preprocessNodes(df) })
+
+        val nodeGeoms = cache.orc(s"node_geoms-$orcFileRepr.orc")({
+          ProcessOSM.constructPointGeometries(ppnodes) })
+
+        val wayGeoms = cache.orc(s"way_geoms-$orcFileRepr.orc")({
+          val ppways = cache.orc(s"prepared_ways-$orcFileRepr.orc")({ ProcessOSM.preprocessWays(df) })
+          ProcessOSM.reconstructWayGeometries(ppnodes, ppways) })
+
         wayGeoms
           .select(orderedColumns: _*)
           .union(
             nodeGeoms
               .withColumn("minorVersion", lit(null).cast(IntegerType))
               .select(orderedColumns: _*)
-          ).where(!isnull('geom))
+          ).where(!isnull('geom) and north_of_antarctica('geom))
       })
 
+
+      // Turn on Kryo logging
+      import com.esotericsoftware.minlog.Log
+      import com.esotericsoftware.minlog.Log._
+      Log.set(LEVEL_TRACE)
 
       val features: RDD[GenerateVT.VTF[Geometry]] = geoms
         .rdd

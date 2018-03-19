@@ -29,7 +29,7 @@ ${INGEST_ASSEMBLY}: $(call rwildcard, ${INGEST_SRC_DIR}/src, *.scala) ${INGEST_S
 
 create-cluster:
 	aws emr create-cluster --name "${NAME}" ${COLOR_TAG} \
---release-label emr-5.8.0 \
+--release-label emr-5.12.0 \
 --output text \
 --use-default-roles \
 --configurations "file://$(CURDIR)/scripts/configurations.json" \
@@ -51,16 +51,16 @@ spark-submit,--master,yarn,--deploy-mode,cluster,\
 --class,osmesa.IngestApp,\
 --driver-memory,${DRIVER_MEMORY},\
 --driver-cores,${DRIVER_CORES},\
---executor-memory,${EXECUTOR_MEMORY},\
---executor-cores,${EXECUTOR_CORES},\
---conf,spark.driver.maxResultSize=3g,\
+--conf,spark.driver.maxResultSize=0,\
 --conf,spark.dynamicAllocation.enabled=true,\
 --conf,spark.yarn.executor.memoryOverhead=${YARN_OVERHEAD},\
 --conf,spark.yarn.driver.memoryOverhead=${YARN_OVERHEAD},\
---conf,spark.shuffle.service.por=7338,\
 --conf,spark.shuffle.io.numConnectionsPerPeer=4,\
 --conf,spark.shuffle.io.connectionTimeout=18000s,\
+--conf,spark.shuffle.blockTransferService=nio,\
 --conf,spark.shuffle.service.enabled=true,\
+--conf,spark.sql.shuffle.partitions=2001,\
+--conf,spark.network.timeout=240s,\
 ${S3_URI}/${INGEST_JAR},\
 --orc=${PLANET_ORC},\
 --bucket=${S3_BUCKET},\
@@ -113,6 +113,24 @@ ${S3_URI}/${INGEST_JAR},\
 --cache=${ORC_CACHE_LOCATION},\
 --zoom=${ZOOM}\
 ] | cut -f2 | tee last-step-id.txt
+
+spark-shell:
+	@aws emr ssh --cluster-id $(CLUSTER_ID) --key-pair-file "${PEM_FILE}" \
+		--command "spark-shell --master yarn --deploy-mode client \
+--driver-memory ${DRIVER_MEMORY} \
+--driver-cores ${DRIVER_CORES} \
+--conf spark.driver.maxResultSize=0 \
+--conf spark.dynamicAllocation.enabled=true \
+--conf spark.yarn.executor.memoryOverhead=${YARN_OVERHEAD} \
+--conf spark.yarn.driver.memoryOverhead=${YARN_OVERHEAD} \
+--conf spark.shuffle.io.numConnectionsPerPeer=4 \
+--conf spark.shuffle.io.connectionTimeout=18000s \
+--conf spark.shuffle.blockTransferService=nio \
+--conf spark.shuffle.service.enabled=true \
+--conf spark.sql.shuffle.partitions=6400 \
+--conf spark.network.timeout=240s \
+--jars ${S3_URI}/${INGEST_JAR}"
+
 
 ssh:
 	@aws emr ssh --cluster-id $(CLUSTER_ID) --key-pair-file "${PEM_FILE}"

@@ -25,7 +25,7 @@ class S3Caching(cacheDir: String) extends Caching {
     cacheDir + "/" + filename
 
   private def s3exists(filename: String): Boolean =
-    s3client.doesObjectExist(bucket, prefix(filename) + "/_SUCCESS").getKeyCount > 0
+    s3client.doesObjectExist(bucket, prefix(filename) + "/_SUCCESS")
 
   def orc(filename: String)(sparkjob: => DataFrame)(implicit ss: SparkSession): DataFrame = {
     logger.warn("in cache func")
@@ -33,12 +33,14 @@ class S3Caching(cacheDir: String) extends Caching {
     logger.warn(prefix(filename))
     logger.warn(fileUri(filename))
     logger.warn("s3exists: " ++ s3exists(filename).toString)
-    if (s3exists(filename)) {
-      ss.read.orc(fileUri(filename)).repartition(10000)
+    val res = if (s3exists(filename)) {
+      ss.read.orc(fileUri(filename))
     } else {
-      sparkjob.write.format("orc").save(fileUri(filename))
+      sparkjob.repartition(200).write.format("orc").save(fileUri(filename))
       sparkjob
     }
+    logger.warn("Loaded cached ORC file")
+    res
   }
 }
 
@@ -49,7 +51,7 @@ class FsCaching(cacheDir: String) extends Caching {
     if (f(filename).exists()) {
       ss.read.orc(f(filename).toURI.toString)
     } else {
-      sparkjob.repartition(1).write.format("orc").save(f(filename).toURI.toString)
+      sparkjob.write.format("orc").save(f(filename).toURI.toString)
       sparkjob
     }
   }

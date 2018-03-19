@@ -2,7 +2,7 @@
   {
     "Classification": "spark",
     "Properties": {
-      "maximizeResourceAllocation": "false"
+      "maximizeResourceAllocation": "true"
     }
   },
   {
