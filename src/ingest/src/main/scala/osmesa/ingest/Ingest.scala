@@ -125,8 +125,9 @@ object IngestApp extends CommandApp(
       val df = ss.read.orc(orc)
 
       val cache = Option(new URI(cacheDir).getScheme) match {
-        case Some("file") => Caching.onFs(cacheDir)
         case Some("s3") => Caching.onS3(cacheDir)
+        // bare paths don't get a scheme
+        case None if Option(cacheDir).isDefined => Caching.onFs(cacheDir)
         case _ => Caching.none
       }
 
