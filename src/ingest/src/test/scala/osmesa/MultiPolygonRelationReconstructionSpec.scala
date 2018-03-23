@@ -47,12 +47,11 @@ trait SparkPoweredTables extends Tables {
       row.getAs[String]("wkt")
     }
   }
-
 }
 
 // osm2pgsql -c -d rhode_island -j -K -l rhode-island-latest.osm.pbf
 // select ST_AsText(way) from planet_osm_polygon where osm_id=-333501;
-// to debug, load WKT into geojson.io from Meta → Load WKT String
+// to debug / visually validate (geoms won't match exactly), load WKT into geojson.io from Meta → Load WKT String
 class MultiPolygonRelationExamples extends SparkPoweredTables {
   def examples = Table("multipolygon relation", fixture(333501), fixture(393502))
 }
@@ -64,7 +63,10 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
         val actual = asWKT(ProcessOSM.reconstructRelationGeometries(fixture.members))
         val expected = fixture.wkt
 
-        actual shouldBe expected
+        println(actual(0))
+        println(expected(0))
+
+        actual should === (expected)
       }
     }
   }
