@@ -304,6 +304,9 @@ object ProcessOSM {
       .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
   }
 
+//  def reconstructRelationGeometries(ppnodes: DataFrame, wayGeoms: DataFrame, pprelations: DataFrame): DataFrame = ???
+  def reconstructRelationGeometries(members: DataFrame): DataFrame = ???
+
   def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {
     import nodeGeoms.sparkSession.implicits._
 
