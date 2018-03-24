@@ -9,8 +9,9 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import spray.json._
-
 import java.io._
+
+import scala.annotation.tailrec
 
 object ProcessOSM {
 
@@ -309,57 +310,98 @@ object ProcessOSM {
   val buildMultiPolygon = udf((id: Long, ways: Seq[Row]) => {
     // TODO no need to sort (but this is useful for route relations)
     try {
-      val coords = ways
+      val coords: Seq[(Int, String, Line)] = ways
         .sortWith(_.getAs[Int]("idx") < _.getAs[Int]("idx"))
         .map(row => (row.getAs[Int]("idx"), row.getAs[String]("role"), row.getAs[Array[Byte]]("geom").readWKB match {
           case geom: Polygon => geom.as[Polygon].get.exterior
           case geom => geom.as[Line].get
         }))
 
-      val exterior: Line = null
+      val initialExterior: Line = null
       val placeholder = (null, null, null)
 
-      val completeOuters = coords.filter { case (_, role, geom) => role == "outer" && geom.isClosed }
-      val completeInners = coords.filter { case (_, role, geom) => role == "inner" && geom.isClosed }
-      val outerParts = coords.filter { case (_, role, geom) => role == "outer" && !geom.isClosed }
-      val innerParts = coords.filter { case (_, role, geom) => role == "inner" && !geom.isClosed }
-
-      val (ps, _, _) = (placeholder +: coords :+ placeholder).sliding(3).toList.foldLeft((Seq[Polygon](), exterior, Seq[Line]())) {
-        case ((polygons, exterior, rings), window) => {
-          val (_, prevRole, _) = window(0)
-          val (idx, role, geom) = window(1)
-          val (_, nextRole, _) = window(2)
-
-          // TODO
-          // 3105056 (rings aren't in order) -- need to pull from available components
-          val (newExterior, newRings) = role match {
-            case "outer" if exterior == null => (geom, rings)
-            case "outer" if exterior.vertices.last == geom.vertices.head => (Line(exterior.vertices ++ geom.vertices.tail), rings)
-            case "outer" if exterior.vertices.last == geom.vertices.last => (Line(exterior.vertices ++ geom.vertices.reverse.tail), rings)
-            case "outer" if exterior.vertices.head == geom.vertices.last => (Line(geom.vertices.reverse.tail.reverse ++ exterior.vertices), rings)
-            case "outer" if exterior.vertices.head == geom.vertices.head => (Line(geom.vertices.reverse.tail ++ exterior.vertices), rings)
-            case "outer" => throw new Exception(f"Couldn't find a matching exterior component at index $idx: ${exterior.vertices.last} <=> ${geom.vertices.head}")
-            case "inner" if rings.nonEmpty && !rings.last.isClosed && rings.last.vertices.last == geom.vertices.head => (exterior, rings.reverse.tail.reverse :+ Line(rings.last.vertices ++ geom.vertices.tail))
-            case "inner" if rings.nonEmpty && !rings.last.isClosed && rings.last.vertices.last == geom.vertices.last => (exterior, rings.reverse.tail.reverse :+ Line(rings.last.vertices ++ geom.vertices.reverse.tail))
-            case "inner" if rings.nonEmpty && !rings.last.isClosed => throw new Exception(f"Couldn't find a matching ring component in $id")
-            case "inner" => (exterior, rings :+ geom)
-            case _ => (exterior, rings)
+      val (completeOuters, completeInners, partialOuters, partialInners) = coords.foldLeft((List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line])) {
+        case ((co, ci, po, pi), (_, role, geom: Line)) =>
+          role match {
+            case "outer" if geom.isClosed => (co :+ geom, ci, po, pi)
+            case "outer" => (co, ci, po :+ geom, pi)
+            case "inner" if geom.isClosed => (co, ci :+ geom, po, pi)
+            case "inner" => (co, ci, po, pi :+ geom)
           }
+      }
 
-          nextRole match {
-            case null => (polygons :+ Polygon(newExterior, newRings), newExterior, newRings)
-            case "outer" if newExterior == null => (polygons, newExterior, newRings)
-            case "outer" if newExterior.isClosed => (polygons :+ Polygon(newExterior, newRings), null, Seq[Line]())
-            case "outer" if role == "inner" => (polygons :+ Polygon(newExterior, newRings), null, Seq[Line]())
-            case _ => (polygons, newExterior, newRings)
-          }
+      @tailrec
+      def connect(candidates: List[Line], acc: List[Line]): List[Line] = {
+        candidates match {
+          case Nil => acc
+          case h :: t if h.isClosed => connect(t, acc :+ h)
+          case h :: t =>
+            val newCandidates = t.find(line => h.vertices.last == line.vertices.head) match {
+              case Some(next) =>
+                Line(h.vertices ++ next.vertices.tail) :: t.filterNot(line => line == next)
+              case None =>
+                t.find(line => h.vertices.last == line.vertices.last) match {
+                  case Some(next) =>
+                    Line(h.vertices ++ next.vertices.reverse.tail) :: t.filterNot(line => line == next)
+                  case None => throw new Exception("Unable to connect segments.")
+                }
+            }
+
+            connect(newCandidates, acc)
         }
       }
 
-      ps match {
-        case _ if ps.size == 1 => ps.head.toWKB(4326)
-        case _ => MultiPolygon(ps).toWKB(4326)
-      }
+      println("Complete outers:")
+      completeOuters.map(_.toWKT).foreach(println)
+      println("Partial outers:")
+      partialOuters.map(_.toWKT).foreach(println)
+
+      val outers: List[Line] = completeOuters ++ connect(partialOuters, List.empty[Line])
+      val inners: List[Line] = completeInners ++ connect(partialInners, List.empty[Line])
+
+      println("Outers:")
+      outers.map(_.toWKT).foreach(println)
+      println("Inners")
+      inners.map(_.toWKT).foreach(println)
+
+      Polygon(outers.head, inners).toWKB(4326)
+
+//
+//      val (ps, _, _) = (placeholder +: coords :+ placeholder).sliding(3).toList.foldLeft((Seq[Polygon](), initialExterior, Seq[Line]())) {
+//        case ((polygons, exterior, rings), window) =>
+//          val (_, prevRole, _) = window.head
+//          val (idx, role, geom) = window(1)
+//          val (_, nextRole, _) = window(2)
+//
+//          // TODO
+//          // 3105056 (rings aren't in order) -- need to pull from available components
+//          val (newExterior, newRings) = role match {
+//            case "outer" if exterior == null => (geom, rings)
+//            case "outer" if exterior.vertices.last == geom.vertices.head => (Line(exterior.vertices ++ geom.vertices.tail), rings)
+//            case "outer" if exterior.vertices.last == geom.vertices.last => (Line(exterior.vertices ++ geom.vertices.reverse.tail), rings)
+//            case "outer" if exterior.vertices.head == geom.vertices.last => (Line(geom.vertices.reverse.tail.reverse ++ exterior.vertices), rings)
+//            case "outer" if exterior.vertices.head == geom.vertices.head => (Line(geom.vertices.reverse.tail ++ exterior.vertices), rings)
+//            case "outer" => throw new Exception(s"Couldn't find a matching exterior component at index $idx: ${exterior.vertices.last} <=> ${geom.vertices.head}")
+//            case "inner" if rings.nonEmpty && !rings.last.isClosed && rings.last.vertices.last == geom.vertices.head => (exterior, rings.reverse.tail.reverse :+ Line(rings.last.vertices ++ geom.vertices.tail))
+//            case "inner" if rings.nonEmpty && !rings.last.isClosed && rings.last.vertices.last == geom.vertices.last => (exterior, rings.reverse.tail.reverse :+ Line(rings.last.vertices ++ geom.vertices.reverse.tail))
+//            case "inner" if rings.nonEmpty && !rings.last.isClosed => throw new Exception(s"Couldn't find a matching ring component in $id")
+//            case "inner" => (exterior, rings :+ geom)
+//            case _ => (exterior, rings)
+//          }
+//
+//          nextRole match {
+//            case null => (polygons :+ Polygon(newExterior, newRings), newExterior, newRings)
+//            case "outer" if newExterior == null => (polygons, newExterior, newRings)
+//            case "outer" if newExterior.isClosed => (polygons :+ Polygon(newExterior, newRings), null, Seq[Line]())
+//            case "outer" if role == "inner" => (polygons :+ Polygon(newExterior, newRings), null, Seq[Line]())
+//            case _ => (polygons, newExterior, newRings)
+//          }
+//      }
+//
+//      ps match {
+//        case _ if ps.size == 1 => ps.head.toWKB(4326)
+//        case _ => MultiPolygon(ps).toWKB(4326)
+//      }
     } catch {
       case e: Throwable => throw new Exception(f"Couldn't reconstruct $id: $e")
     }

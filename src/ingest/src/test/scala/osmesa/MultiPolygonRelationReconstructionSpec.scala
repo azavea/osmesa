@@ -27,11 +27,17 @@ trait SparkPoweredTables extends Tables {
     )
     .getOrCreate()
 
-  def fixture(relation: Int): (Fixture) = Fixture(orc(s"relation-$relation.orc"), wkt(s"relation-$relation.wkt"))
+  def relation(relation: Int): (Fixture) = Fixture(orc(s"relation-$relation.orc"), wkt(s"relation-$relation.wkt"))
 
   def orc(filename: String): DataFrame = spark.read.orc(getClass.getResource("/" + filename).getPath)
 
-  def wkt(filename: String): Seq[String] = Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq
+  def wkt(filename: String): Seq[String] = {
+    try {
+      Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq
+    } catch {
+      case _: Exception => Seq()
+    }
+  }
 
   private val _asWKT: UserDefinedFunction = udf((geom: Array[Byte]) => {
     geom match {
@@ -52,19 +58,29 @@ trait SparkPoweredTables extends Tables {
 // osm2pgsql -c -d rhode_island -j -K -l rhode-island-latest.osm.pbf
 // select ST_AsText(way) from planet_osm_polygon where osm_id=-333501;
 // to debug / visually validate (geoms won't match exactly), load WKT into geojson.io from Meta → Load WKT String
+// https://www.openstreetmap.org/relation/64420
 class MultiPolygonRelationExamples extends SparkPoweredTables {
-  def examples = Table("multipolygon relation", fixture(333501), fixture(393502))
+  def examples = Table("multipolygon relation",
+    relation(333501), // unordered, single polygon with 1 hole
+    relation(393502), // single polygon, multiple outer parts, no holes
+    relation(1949938), // unordered, single polygon with multiple holes
+    relation(3105056) // multiple unordered outer parts in varying directions
+  )
 }
 
 class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPropertyChecks with Matchers {
-  property("should match osm2pgsql WKT") {
+  // TODO 1280388@v1 for an old-style multipolygon (tags on ways)
+  property("should match expected WKT") {
     new MultiPolygonRelationExamples {
       forAll(examples) { fixture =>
         val actual = asWKT(ProcessOSM.reconstructRelationGeometries(fixture.members))
         val expected = fixture.wkt
 
-        println(actual(0))
-        println(expected(0))
+        println("Actual:")
+        actual.foreach(println)
+        println("Expected:")
+        expected.foreach(println)
+
 
         actual should === (expected)
       }
