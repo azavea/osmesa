@@ -59,12 +59,14 @@ trait SparkPoweredTables extends Tables {
 // select ST_AsText(way) from planet_osm_polygon where osm_id=-333501;
 // to debug / visually validate (geoms won't match exactly), load WKT into geojson.io from Meta → Load WKT String
 // https://www.openstreetmap.org/relation/64420
+// to find multipolygons: select osm_id from planet_osm_polygon where osm_id < 0 and ST_GeometryType(way) = 'ST_MultiPolygon' order by osm_id desc;
 class MultiPolygonRelationExamples extends SparkPoweredTables {
   def examples = Table("multipolygon relation",
     relation(333501), // unordered, single polygon with 1 hole
     relation(393502), // single polygon, multiple outer parts, no holes
     relation(1949938), // unordered, single polygon with multiple holes
-    relation(3105056) // multiple unordered outer parts in varying directions
+    relation(3105056), // multiple unordered outer parts in varying directions
+    relation(2580685) // multipolygon: 2 polygons, one with 1 hole
   )
 }
 
@@ -80,7 +82,6 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
         actual.foreach(println)
         println("Expected:")
         expected.foreach(println)
-
 
         actual should === (expected)
       }
