@@ -340,6 +340,7 @@ object ProcessOSM {
             case "outer" => (co, ci, po :+ geom, pi)
             case "inner" if geom.isClosed => (co, ci :+ geom, po, pi)
             case "inner" => (co, ci, po, pi :+ geom)
+            case _ => (co, ci, po, pi)
           }
       }
 

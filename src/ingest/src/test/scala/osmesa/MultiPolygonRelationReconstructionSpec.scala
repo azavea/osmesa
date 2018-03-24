@@ -66,7 +66,11 @@ class MultiPolygonRelationExamples extends SparkPoweredTables {
     relation(393502), // single polygon, multiple outer parts, no holes
     relation(1949938), // unordered, single polygon with multiple holes
     relation(3105056), // multiple unordered outer parts in varying directions
-    relation(2580685) // multipolygon: 2 polygons, one with 1 hole
+    relation(2580685), // multipolygon: 2 polygons, one with 1 hole
+    relation(3080946), // multipolygon: many polygons, no holes
+    relation(5448156), // multipolygon made up of parcels
+    relation(5448691), // multipolygon made up of parcels
+    relation(6710544) // complex multipolygon
   )
 }
 
