@@ -6,7 +6,7 @@ import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
 import org.apache.spark.sql._
-import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import org.apache.spark.sql.functions._
 import spray.json._
 import java.io._
@@ -325,7 +325,7 @@ object ProcessOSM {
     }
   }
 
-  val buildMultiPolygon = udf((id: Long, ways: Seq[Row]) => {
+  val buildMultiPolygon: UserDefinedFunction = udf((id: Long, ways: Seq[Row]) => {
     try {
       val coords: Seq[(String, Line)] = ways
         .map(row => (row.getAs[String]("role"), row.getAs[Array[Byte]]("geom").readWKB match {
@@ -333,33 +333,45 @@ object ProcessOSM {
           case geom => geom.as[Line]
         })).map(x => (x._1, x._2.get))
 
-      val (completeOuters, completeInners, partialOuters, partialInners) = coords.foldLeft((List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line])) {
-        case ((co, ci, po, pi), (role, geom: Line)) =>
-          role match {
-            case "outer" if geom.isClosed => (co :+ geom, ci, po, pi)
-            case "outer" => (co, ci, po :+ geom, pi)
-            case "inner" if geom.isClosed => (co, ci :+ geom, po, pi)
-            case "inner" => (co, ci, po, pi :+ geom)
-            case _ => (co, ci, po, pi)
+      val (completeOuters, completeInners, partialOuters, partialInners, completeUnknowns, partialUnknowns) = coords.foldLeft((List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line])) {
+        case ((co, ci, po, pi, cu, pu), (role, geom: Line)) =>
+          Option(geom) match {
+            case Some(line) =>
+              role match {
+                case "outer" if line.isClosed => (co :+ line, ci, po, pi, cu, pu)
+                case "outer" => (co, ci, po :+ line, pi, cu, pu)
+                case "inner" if line.isClosed => (co, ci :+ line, po, pi, cu, pu)
+                case "inner" => (co, ci, po, pi :+ line, cu, pu)
+                case "" if line.isClosed => (co, ci, po, pi, cu :+ line, pu)
+                case "" => (co, ci, po, pi, cu, pu :+ line)
+                case _ => (co, ci, po, pi, cu, pu)
+              }
+            case None => (co, ci, po, pi, cu, pu)
           }
       }
 
-      println("Complete outers:")
-      completeOuters.map(_.toWKT).foreach(println)
-      println("Partial outers:")
-      partialOuters.map(_.toWKT).foreach(println)
+      // TODO confirm that smaller outers aren't contained by larger ones; if they are, treat them as inners (e.g. 466775571)
+      val unknowns: List[Line] = completeUnknowns ++ connectSegments(partialUnknowns)
 
-      val outers: List[Line] = completeOuters ++ connectSegments(partialOuters)
-      val inners: List[Line] = completeInners ++ connectSegments(partialInners)
+      val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters), completeInners ++ connectSegments(partialInners))) {
+        case ((o: List[Line], i: List[Line]), u) =>
+          if (o.exists(Polygon(_).contains(u))) {
+            (o, i :+ u)
+          } else {
+            (o :+ u, i)
+          }
+      }
 
       println("Outers:")
       outers.map(_.toWKT).foreach(println)
       println("Inners")
       inners.map(_.toWKT).foreach(println)
+      println("Unknowns")
+      unknowns.map(_.toWKT).foreach(println)
 
-      // TODO sort by size (desc)
-      outers.map { outer =>
-        // TODO only use inners once
+      // sort by size (descending) to use rings as part of the largest available polygon
+      outers.sortWith(Polygon(_).area > Polygon(_).area).map { outer =>
+        // TODO only use inners once; reduceLeft((List.empty[Polygon], inners)?
         Polygon(outer, inners.filter(inner => Polygon(outer).contains(inner)))
       } match {
         case p :: Nil => p.toWKB(4326)
