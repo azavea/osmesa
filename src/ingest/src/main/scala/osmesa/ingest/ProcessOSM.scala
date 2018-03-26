@@ -384,7 +384,6 @@ object ProcessOSM {
           }
       }
 
-      // TODO confirm that smaller outers aren't contained by larger ones; if they are, treat them as inners (e.g. 466775571)
       val unknowns: List[Line] = completeUnknowns ++ connectSegments(partialUnknowns)
 
       val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters), completeInners ++ connectSegments(partialInners))) {
@@ -396,8 +395,20 @@ object ProcessOSM {
           }
       }
 
-      val (dissolvedOuters, addlInners) = dissolveRings(outers)
-      val (dissolvedInners, _) = dissolveRings(inners ++ addlInners)
+      // reclassify rings according to their topology (ignoring roles)
+      val (classifiedOuters, classifiedInners) = (outers ++ inners).map(Polygon(_)).sortWith(_.area > _.area) match {
+        case h :: t => t.foldLeft((List(h), List.empty[Polygon])) {
+          case ((os, is), ring) =>
+            ring match {
+              // there's an outer ring that contains this one; this is an inner ring
+              case _ if os.exists(or => or.contains(ring)) => (os, is :+ ring)
+              case _ => (os :+ ring, is)
+            }
+        }
+      }
+
+      val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
+      val (dissolvedInners, _) = dissolveRings(classifiedInners.map(_.exterior) ++ addlInners)
 
       val (polygons, _) = dissolvedOuters
         // sort by size (descending) to use rings as part of the largest available polygon
