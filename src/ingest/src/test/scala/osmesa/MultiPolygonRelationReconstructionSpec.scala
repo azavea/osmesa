@@ -12,7 +12,7 @@ import org.scalatest.{Matchers, PropSpec}
 
 import scala.io.Source
 
-case class Fixture(members: DataFrame, wkt: Seq[String])
+case class Fixture(id: Int, members: DataFrame, wkt: Seq[String])
 
 trait SparkPoweredTables extends Tables {
   val spark: SparkSession = SparkSession
@@ -27,7 +27,7 @@ trait SparkPoweredTables extends Tables {
     )
     .getOrCreate()
 
-  def relation(relation: Int): (Fixture) = Fixture(orc(s"relation-$relation.orc"), wkt(s"relation-$relation.wkt"))
+  def relation(relation: Int): (Fixture) = Fixture(relation, orc(s"relation-$relation.orc"), wkt(s"relation-$relation.wkt"))
 
   def orc(filename: String): DataFrame = spark.read.orc(getClass.getResource("/" + filename).getPath)
 
@@ -82,9 +82,9 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
         val actual = asWKT(ProcessOSM.reconstructRelationGeometries(fixture.members))
         val expected = fixture.wkt
 
-        println("Actual:")
+        println(s"Actual ${fixture.id}:")
         actual.foreach(println)
-        println("Expected:")
+        println(s"Expected ${fixture.id}:")
         expected.foreach(println)
 
         actual should === (expected)
