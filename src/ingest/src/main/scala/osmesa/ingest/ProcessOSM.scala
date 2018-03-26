@@ -399,11 +399,16 @@ object ProcessOSM {
       val (dissolvedOuters, addlInners) = dissolveRings(outers)
       val (dissolvedInners, _) = dissolveRings(inners ++ addlInners)
 
-      // sort by size (descending) to use rings as part of the largest available polygon
-      dissolvedOuters.sortWith(Polygon(_).area > Polygon(_).area).map { outer =>
-        // TODO only use inners once; reduceLeft((List.empty[Polygon], inners)?
-        Polygon(outer, dissolvedInners.filter(inner => Polygon(outer).contains(inner)))
-      } match {
+      val (polygons, _) = dissolvedOuters
+        // sort by size (descending) to use rings as part of the largest available polygon
+        .sortWith(Polygon(_).area > Polygon(_).area)
+        // only use inners once if they're contained by multiple outer rings
+        .foldLeft((List.empty[Polygon], dissolvedInners)) {
+        case ((ps, is), (outer)) =>
+          (ps :+ Polygon(outer, is.filter(inner => Polygon(outer).contains(inner))), is.filterNot(inner => Polygon(outer).contains(inner)))
+      }
+
+      polygons match {
         case p :: Nil => p.toWKB(4326)
         case ps => MultiPolygon(ps).toWKB(4326)
       }
