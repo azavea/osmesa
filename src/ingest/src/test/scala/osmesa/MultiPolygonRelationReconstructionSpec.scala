@@ -35,7 +35,7 @@ trait SparkPoweredTables extends Tables {
     try {
       Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq
     } catch {
-      case _: Exception => Seq()
+      case _: Exception => Seq("[not provided]")
     }
   }
 
@@ -82,12 +82,17 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
         val actual = asWKT(ProcessOSM.reconstructRelationGeometries(fixture.members))
         val expected = fixture.wkt
 
-        println(s"Actual ${fixture.id}:")
-        actual.foreach(println)
-        println(s"Expected ${fixture.id}:")
-        expected.foreach(println)
+        try {
+          actual should === (expected)
+        } catch {
+          case e: Exception =>
+            println(s"${fixture.id} actual:")
+            actual.foreach(println)
+            println(s"${fixture.id} expected:")
+            expected.foreach(println)
 
-        actual should === (expected)
+            throw e
+        }
       }
     }
   }
