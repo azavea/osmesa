@@ -325,13 +325,47 @@ object ProcessOSM {
     }
   }
 
+  @tailrec
+  private def dissolveRings(rings: List[Polygon], dissolvedOuters: List[Line] = List.empty[Line], dissolvedInners: List[Line] = List.empty[Line]): (List[Line], List[Line]) = {
+    rings match {
+      case Nil => (dissolvedOuters, dissolvedInners)
+      case h :: t =>
+        val touching = t.filter(r => h.touches(r))
+        val remaining = t.filterNot(r => h.touches(r))
+
+        touching match {
+          case _ if touching.isEmpty => dissolveRings(t.filterNot(r => h.touches(r)), dissolvedOuters :+ h.exterior, dissolvedInners ++ h.holes)
+          case _ =>
+            val dissolved = touching.foldLeft(List(h)) {
+              case (rs, r2) =>
+                rs.flatMap { r =>
+                  r.union(r2).toGeometry match {
+                    case Some(p: Polygon) => List(p)
+                    case Some(mp: MultiPolygon) => mp.polygons
+                    case _ => throw new Exception("Union failed.")
+                  }
+                }
+            }
+
+            val retryRings = dissolved.filter(d => remaining.exists(r => r.touches(d)))
+            val newRings = dissolved.filter(d => !remaining.exists(r => r.touches(d)))
+
+            dissolveRings(retryRings ++ remaining, dissolvedOuters ++ newRings.map(_.exterior), dissolvedInners ++ newRings.flatMap(_.holes))
+        }
+    }
+  }
+
+  private def dissolveRings(rings: List[Line]): (List[Line], List[Line]) = {
+    dissolveRings(rings.map(x => Polygon(x)))
+  }
+
   val buildMultiPolygon: UserDefinedFunction = udf((id: Long, ways: Seq[Row]) => {
     try {
       val coords: Seq[(String, Line)] = ways
         .map(row => (row.getAs[String]("role"), row.getAs[Array[Byte]]("geom").readWKB match {
           case geom: Polygon => geom.as[Polygon].map(_.exterior)
           case geom => geom.as[Line]
-        })).map(x => (x._1, x._2.get))
+        })).filter(_._2.isDefined).map(x => (x._1, x._2.get))
 
       val (completeOuters, completeInners, partialOuters, partialInners, completeUnknowns, partialUnknowns) = coords.foldLeft((List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line])) {
         case ((co, ci, po, pi, cu, pu), (role, geom: Line)) =>
@@ -362,17 +396,13 @@ object ProcessOSM {
           }
       }
 
-      println("Outers:")
-      outers.map(_.toWKT).foreach(println)
-      println("Inners")
-      inners.map(_.toWKT).foreach(println)
-      println("Unknowns")
-      unknowns.map(_.toWKT).foreach(println)
+      val (dissolvedOuters, addlInners) = dissolveRings(outers)
+      val (dissolvedInners, _) = dissolveRings(inners ++ addlInners)
 
       // sort by size (descending) to use rings as part of the largest available polygon
-      outers.sortWith(Polygon(_).area > Polygon(_).area).map { outer =>
+      dissolvedOuters.sortWith(Polygon(_).area > Polygon(_).area).map { outer =>
         // TODO only use inners once; reduceLeft((List.empty[Polygon], inners)?
-        Polygon(outer, inners.filter(inner => Polygon(outer).contains(inner)))
+        Polygon(outer, dissolvedInners.filter(inner => Polygon(outer).contains(inner)))
       } match {
         case p :: Nil => p.toWKB(4326)
         case ps => MultiPolygon(ps).toWKB(4326)
