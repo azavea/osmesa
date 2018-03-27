@@ -1,19 +1,22 @@
 package osmesa
 
-import com.vividsolutions.jts.geom.Coordinate
+import java.io._
+
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
+import org.apache.log4j.Logger
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import org.apache.spark.sql.functions._
 import spray.json._
-import java.io._
 
 import scala.annotation.tailrec
 
 object ProcessOSM {
+
+  lazy val logger = Logger.getRootLogger
 
   def preprocessNodes(history: DataFrame): DataFrame = {
     import history.sparkSession.implicits._
@@ -424,7 +427,9 @@ object ProcessOSM {
         case ps => MultiPolygon(ps).toWKB(4326)
       }
     } catch {
-      case e: Throwable => throw new Exception(f"Couldn't reconstruct $id: $e")
+      case e: Throwable =>
+        logger.warn(s"Could not reconstruct relation $id: $e")
+        null
     }
   })
 
