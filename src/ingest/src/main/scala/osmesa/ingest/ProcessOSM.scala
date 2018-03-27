@@ -408,6 +408,7 @@ object ProcessOSM {
               case _ => (os :+ ring, is)
             }
         }
+        case Nil => (List.empty[Polygon], List.empty[Polygon])
       }
 
       val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
