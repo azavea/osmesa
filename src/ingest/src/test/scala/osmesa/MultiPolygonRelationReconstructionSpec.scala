@@ -85,7 +85,7 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
         try {
           actual should === (expected)
         } catch {
-          case e: Exception =>
+          case e: Throwable =>
             println(s"${fixture.id} actual:")
             actual.foreach(println)
             println(s"${fixture.id} expected:")
