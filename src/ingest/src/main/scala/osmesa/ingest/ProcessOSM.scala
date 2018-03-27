@@ -333,12 +333,9 @@ object ProcessOSM {
     rings match {
       case Nil => (dissolvedOuters, dissolvedInners)
       case h :: t =>
-        val touching = t.filter(r => h.touches(r))
-        val remaining = t.filterNot(r => h.touches(r))
-
-        touching match {
-          case _ if touching.isEmpty => dissolveRings(t.filterNot(r => h.touches(r)), dissolvedOuters :+ h.exterior, dissolvedInners ++ h.holes)
-          case _ =>
+        t.filter(r => h.touches(r)) match {
+          case touching if touching.isEmpty => dissolveRings(t.filterNot(r => h.touches(r)), dissolvedOuters :+ h.exterior, dissolvedInners ++ h.holes)
+          case touching =>
             val dissolved = touching.foldLeft(List(h)) {
               case (rs, r2) =>
                 rs.flatMap { r =>
@@ -350,6 +347,7 @@ object ProcessOSM {
                 }
             }
 
+            val remaining = t.filterNot(r => h.touches(r))
             val retryRings = dissolved.filter(d => remaining.exists(r => r.touches(d)))
             val newRings = dissolved.filter(d => !remaining.exists(r => r.touches(d)))
 
