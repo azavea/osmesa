@@ -1,15 +1,16 @@
 package osmesa
 
 import java.io._
+import java.sql.Timestamp
 
-import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
 import org.apache.log4j.Logger
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{udf, _}
+import osmesa.udfs._
 import spray.json._
 
 import scala.annotation.tailrec
@@ -142,6 +143,62 @@ object ProcessOSM {
     ws
   }
 
+  def preprocessRelations(history: DataFrame): DataFrame = {
+    import history.sparkSession.implicits._
+
+    // Prepare relations for geometric assembly.
+    // Associate last-available tags to deleted ways
+
+    @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
+
+    // when an element has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
+    // this is suitable for appending to directly (since none of the values need to change ever)
+    val relations = history
+      .where('type === "relation")
+      .select(
+        'id,
+        when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
+        'members,
+        'changeset,
+        'timestamp,
+        'uid,
+        'user,
+        'version,
+        'visible)
+
+    // get the last version of each relation by changeset
+    val relationVersions = relations
+      .groupBy('id, 'changeset)
+      .agg(max('version).as('version))
+      .drop('changeset)
+
+    // Creation times for relations
+    val relationCreations = relations
+      .groupBy('id)
+      .agg(min('timestamp).as('creation), collect_set('user).as('authors))
+
+    // Add `validUntil`
+    // This allows time slices to be made more effectively by filtering for relations that were valid between `timestamp` and `validUntil`.
+    // select full metadata for the last version of a relation by changeset and add "validUntil" for joining with other types
+    // this means that the final edit within a changeset is the intended end state for a given relation (after possibly having been moved around or adjusted to deal with edits in other changesets)
+    val rs = relations
+      .join(relationVersions, Seq("id", "version"))
+      .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
+
+    // Write out pre-processed relations
+    // snapshot of historical relations with validity ranges
+    // rs.repartition(1).write.format("orc").save("data/ri-relations")
+
+    // Create a “planet” equivalent for currently-valid relations
+    // "planet" snapshot relation
+    // rs
+    //   .where('validUntil.isNull and 'visible)
+    //   .drop('validUntil)
+    //   .drop('visible)
+
+    rs
+  }
+
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
     import nodes.sparkSession.implicits._
 
@@ -165,27 +222,47 @@ object ProcessOSM {
 
   }
 
-  def reconstructWayGeometries(ppnodes: DataFrame, ppways: DataFrame): DataFrame = {
-    import ppnodes.sparkSession.implicits._
+  /**
+    * Reconstruct way geometries.
+    *
+    * Nodes and ways contain implicit timestamps that will be used to generate minor versions of geometry that they're
+    * associated with (each entry that exists within a changeset).
+    *
+    * @param _nodes
+    * @param _ways
+    * @param _nodesToWays
+    * @return
+    */
+  def reconstructWayGeometries(_nodes: DataFrame, _ways: DataFrame, _nodesToWays: Option[DataFrame] = None): DataFrame = {
+    import _nodes.sparkSession.implicits._
 
-    // Load ways and nodes
-    // These should have already been pre-processed to incorporate a `validUntil` column.
-    // some nodes at (0, 0) are valid, but most are not (and some are redacted, which causes problems when clipping the
-    // resulting geometries to a grid)
-    val nodes = ppnodes.where('lat =!= 0 and 'lon =!= 0)
-    val ways = ppways
+    // These should have already been pre-processed to incorporate a `validUntil` column; if not, do so
+    // TODO move this check into preprocessNodes
+    val nodes = if (_nodes.columns.contains("validUntil")) {
+      _nodes
+    } else {
+      preprocessNodes(_nodes)
+    }
+      // some nodes at (0, 0) are valid, but most are not (and some are redacted, which causes problems when clipping the
+      // resulting geometries to a grid)
+      .where('lat =!= 0 and 'lon =!= 0)
 
-    // Create a lookup table for node → ways
-    val nodesToWays = ways
-      .select(explode('nds).as('id), 'id.as('way_id), 'version, 'timestamp, 'validUntil)
+    // TODO move this check into preprocessWays
+    val ways = if (_ways.columns.contains("validUntil")) {
+      _ways
+    } else {
+      preprocessWays(_ways)
+    }
 
-    // to facilitate providing a list of source timestamps
-    val nodesInChangeset = nodes
-    val waysInChangeset = ways
+    // Create (or re-use) a lookup table for node → ways
+    val nodesToWays = _nodesToWays.getOrElse[DataFrame] {
+      ways
+        .select(explode('nds).as('id), 'id.as('way_id), 'version, 'timestamp, 'validUntil)
+    }
 
     // Create a way entry for each changeset in which a node was modified, containing the timestamp of the node that triggered
     // the association. This will later be used to assemble ways at each of those points in time.
-    val referencedWaysByChangeset = nodesInChangeset
+    val referencedWaysByChangeset = nodes
       .select('changeset, 'id, 'timestamp.as('updated))
       .join(nodesToWays, Seq("id"))
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
@@ -199,13 +276,13 @@ object ProcessOSM {
     // probably be one, grouped by the changeset).
     val allReferencedWays = ways.select('id, 'version, 'nds, 'visible)
       .join(referencedWaysByChangeset, Seq("id", "version"))
-      .union(waysInChangeset.select('id, 'version, 'nds, 'visible, 'changeset, 'timestamp.as('updated)))
+      .union(ways.select('id, 'version, 'nds, 'visible, 'changeset, 'timestamp.as('updated)))
       .distinct
 
     val fullReferencedWays = allReferencedWays
       .select('changeset, 'id, 'version, 'updated, 'visible, posexplode_outer('nds).as(Seq("idx", "ref")))
       .repartition('id, 'updated) // repartition including updated timestamp to avoid skew (version is insufficient, as
-                                  // multiple instances may exist with the same version)
+    // multiple instances may exist with the same version)
 
     val joinedWays = fullReferencedWays
       .join(nodes.select('id.as('ref), 'version.as('ref_version), 'timestamp, 'validUntil), Seq("ref"), "left_outer")
@@ -221,15 +298,16 @@ object ProcessOSM {
     val taggedWays = fullJoinedWays
       .join(ways.select('id, 'version, 'tags), Seq("id", "version"))
 
+    // TODO extract into udf package
     val _isArea = (tags: Map[String, String]) =>
-    tags match {
-      // TODO yes, true, 1
-      case tags if tags.contains("area") && Seq("yes", "no").contains(tags("area").toLowerCase) => tags("area").toLowerCase == "yes"
-      case tags =>
-        // see https://github.com/osmlab/id-area-keys (values are inverted)
-        val matchingKeys = tags.keySet.intersect(Constants.AREA_KEYS.keySet)
-        matchingKeys.exists(k => !Constants.AREA_KEYS(k).contains(tags(k)))
-    }
+      tags match {
+        case tags if tags.contains("area") && Set("yes", "no", "true", "1").contains(tags("area").toLowerCase) =>
+          Set("yes", "true", "1").contains(tags("area").toLowerCase)
+        case tags =>
+          // see https://github.com/osmlab/id-area-keys (values are inverted)
+          val matchingKeys = tags.keySet.intersect(Constants.AREA_KEYS.keySet)
+          matchingKeys.exists(k => !Constants.AREA_KEYS(k).contains(tags(k)))
+      }
 
     val isArea = udf(_isArea)
 
@@ -265,36 +343,13 @@ object ProcessOSM {
       }
     })
 
-    // useful for debugging
-    val isValid = udf((geom: Array[Byte]) => {
-      geom match {
-        case null => true
-        case _ => geom.readWKB.isValid
-      }
-    })
-
-    // useful for debugging; some geometries that are valid as 4326 are not as 3857
-    val reproject = udf((geom: Array[Byte]) => {
-      geom match {
-        case null => null
-        case _ => geom.readWKB.reproject(LatLng, WebMercator).toWKB(3857)
-      }
-    })
-
-    // useful for debugging
-    val asWKT = udf((geom: Array[Byte]) => {
-      geom match {
-        case null => ""
-        case _ => geom.readWKB.toWKT
-      }
-    })
-
     // Create WKB geometries (LineStrings and Polygons)
     val wayGeoms = taggedWays
       .withColumn("geom", asWKB('coords, isArea('tags)))
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'visible)
 
-    val augmentedFields = ways.select('id, 'version, 'creation, 'authors, 'user.as('lastAuthor))
+    // TODO extract into an augmentWays function
+    //    val augmentedFields = ways.select('id, 'version, 'creation, 'authors, 'user.as('lastAuthor))
 
     // Assign `minorVersion` and rewrite `validUntil` to match
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
@@ -304,11 +359,11 @@ object ProcessOSM {
       .withColumn("validUntil", lead('updated, 1) over idByUpdated)
       .withColumn("minorVersion", (row_number() over idAndVersionByUpdated) - 1)
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'minorVersion)
-      .join(augmentedFields, Seq("id", "version"))
-      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
+    //      .join(augmentedFields, Seq("id", "version")) // TODO extract into augmentWays function
+    //      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible TODO extract into a latest function
   }
 
-//  def reconstructRelationGeometries(ppnodes: DataFrame, wayGeoms: DataFrame, pprelations: DataFrame): DataFrame = ???
+  //  def reconstructRelationGeometries(ppnodes: DataFrame, wayGeoms: DataFrame, pprelations: DataFrame): DataFrame = ???
 
   // create fully-formed rings from line segments
   @tailrec
@@ -360,85 +415,117 @@ object ProcessOSM {
     dissolveRings(rings.map(x => Polygon(x)))
   }
 
-  val buildMultiPolygon: UserDefinedFunction = udf((id: Long, ways: Seq[Row]) => {
+  // TODO type=route relations
+  // TODO filter relations referring to other relations
+  // TODO remove ways without unique tags that participate in multipolygon relations
+
+  val buildMultiPolygon: UserDefinedFunction = udf((ways: Seq[Row], id: Long, version: Long, timestamp: Timestamp) => {
     try {
-      val coords: Seq[(String, Line)] = ways
-        .map(row => (row.getAs[String]("role"), row.getAs[Array[Byte]]("geom").readWKB match {
-          case geom: Polygon => geom.as[Polygon].map(_.exterior)
-          case geom => geom.as[Line]
-        })).filter(_._2.isDefined).map(x => (x._1, x._2.get))
+      // bail early if null values are present where they should exist (members w/ type=way)
+      if (ways.exists(row => row.getAs[String]("type") == "way" && row.getAs[Array[Byte]]("geom") == null)) {
+        logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
+        null
+      } else {
+        val coords: Seq[(String, Line)] = ways
+          .map(row => (row.getAs[String]("role"), Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
+            case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
+            case Some(geom) => geom.as[Line]
+            case None => None
+          })).filter(_._2.isDefined).map(x => (x._1, x._2.get))
 
-      val (completeOuters, completeInners, partialOuters, partialInners, completeUnknowns, partialUnknowns) = coords.foldLeft((List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line])) {
-        case ((co, ci, po, pi, cu, pu), (role, geom: Line)) =>
-          Option(geom) match {
-            case Some(line) =>
-              role match {
-                case "outer" if line.isClosed => (co :+ line, ci, po, pi, cu, pu)
-                case "outer" => (co, ci, po :+ line, pi, cu, pu)
-                case "inner" if line.isClosed => (co, ci :+ line, po, pi, cu, pu)
-                case "inner" => (co, ci, po, pi :+ line, cu, pu)
-                case "" if line.isClosed => (co, ci, po, pi, cu :+ line, pu)
-                case "" => (co, ci, po, pi, cu, pu :+ line)
-                case _ => (co, ci, po, pi, cu, pu)
-              }
-            case None => (co, ci, po, pi, cu, pu)
-          }
-      }
-
-      val unknowns: List[Line] = completeUnknowns ++ connectSegments(partialUnknowns)
-
-      val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters), completeInners ++ connectSegments(partialInners))) {
-        case ((o: List[Line], i: List[Line]), u) =>
-          if (o.exists(Polygon(_).contains(u))) {
-            (o, i :+ u)
-          } else {
-            (o :+ u, i)
-          }
-      }
-
-      // reclassify rings according to their topology (ignoring roles)
-      val (classifiedOuters, classifiedInners) = (outers ++ inners).map(Polygon(_)).sortWith(_.area > _.area) match {
-        case h :: t => t.foldLeft((List(h), List.empty[Polygon])) {
-          case ((os, is), ring) =>
-            ring match {
-              // there's an outer ring that contains this one; this is an inner ring
-              case _ if os.exists(or => or.contains(ring)) => (os, is :+ ring)
-              case _ => (os :+ ring, is)
+        val (completeOuters, completeInners, partialOuters, partialInners, completeUnknowns, partialUnknowns) = coords.foldLeft((List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line])) {
+          case ((co, ci, po, pi, cu, pu), (role, geom: Line)) =>
+            Option(geom) match {
+              case Some(line) =>
+                role match {
+                  case "outer" if line.isClosed => (co :+ line, ci, po, pi, cu, pu)
+                  case "outer" => (co, ci, po :+ line, pi, cu, pu)
+                  case "inner" if line.isClosed => (co, ci :+ line, po, pi, cu, pu)
+                  case "inner" => (co, ci, po, pi :+ line, cu, pu)
+                  case "" if line.isClosed => (co, ci, po, pi, cu :+ line, pu)
+                  case "" => (co, ci, po, pi, cu, pu :+ line)
+                  case _ => (co, ci, po, pi, cu, pu)
+                }
+              case None => (co, ci, po, pi, cu, pu)
             }
         }
-        case Nil => (List.empty[Polygon], List.empty[Polygon])
-      }
 
-      val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
-      val (dissolvedInners, _) = dissolveRings(classifiedInners.map(_.exterior) ++ addlInners)
+        val unknowns: List[Line] = completeUnknowns ++ connectSegments(partialUnknowns)
 
-      val (polygons, _) = dissolvedOuters
-        // sort by size (descending) to use rings as part of the largest available polygon
-        .sortWith(Polygon(_).area > Polygon(_).area)
-        // only use inners once if they're contained by multiple outer rings
-        .foldLeft((List.empty[Polygon], dissolvedInners)) {
+        val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters), completeInners ++ connectSegments(partialInners))) {
+          case ((o: List[Line], i: List[Line]), u) =>
+            if (o.exists(Polygon(_).contains(u))) {
+              (o, i :+ u)
+            } else {
+              (o :+ u, i)
+            }
+        }
+
+        // reclassify rings according to their topology (ignoring roles)
+        val (classifiedOuters, classifiedInners) = (outers ++ inners).map(Polygon(_)).sortWith(_.area > _.area) match {
+          case h :: t => t.foldLeft((List(h), List.empty[Polygon])) {
+            case ((os, is), ring) =>
+              ring match {
+                // there's an outer ring that contains this one; this is an inner ring
+                case _ if os.exists(or => or.contains(ring)) => (os, is :+ ring)
+                case _ => (os :+ ring, is)
+              }
+          }
+          case Nil => (List.empty[Polygon], List.empty[Polygon])
+        }
+
+        val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
+        val (dissolvedInners, addlOuters) = dissolveRings(classifiedInners.map(_.exterior) ++ addlInners)
+
+        val (polygons, _) = (dissolvedOuters ++ addlOuters)
+          // sort by size (descending) to use rings as part of the largest available polygon
+          .sortWith(Polygon(_).area > Polygon(_).area)
+          // only use inners once if they're contained by multiple outer rings
+          .foldLeft((List.empty[Polygon], dissolvedInners)) {
           case ((ps, is), (outer)) =>
             (ps :+ Polygon(outer, is.filter(inner => Polygon(outer).contains(inner))), is.filterNot(inner => Polygon(outer).contains(inner)))
         }
 
-      polygons match {
-        case p :: Nil => p.toWKB(4326)
-        case ps => MultiPolygon(ps).toWKB(4326)
+        polygons match {
+          case p :: Nil => p.toWKB(4326)
+          case ps => MultiPolygon(ps).toWKB(4326)
+        }
       }
     } catch {
+      case e: NullPointerException =>
+        throw e
       case e: Throwable =>
-        logger.warn(s"Could not reconstruct relation $id: $e")
+        logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): $e")
         null
     }
   })
 
-  def reconstructRelationGeometries(members: DataFrame): DataFrame = {
-    import members.sparkSession.implicits._
+  def reconstructRelationGeometries(relations: DataFrame, geoms: DataFrame): DataFrame = {
+    import relations.sparkSession.implicits._
+
+    // TODO use max(relations("timestamp"), wayGeoms("timestamp")) as the assigned timestamp
+    val members = relations
+      .where(isMultiPolygon('tags))
+      .select('changeset, 'id, 'version, 'timestamp, posexplode_outer('members).as(Seq("idx", "member")))
+      .select(
+        'changeset,
+        'id,
+        'version,
+        'timestamp,
+        'idx,
+        'member.getField("type").as("type"),
+        'member.getField("ref").as("ref"),
+        'member.getField("role").as("role")
+      )
+      .join(geoms.select('type, 'id.as("ref"), 'updated, 'validUntil, 'geom), Seq("type", "ref"), "outer")
+      .where(
+        'geom.isNull or // allow null geoms through so we can check data validity later
+          (geoms("updated") <= relations("timestamp") and relations("timestamp") < coalesce(geoms("validUntil"), current_timestamp)))
 
     members
-      .groupBy('changeset, 'id) // TODO more columns
-      .agg(collect_list(struct('idx, 'role, 'geom)).as('parts))
-      .select('changeset, 'id, buildMultiPolygon('id, 'parts).as("geom"))
+      .groupBy('changeset, 'id, 'version, 'timestamp)
+      .agg(collect_list(struct('idx, 'type, 'ref, 'role, 'geom)).as('parts))
+      .select('id, 'version, 'timestamp, 'changeset, buildMultiPolygon('parts, 'id, 'version, 'timestamp).as("geom"))
   }
 
   def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {

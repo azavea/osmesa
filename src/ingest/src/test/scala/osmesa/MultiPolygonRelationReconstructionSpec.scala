@@ -5,10 +5,11 @@ import geotrellis.vector.io._
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.udf
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.scalatest.prop.{TableDrivenPropertyChecks, Tables}
 import org.scalatest.{Matchers, PropSpec}
+import osmesa.ProcessOSM.buildMultiPolygon
 
 import scala.io.Source
 
@@ -79,7 +80,13 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
   property("should match expected WKT") {
     new MultiPolygonRelationExamples {
       forAll(examples) { fixture =>
-        val actual = asWKT(ProcessOSM.reconstructRelationGeometries(fixture.members))
+        import fixture.members.sparkSession.implicits._
+
+        val actual = asWKT(fixture.members
+          .groupBy('changeset, 'id)
+          .agg(collect_list(struct('idx, 'role, 'geom)).as('parts))
+          .select(buildMultiPolygon('id, 'parts).as("geom")))
+
         val expected = fixture.wkt
 
         try {
