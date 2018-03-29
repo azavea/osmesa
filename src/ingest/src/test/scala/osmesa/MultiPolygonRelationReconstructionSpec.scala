@@ -1,5 +1,7 @@
 package osmesa
 
+import java.sql.Timestamp
+
 import geotrellis.spark.io.kryo.KryoRegistrator
 import geotrellis.vector.io._
 import org.apache.spark.SparkConf
@@ -82,15 +84,15 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
       forAll(examples) { fixture =>
         import fixture.members.sparkSession.implicits._
 
-        val actual = asWKT(fixture.members
-          .groupBy('changeset, 'id)
-          .agg(collect_list(struct('idx, 'role, 'geom)).as('parts))
-          .select(buildMultiPolygon('id, 'parts).as("geom")))
+        val actual = asWKT(fixture.members.withColumn("version", lit(1L)).withColumn("timestamp", lit(Timestamp.valueOf("2001-01-01 00:00:00")))
+          .groupBy('changeset, 'id, 'version, 'timestamp)
+          .agg(collect_list(struct('idx, 'type, 'ref, 'role, 'geom)).as('parts))
+          .select(buildMultiPolygon('parts, 'id, 'version, 'timestamp).as("geom")))
 
         val expected = fixture.wkt
 
         try {
-          actual should === (expected)
+          actual should ===(expected)
         } catch {
           case e: Throwable =>
             println(s"${fixture.id} actual:")
