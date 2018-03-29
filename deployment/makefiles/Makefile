@@ -4,8 +4,8 @@ include config-run.mk # Vars related to ingest step and spark parameters
 
 ZOOM ?= 15
 
-INGEST_SRC_DIR := ../../src/ingest
-INGEST_JAR := osmesa-ingest.jar
+INGEST_SRC_DIR := ../../src/edithistory
+INGEST_JAR := osmesa-edit-history-tiles.jar
 INGEST_ASSEMBLY := ${INGEST_SRC_DIR}/target/scala-2.11/${INGEST_JAR}
 
 ifeq ($(USE_SPOT),true)

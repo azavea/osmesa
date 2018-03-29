@@ -1,6 +1,6 @@
 import Dependencies._
 
-name := "osmesa-ingest"
+name := "edit-history-tiles"
 
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
@@ -30,7 +30,7 @@ initialCommands in console :=
   """
   """
 
-assemblyJarName in assembly := "osmesa-ingest.jar"
+assemblyJarName in assembly := "osmesa-edit-history-tiles.jar"
 
 assemblyShadeRules in assembly := {
   val shadePackage = "com.azavea.shaded.demo"
