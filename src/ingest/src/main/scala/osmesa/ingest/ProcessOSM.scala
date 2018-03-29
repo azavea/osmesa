@@ -492,8 +492,6 @@ object ProcessOSM {
         }
       }
     } catch {
-      case e: NullPointerException =>
-        throw e
       case e: Throwable =>
         logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): $e")
         null
