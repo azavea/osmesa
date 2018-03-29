@@ -23,3 +23,4 @@ object Corpus {
 
   def randomCountry = countries.takeRandom.getOrElse("USA")
 }
+

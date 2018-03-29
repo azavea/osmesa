@@ -8,66 +8,62 @@ This directory contains a make file to spin up an EMR cluster using [terraform](
 
 ## Requirements
 
-You need to install [Terraform 0.10.8](https://github.com/hashicorp/terraform/releases/tag/v0.10.8) and [jq](https://stedolan.github.io/jq/) to parse terraform json configuration (can be installed via brew on Mac OS).
+[Terraform 0.11.5](https://github.com/hashicorp/terraform/releases/tag/v0.11.5)
 
 ## Settings
 
-[variables.tf.json](terraform/variables.tf.json) contains a set of variables which should be specified to make EMR deployment work.
+[cluster/variables.tf](cluster/variables.tf) contains the full set of variables
+which can be specified to modify an EMR deployment. Only those not
+provided defaults need to be specified, and these can be found within
+[tfvars.tpl](tfvars.tpl) - be sure to make a copy of this template and remove
+'tpl' from the filename.
+
 
 ## Makefile
 
 | Command               | Description
 |-----------------------|------------------------------------------------------------|
-|terraform-init         |`terraform` init, if it's the first run                     |
-|create-cluster         |Create EMR cluster with configurations                      |
-|create-jupyter-cluster |Create EMR cluster with jupyter-scala available             |
-|destroy-cluster        |Destroy EMR cluster                                         |
-|create-cluster         |Create EMR cluster with configurations                      |
-|upload-assembly        |Send spark-etl assembly jar to cluster                      |
-|proxy                  |Create SOCKS proxy for active cluster                       |
-|ssh                    |SSH into cluster master                                     |
-|cleanup-zeppelin       |Cleanups all GeoTrellis jars from Zeppelin classpath        |
-|restart-zeppelin       |Restart Zeppelin                                            |
-|stop-zeppelin          |Stop Zeppelin                                               |
-|start-zeppelin         |Start Zeppelin                                              |
+|auth.json              |Generate temporary session and key/secret                   |
+|validate-cluster       |`terraform validate - Validate terraform                    |
+|init-cluster           |`terraform init` - Initialize terraform                     |
+|cluster-tfplan         |`terraform plan` - Plan out an 'apply'  of this terraform   |
+|cluster                |`terraform` init, if it's the first run                     |
+|ssh                    |SSH into a running EMR cluster                              |
+|destroy-cluster        |Destroy a running EMR cluster                               |
+|print-vars             |Print out env vars for diagnostic and debug purposes        |
+
 
 ## Running
 
-### Creating a Zeppelin Cluster
-
 The Makefile in this directory provides commands to easily set up an EMR
-cluster, but doing so does require a minimal amount of configuration.  It will
-be necessary to provide your AWS credentials to the Terraform script.
+cluster with MFA, but doing so does require a minimal amount of configuration.
+It will be necessary to export your desired AWS profile as well as
+having set up `assume role` permissions and an MFA device for the AWS
+profile exported. You'll also need to make a copy of tfvars.tpl for
+adding parameters specific to your deployment.
 
-Begin by issuing the commands
 ```bash
-make terraform-init && \
-make create-cluster
+export AWS_PROFILE=my_profile
+cp tfvars.tpl tfvars
+# update tfvars with values appropriate to the EMR cluster you'd like
+make auth.json
+make cluster
 ```
 
-Terraform will prompt for the S3 access key and secret key, as well as the PEM
-path for the current account.  You may enter these explicitly, or you may
-choose to set environment variables to avoid having to repeatedly fill out the
-prompts.  If `TF_VAR_access_key`, `TF_VAR_secret_key`, and `TF_VAR_pem_path`,
-these will be discovered by the Terraform script and you will not be prompted
-at startup.  The same mechanism can be used to set other variables.
-`TF_VAR_spot_price` and `TF_VAR_worker_count` are useful values.
+`make auth.json` will prompt you for your MFA key and produce a
+session which terraform can use to get around MFA restrictions.
 
 **Note:** long startup times (10 minutes or more) probably indicates that you have
 chosen a spot price that is too low.
 
 This basic cluster will have a running Zeppelin interface that can be accessed
-by first creating an SSH tunnel with the command
-
-```bash
-make proxy
-```
-
-And then browsing to port 8890 of the cluster.
+via SSH tunnel with
+[foxyproxy](https://docs.aws.amazon.com/emr/latest/ManagementGuide/emr-connect-master-node-proxy.html)
 
 ![Zeppelin Welcome](./images/zeppelin-welcome.png)
 
-This cluster will not have access to GeoTrellis code until the command
+This cluster will not have access to any code until we upload the
+appropriate jars and register them within zeppelin
 
 ```bash
 make upload-assembly
