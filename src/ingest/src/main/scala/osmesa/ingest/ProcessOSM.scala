@@ -450,9 +450,9 @@ object ProcessOSM {
             }
         }
 
-        val unknowns: List[Line] = completeUnknowns ++ connectSegments(partialUnknowns)
+        val unknowns: List[Line] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
 
-        val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters), completeInners ++ connectSegments(partialInners))) {
+        val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters.sortWith(_.length > _.length)), completeInners ++ connectSegments(partialInners.sortWith(_.length > _.length)))) {
           case ((o: List[Line], i: List[Line]), u) =>
             if (o.exists(Polygon(_).contains(u))) {
               (o, i :+ u)
