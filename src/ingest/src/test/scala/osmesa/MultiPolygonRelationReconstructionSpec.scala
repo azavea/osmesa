@@ -86,7 +86,7 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
 
         val actual = asWKT(fixture.members.withColumn("version", lit(1L)).withColumn("timestamp", lit(Timestamp.valueOf("2001-01-01 00:00:00")))
           .groupBy('changeset, 'id, 'version, 'timestamp)
-          .agg(collect_list(struct('idx, 'type, 'ref, 'role, 'geom)).as('parts))
+          .agg(collect_list(struct('type, 'role, 'geom)).as('parts))
           .select(buildMultiPolygon('parts, 'id, 'version, 'timestamp).as("geom")))
 
         val expected = fixture.wkt

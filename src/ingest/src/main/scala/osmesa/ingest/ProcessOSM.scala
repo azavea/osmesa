@@ -504,13 +504,12 @@ object ProcessOSM {
     // TODO use max(relations("timestamp"), wayGeoms("timestamp")) as the assigned timestamp
     val members = relations
       .where(isMultiPolygon('tags))
-      .select('changeset, 'id, 'version, 'timestamp, posexplode_outer('members).as(Seq("idx", "member")))
+      .select('changeset, 'id, 'version, 'timestamp, explode_outer('members).as("member"))
       .select(
         'changeset,
         'id,
         'version,
         'timestamp,
-        'idx,
         'member.getField("type").as("type"),
         'member.getField("ref").as("ref"),
         'member.getField("role").as("role")
@@ -522,7 +521,7 @@ object ProcessOSM {
 
     members
       .groupBy('changeset, 'id, 'version, 'timestamp)
-      .agg(collect_list(struct('idx, 'type, 'ref, 'role, 'geom)).as('parts))
+      .agg(collect_list(struct('type, 'role, 'geom)).as('parts))
       .select('id, 'version, 'timestamp, 'changeset, buildMultiPolygon('parts, 'id, 'version, 'timestamp).as("geom"))
   }
 
