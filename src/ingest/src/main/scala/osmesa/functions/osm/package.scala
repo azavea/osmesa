@@ -89,7 +89,7 @@ package object osm {
   val buildMultiPolygon: UserDefinedFunction = udf((ways: Seq[Row], id: Long, version: Long, timestamp: Timestamp) => {
     try {
       // bail early if null values are present where they should exist (members w/ type=way)
-      if (ways.exists(row => row.getAs[String]("type") == "way" && row.getAs[Array[Byte]]("geom") == null)) {
+      if (ways.exists(row => row.getAs[String]("type") == "way" && Option(row.getAs[Array[Byte]]("geom")).isEmpty)) {
         logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
         null
       } else {
