@@ -114,19 +114,18 @@ object DumpRelationMembers extends CommandApp(
 
       val members = relations
         .where(isMultiPolygon('tags) and 'id === relationId and 'version === relationVersion and 'timestamp === relationTimestamp)
-        .select('changeset, 'id, 'version, 'timestamp, size('members).as('memberCount), posexplode_outer('members).as(Seq("idx", "member")))
+        .select('changeset, 'id, 'version, 'timestamp, posexplode_outer('members).as(Seq("idx", "member")))
         .select(
           'changeset,
           'id,
           'version,
           'timestamp,
           'idx,
-          'memberCount,
           'member.getField("type").as("type"),
           'member.getField("ref").as("ref"),
           'member.getField("role").as("role")
         )
-        .join(wayGeoms.select('id.as("ref"), 'updated, 'validUntil, 'geom), Seq("ref"))
+        .join(wayGeoms.select('id.as("ref"), 'updated, 'validUntil, 'geom), Seq("ref"), "outer")
         .where(wayGeoms("updated") <= relations("timestamp") and relations("timestamp") < coalesce(wayGeoms("validUntil"), current_timestamp))
 
       members
