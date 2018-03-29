@@ -9,8 +9,8 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import osmesa.functions.osm._
 import osmesa.ingest.util.Caching
-import osmesa.udfs._
 
 
 /*
@@ -110,7 +110,7 @@ object DumpRelationMembers extends CommandApp(
         ProcessOSM.reconstructWayGeometries(referencedNodes, referencedWays, Some(nodesToWays))
       }
 
-      // TODO create versions (w/ 'updated) for each node / way change that modified the relation
+      // TODO create versions (w/ 'updated) for each geometry change (node / way change, but not all) that modified the relation
 
       val members = relations
         .where(isMultiPolygon('tags) and 'id === relationId and 'version === relationVersion and 'timestamp === relationTimestamp)

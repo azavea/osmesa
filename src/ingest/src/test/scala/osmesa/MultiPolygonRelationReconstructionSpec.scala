@@ -3,15 +3,14 @@ package osmesa
 import java.sql.Timestamp
 
 import geotrellis.spark.io.kryo.KryoRegistrator
-import geotrellis.vector.io._
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
-import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.scalatest.prop.{TableDrivenPropertyChecks, Tables}
 import org.scalatest.{Matchers, PropSpec}
-import osmesa.ProcessOSM.buildMultiPolygon
+import osmesa.functions._
+import osmesa.functions.osm._
 
 import scala.io.Source
 
@@ -42,17 +41,10 @@ trait SparkPoweredTables extends Tables {
     }
   }
 
-  private val _asWKT: UserDefinedFunction = udf((geom: Array[Byte]) => {
-    geom match {
-      case null => ""
-      case _ => geom.readWKB.toWKT
-    }
-  })
-
   def asWKT(relations: DataFrame): Seq[String] = {
     import relations.sparkSession.implicits._
 
-    relations.select(_asWKT('geom).as("wkt")).collect.map { row =>
+    relations.select(ST_AsText('geom).as("wkt")).collect.map { row =>
       row.getAs[String]("wkt")
     }
   }
@@ -74,6 +66,7 @@ class MultiPolygonRelationExamples extends SparkPoweredTables {
     relation(5448156), // multipolygon made up of parcels
     relation(5448691), // multipolygon made up of parcels
     relation(6710544) // complex multipolygon
+    // TODO add incomplete relations 61315 @ 111 (MA, incomplete), Rhode Island (w/ nodes refs)
   )
 }
 

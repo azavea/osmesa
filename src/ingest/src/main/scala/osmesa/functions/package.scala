@@ -6,7 +6,7 @@ import geotrellis.vector.io._
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
 
-package object udfs {
+package object functions {
   // useful for debugging
   val isValid: UserDefinedFunction = udf((geom: Array[Byte]) => {
     geom match {
@@ -32,9 +32,4 @@ package object udfs {
       case _ => geom.readWKB.toWKT
     }
   })
-
-  private val _isMultiPolygon = (tags: Map[String, String]) =>
-    tags.contains("type") && Set("boundary", "multipolygon").contains(tags("type").toLowerCase)
-
-  val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
 }
