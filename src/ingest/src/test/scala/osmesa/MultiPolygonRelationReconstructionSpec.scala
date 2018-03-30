@@ -35,7 +35,10 @@ trait SparkPoweredTables extends Tables {
 
   def wkt(filename: String): Seq[String] = {
     try {
-      Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq
+      Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq match {
+        case expected if expected.isEmpty => Seq("")
+        case expected => expected
+      }
     } catch {
       case _: Exception => Seq("[not provided]")
     }
@@ -65,13 +68,14 @@ class MultiPolygonRelationExamples extends SparkPoweredTables {
     relation(3080946), // multipolygon: many polygons, no holes
     relation(5448156), // multipolygon made up of parcels
     relation(5448691), // multipolygon made up of parcels
-    relation(6710544) // complex multipolygon
-    // TODO add incomplete relations 61315 @ 111 (MA, incomplete), Rhode Island (w/ nodes refs)
+    relation(6710544), // complex multipolygon
+    relation(191199), // 4 segments; 2 are components of another (thus duplicates)
+    relation(61315), // incomplete member list (sourced from an extract of a neighboring state)
+    relation(2554903) // boundary w/ admin_centre + label node members
   )
 }
 
 class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPropertyChecks with Matchers {
-  // TODO 1280388@v1 for an old-style multipolygon (tags on ways)
   property("should match expected WKT") {
     new MultiPolygonRelationExamples {
       forAll(examples) { fixture =>

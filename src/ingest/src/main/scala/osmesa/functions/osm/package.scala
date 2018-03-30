@@ -190,11 +190,14 @@ package object osm {
         null
       } else {
         val coords: Seq[(String, Line)] = ways
-          .map(row => (row.getAs[String]("role"), Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
-            case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
-            case Some(geom) => geom.as[Line]
-            case None => None
-          })).filter(_._2.isDefined).map(x => (x._1, x._2.get))
+          .map(row =>
+            (row.getAs[String]("role"), Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
+              case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
+              case Some(geom) => geom.as[Line]
+              case None => None
+            }))
+          .filter(_._2.isDefined)
+          .map(x => (x._1, x._2.get))
 
         val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = coords.foldLeft((List.empty[Polygon], List.empty[Polygon], List.empty[Polygon], List.empty[Line], List.empty[Line], List.empty[Line])) {
           case ((co, ci, cu, po, pi, pu), (role, geom: Line)) =>

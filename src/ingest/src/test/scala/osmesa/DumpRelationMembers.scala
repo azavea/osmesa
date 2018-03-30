@@ -26,7 +26,6 @@ import osmesa.ingest.util.Caching
  *   --out $HOME/data/members \
  *   --id 148838 \
  *   --version 187 \
- *   --timestamp "2012-03-01 15:03:37.0"
  */
 
 object DumpRelationMembers extends CommandApp(
@@ -39,12 +38,9 @@ object DumpRelationMembers extends CommandApp(
     val outMembersO = Opts.option[String]("out", help = "Location of the ORC file to write containing members")
     val relationIdO = Opts.option[Long]("id", help = "Relation ID")
     val relationVersionO = Opts.option[Long]("version", help = "Relation version")
-    val relationTimestampO = Opts.option[String]("timestamp", help = "Relation timestamp")
     val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
 
-    (orcO, outMembersO, relationIdO, relationVersionO, relationTimestampO, cacheDirO).mapN { (orc, outMembers, relationId, relationVersion, relationTimestampS, cacheDir) =>
-      val relationTimestamp = Timestamp.valueOf(relationTimestampS)
-
+    (orcO, outMembersO, relationIdO, relationVersionO, cacheDirO).mapN { (orc, outMembers, relationId, relationVersion, cacheDir) =>
       /* Settings compatible with both local and EMR execution */
       val conf = new SparkConf()
         .setIfMissing("spark.master", "local[*]")
@@ -113,7 +109,7 @@ object DumpRelationMembers extends CommandApp(
       // TODO create versions (w/ 'updated) for each geometry change (node / way change, but not all) that modified the relation
 
       val members = relations
-        .where(isMultiPolygon('tags) and 'id === relationId and 'version === relationVersion and 'timestamp === relationTimestamp)
+        .where(isMultiPolygon('tags) and 'id === relationId and 'version === relationVersion)
         .select('changeset, 'id, 'version, 'timestamp, posexplode_outer('members).as(Seq("idx", "member")))
         .select(
           'changeset,

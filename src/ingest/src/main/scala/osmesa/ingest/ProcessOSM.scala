@@ -169,11 +169,6 @@ object ProcessOSM {
       .agg(max('version).as('version))
       .drop('changeset)
 
-    // Creation times for relations
-    val relationCreations = relations
-      .groupBy('id)
-      .agg(min('timestamp).as('creation), collect_set('user).as('authors))
-
     // Add `validUntil`
     // This allows time slices to be made more effectively by filtering for relations that were valid between `timestamp` and `validUntil`.
     // select full metadata for the last version of a relation by changeset and add "validUntil" for joining with other types
@@ -350,6 +345,7 @@ object ProcessOSM {
   def reconstructRelationGeometries(relations: DataFrame, geoms: DataFrame): DataFrame = {
     import relations.sparkSession.implicits._
 
+    // TODO 1280388@v1 for an old-style multipolygon (tags on ways)
     // TODO use max(relations("timestamp"), wayGeoms("timestamp")) as the assigned timestamp
     val members = relations
       .where(isMultiPolygon('tags))
