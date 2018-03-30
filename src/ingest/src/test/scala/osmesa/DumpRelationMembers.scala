@@ -1,7 +1,6 @@
 package osmesa
 
 import java.net.URI
-import java.sql.Timestamp
 
 import cats.implicits._
 import com.monovore.decline._
@@ -105,8 +104,6 @@ object DumpRelationMembers extends CommandApp(
       val wayGeoms = cache.orc("way-geoms") {
         ProcessOSM.reconstructWayGeometries(referencedNodes, referencedWays, Some(nodesToWays))
       }
-
-      // TODO create versions (w/ 'updated) for each geometry change (node / way change, but not all) that modified the relation
 
       val members = relations
         .where(isMultiPolygon('tags) and 'id === relationId and 'version === relationVersion)
