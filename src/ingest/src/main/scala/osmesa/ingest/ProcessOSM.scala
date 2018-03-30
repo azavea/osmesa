@@ -15,7 +15,7 @@ import spray.json._
 
 object ProcessOSM {
 
-  lazy val logger = Logger.getRootLogger
+  lazy val logger: Logger = Logger.getRootLogger
 
   def preprocessNodes(history: DataFrame): DataFrame = {
     import history.sparkSession.implicits._
@@ -28,16 +28,16 @@ object ProcessOSM {
     val nodes = history
       .where('type === "node")
       .select(
-      'id,
-      when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
-      when(!'visible, null).otherwise(double('lat)).as('lat),
-      when(!'visible, null).otherwise(double('lon)).as('lon),
-      'changeset,
-      'timestamp,
-      'uid,
-      'user,
-      'version,
-      'visible)
+        'id,
+        when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
+        when(!'visible, null).otherwise(asDouble('lat)).as('lat),
+        when(!'visible, null).otherwise(asDouble('lon)).as('lon),
+        'changeset,
+        'timestamp,
+        'uid,
+        'user,
+        'version,
+        'visible)
 
     // Get the last version of each node modified in a changeset
     // This treats changeset closure as "intended state" by the editor.
@@ -341,13 +341,18 @@ object ProcessOSM {
     object Resource {
       def apply(name: String): String = {
         val stream: InputStream = getClass.getResourceAsStream(s"/$name")
-        try { scala.io.Source.fromInputStream( stream ).getLines.mkString(" ") } finally { stream.close() }
+        try {
+          scala.io.Source.fromInputStream(stream).getLines.mkString(" ")
+        } finally {
+          stream.close()
+        }
       }
     }
 
     case class CountryId(code: String)
 
     object MyJsonProtocol extends DefaultJsonProtocol {
+
       implicit object CountryIdJsonFormat extends RootJsonFormat[CountryId] {
         def read(value: JsValue): CountryId =
           value.asJsObject.getFields("ADM0_A3") match {
@@ -362,6 +367,7 @@ object ProcessOSM {
             "code" -> JsString(v.code)
           )
       }
+
     }
 
     import MyJsonProtocol._
@@ -370,16 +376,16 @@ object ProcessOSM {
       def all: Vector[MultiPolygonFeature[CountryId]] = {
         val collection =
           Resource("countries.geojson").
-        parseGeoJson[JsonFeatureCollection]
+            parseGeoJson[JsonFeatureCollection]
 
         val polys =
           collection.
-        getAllPolygonFeatures[CountryId].
-        map(_.mapGeom(MultiPolygon(_)))
+            getAllPolygonFeatures[CountryId].
+            map(_.mapGeom(MultiPolygon(_)))
 
         val mps =
           collection.
-        getAllMultiPolygonFeatures[CountryId]
+            getAllMultiPolygonFeatures[CountryId]
 
         polys ++ mps
       }
@@ -393,9 +399,9 @@ object ProcessOSM {
       private val index =
         geotrellis.vector.SpatialIndex.fromExtents(
           Countries.all.
-          map { mpf =>
-            (mpf.geom.prepare, mpf.data)
-          }
+            map { mpf =>
+              (mpf.geom.prepare, mpf.data)
+            }
         ) { case (pg, _) => pg.geom.envelope }
 
       def lookup(geom: geotrellis.vector.Geometry): Traversable[CountryId] = {
@@ -410,8 +416,8 @@ object ProcessOSM {
           }
 
         t.
-        filter(_._1.intersects(geom)).
-        map(_._2)
+          filter(_._1.intersects(geom)).
+          map(_._2)
       }
     }
     geoms
