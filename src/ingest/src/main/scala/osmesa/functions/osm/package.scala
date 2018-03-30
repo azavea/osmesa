@@ -132,8 +132,8 @@ package object osm {
 
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
 
-  val buildWay: UserDefinedFunction = udf((ways: Seq[Row], isArea: Boolean) => {
-    val coords = ways
+  val buildWay: UserDefinedFunction = udf((nodes: Seq[Row], isArea: Boolean) => {
+    val coords = nodes
       .sortWith(_.getAs[Int]("idx") < _.getAs[Int]("idx"))
       .map(row => (row.getAs[Double]("lon"), row.getAs[Double]("lat")))
 
