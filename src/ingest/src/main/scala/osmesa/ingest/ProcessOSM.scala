@@ -347,6 +347,7 @@ object ProcessOSM {
 
     // TODO 1280388@v1 for an old-style multipolygon (tags on ways)
     // TODO use max(relations("timestamp"), wayGeoms("timestamp")) as the assigned timestamp
+    // TODO remove ways without unique tags that participate in multipolygon relations
     val members = relations
       .where(isMultiPolygon('tags))
       .select('changeset, 'id, 'version, 'timestamp, explode_outer('members).as("member"))

@@ -104,7 +104,7 @@ object ExtractMultiPolygons extends CommandApp(
         ProcessOSM.reconstructWayGeometries(referencedNodes, referencedWays, Some(nodesToWays))
       }.withColumn("type", lit("way"))
 
-      // TODO create versions (w/ 'updated) for each node / way change that modified the relation
+      // TODO create versions (w/ 'updated) for each geometry change (node / way change, but not all) that modified the relation
 
       val relationGeoms = ProcessOSM.reconstructRelationGeometries(relations, wayGeoms)
 

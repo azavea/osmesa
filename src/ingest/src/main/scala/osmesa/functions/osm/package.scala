@@ -179,8 +179,6 @@ package object osm {
   }
 
   // TODO type=route relations
-  // TODO filter relations referring to other relations
-  // TODO remove ways without unique tags that participate in multipolygon relations
 
   val buildMultiPolygon: UserDefinedFunction = udf((ways: Seq[Row], id: Long, version: Long, timestamp: Timestamp) => {
     try {
