@@ -359,7 +359,7 @@ object ProcessOSM {
         'member.getField("ref").as("ref"),
         'member.getField("role").as("role")
       )
-      .join(geoms.select('type, 'id.as("ref"), 'updated, 'validUntil, 'geom), Seq("type", "ref"), "outer")
+      .join(geoms.select('type, 'id.as("ref"), 'updated, 'validUntil, 'geom), Seq("type", "ref"), "left_outer")
       .where(
         'geom.isNull or // allow null geoms through so we can check data validity later
           (geoms("updated") <= relations("timestamp") and relations("timestamp") < coalesce(geoms("validUntil"), current_timestamp)))

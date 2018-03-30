@@ -121,7 +121,7 @@ object DumpRelationMembers extends CommandApp(
           'member.getField("ref").as("ref"),
           'member.getField("role").as("role")
         )
-        .join(wayGeoms.select('id.as("ref"), 'updated, 'validUntil, 'geom), Seq("ref"), "outer")
+        .join(wayGeoms.select('id.as("ref"), 'updated, 'validUntil, 'geom), Seq("ref"), "left_outer")
         .where(wayGeoms("updated") <= relations("timestamp") and relations("timestamp") < coalesce(wayGeoms("validUntil"), current_timestamp))
 
       members
