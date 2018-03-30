@@ -2,8 +2,8 @@ package osmesa.functions
 
 import java.sql.Timestamp
 
-import geotrellis.vector.{Line, MultiPolygon, Polygon}
 import geotrellis.vector.io._
+import geotrellis.vector.{Line, MultiPolygon, Polygon}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.expressions.UserDefinedFunction
@@ -34,10 +34,10 @@ package object osm {
 
   // create fully-formed rings from line segments
   @tailrec
-  private def connectSegments(segments: List[Line], rings: List[Line] = List.empty[Line]): List[Line] = {
+  private def connectSegments(segments: List[Line], rings: List[Polygon] = List.empty[Polygon]): List[Polygon] = {
     segments match {
       case Nil => rings
-      case h :: t if h.isClosed => connectSegments(t, rings :+ h)
+      case h :: t if h.isClosed => connectSegments(t, rings :+ Polygon(h))
       case h :: t =>
         connectSegments(t.find(line => h.vertices.last == line.vertices.head) match {
           case Some(next) => Line(h.vertices ++ next.vertices.tail) :: t.filterNot(line => line == next)
@@ -51,12 +51,12 @@ package object osm {
   }
 
   @tailrec
-  private def dissolveRings(rings: List[Polygon], dissolvedOuters: List[Line] = List.empty[Line], dissolvedInners: List[Line] = List.empty[Line]): (List[Line], List[Line]) = {
+  private def dissolveRings(rings: List[Polygon], dissolvedOuters: List[Polygon] = List.empty[Polygon], dissolvedInners: List[Polygon] = List.empty[Polygon]): (List[Polygon], List[Polygon]) = {
     rings match {
       case Nil => (dissolvedOuters, dissolvedInners)
       case h :: t =>
         t.filter(r => h.touches(r)) match {
-          case touching if touching.isEmpty => dissolveRings(t.filterNot(r => h.touches(r)), dissolvedOuters :+ h.exterior, dissolvedInners ++ h.holes)
+          case touching if touching.isEmpty => dissolveRings(t.filterNot(r => h.touches(r)), dissolvedOuters :+ Polygon(h.exterior), dissolvedInners ++ h.holes.map(Polygon(_)))
           case touching =>
             val dissolved = touching.foldLeft(List(h)) {
               case (rs, r2) =>
@@ -73,13 +73,9 @@ package object osm {
             val retryRings = dissolved.filter(d => remaining.exists(r => r.touches(d)))
             val newRings = dissolved.filter(d => !remaining.exists(r => r.touches(d)))
 
-            dissolveRings(retryRings ++ remaining, dissolvedOuters ++ newRings.map(_.exterior), dissolvedInners ++ newRings.flatMap(_.holes))
+            dissolveRings(retryRings ++ remaining, dissolvedOuters ++ newRings.map(_.exterior).map(Polygon(_)), dissolvedInners ++ newRings.flatMap(_.holes).map(Polygon(_)))
         }
     }
-  }
-
-  private def dissolveRings(rings: List[Line]): (List[Line], List[Line]) = {
-    dissolveRings(rings.map(x => Polygon(x)))
   }
 
   // TODO type=route relations
@@ -93,7 +89,6 @@ package object osm {
         logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
         null
       } else {
-        // TODO convert to Polygons initially to avoid repeated conversions
         val coords: Seq[(String, Line)] = ways
           .map(row => (row.getAs[String]("role"), Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
             case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
@@ -101,28 +96,28 @@ package object osm {
             case None => None
           })).filter(_._2.isDefined).map(x => (x._1, x._2.get))
 
-        val (completeOuters, completeInners, partialOuters, partialInners, completeUnknowns, partialUnknowns) = coords.foldLeft((List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line], List.empty[Line])) {
-          case ((co, ci, po, pi, cu, pu), (role, geom: Line)) =>
+        val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = coords.foldLeft((List.empty[Polygon], List.empty[Polygon], List.empty[Polygon], List.empty[Line], List.empty[Line], List.empty[Line])) {
+          case ((co, ci, cu, po, pi, pu), (role, geom: Line)) =>
             Option(geom) match {
               case Some(line) =>
                 role match {
-                  case "outer" if line.isClosed => (co :+ line, ci, po, pi, cu, pu)
-                  case "outer" => (co, ci, po :+ line, pi, cu, pu)
-                  case "inner" if line.isClosed => (co, ci :+ line, po, pi, cu, pu)
-                  case "inner" => (co, ci, po, pi :+ line, cu, pu)
-                  case "" if line.isClosed => (co, ci, po, pi, cu :+ line, pu)
-                  case "" => (co, ci, po, pi, cu, pu :+ line)
-                  case _ => (co, ci, po, pi, cu, pu)
+                  case "outer" if line.isClosed => (co :+ Polygon(line), ci, cu, po, pi, pu)
+                  case "outer" => (co, ci, cu, po :+ line, pi, pu)
+                  case "inner" if line.isClosed => (co, ci :+ Polygon(line), cu, po, pi, pu)
+                  case "inner" => (co, ci, cu, po, pi :+ line, pu)
+                  case "" if line.isClosed => (co, ci, cu :+ Polygon(line), po, pi, pu)
+                  case "" => (co, ci, cu, po, pi, pu :+ line)
+                  case _ => (co, ci, cu, po, pi, pu)
                 }
-              case None => (co, ci, po, pi, cu, pu)
+              case None => (co, ci, cu, po, pi, pu)
             }
         }
 
-        val unknowns: List[Line] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
+        val unknowns: List[Polygon] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
 
         val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters.sortWith(_.length > _.length)), completeInners ++ connectSegments(partialInners.sortWith(_.length > _.length)))) {
-          case ((o: List[Line], i: List[Line]), u) =>
-            if (o.exists(Polygon(_).contains(u))) {
+          case ((o: List[Polygon], i: List[Polygon]), u) =>
+            if (o.exists(_.contains(u))) {
               (o, i :+ u)
             } else {
               (o :+ u, i)
@@ -130,10 +125,11 @@ package object osm {
         }
 
         // reclassify rings according to their topology (ignoring roles)
-        val (classifiedOuters, classifiedInners) = (outers ++ inners).map(Polygon(_)).sortWith(_.area > _.area) match {
+        val (classifiedOuters, classifiedInners) = (outers ++ inners).sortWith(_.area > _.area) match {
           case h :: t => t.foldLeft((List(h), List.empty[Polygon])) {
             case ((os, is), ring) =>
               ring match {
+                // TODO if there's an inner ring that contains this one; this is an outer ring
                 // there's an outer ring that contains this one; this is an inner ring
                 case _ if os.exists(or => or.contains(ring)) => (os, is :+ ring)
                 case _ => (os :+ ring, is)
@@ -143,15 +139,15 @@ package object osm {
         }
 
         val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
-        val (dissolvedInners, addlOuters) = dissolveRings(classifiedInners.map(_.exterior) ++ addlInners)
+        val (dissolvedInners, addlOuters) = dissolveRings(classifiedInners.map(_.exterior).map(Polygon(_)) ++ addlInners)
 
         val (polygons, _) = (dissolvedOuters ++ addlOuters)
           // sort by size (descending) to use rings as part of the largest available polygon
-          .sortWith(Polygon(_).area > Polygon(_).area)
+          .sortWith(_.area > _.area)
           // only use inners once if they're contained by multiple outer rings
           .foldLeft((List.empty[Polygon], dissolvedInners)) {
           case ((ps, is), (outer)) =>
-            (ps :+ Polygon(outer, is.filter(inner => Polygon(outer).contains(inner))), is.filterNot(inner => Polygon(outer).contains(inner)))
+            (ps :+ Polygon(outer.exterior, is.filter(inner => outer.contains(inner)).map(_.exterior)), is.filterNot(inner => outer.contains(inner)))
         }
 
         polygons match {
