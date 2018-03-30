@@ -3,7 +3,7 @@ package osmesa.functions
 import java.sql.Timestamp
 
 import geotrellis.vector.io._
-import geotrellis.vector.{Line, MultiPolygon, Polygon}
+import geotrellis.vector.{Line, MultiPolygon, Point, Polygon}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.expressions.UserDefinedFunction
@@ -131,6 +131,36 @@ package object osm {
     tags.contains("type") && Set("boundary", "multipolygon").contains(tags("type").toLowerCase)
 
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
+
+  val buildWay: UserDefinedFunction = udf((ways: Seq[Row], isArea: Boolean) => {
+    val coords = ways
+      .sortWith(_.getAs[Int]("idx") < _.getAs[Int]("idx"))
+      .map(row => (row.getAs[Double]("lon"), row.getAs[Double]("lat")))
+
+    val geom = coords match {
+      // drop ways with invalid coordinates
+      // check for nulls (or add a coalesce to the select after join); since posexplode_outer is used, there will always be
+      // a row but it may contain null (not NaN) values
+      case _ if coords.exists { case (x, y) => x == null || x.equals(Double.NaN) || y == null || y.equals(Double.NaN) } => None
+      // drop ways that don't contain valid geometries
+      case _ if coords.isEmpty => None
+      case _ if coords.length == 1 =>
+        Some(Point(coords.head._1, coords.head._2))
+      case _ =>
+        val line = Line(coords)
+
+        Some(isArea match {
+          case true if line.isClosed && coords.length >= 4 => Polygon(line)
+          case _ => line
+        })
+    }
+
+    geom match {
+      // drop invalid geometries
+      case Some(g) if g.isValid => g.toWKB(4326)
+      case _ => null
+    }
+  })
 
   // create fully-formed rings from line segments
   @tailrec

@@ -26,10 +26,25 @@ package object functions {
     (geom: Array[Byte], targetCRS: CRS) => _reproject(geom, targetCRS)
   }
 
+  // Convert BigDecimals to double
+  // Reduces size taken for representation at the expense of some precision loss.
+  val asDouble = udf((bd: java.math.BigDecimal) => {
+    Option(bd).map(_.doubleValue).getOrElse(Double.NaN)
+  })
+
   val ST_AsText: UserDefinedFunction = udf((geom: Array[Byte]) => {
     geom match {
       case null => ""
       case _ => geom.readWKB.toWKT
     }
   })
+
+  val ST_Point: UserDefinedFunction = udf((x: Double, y: Double) =>
+    (x, y) match {
+      // drop ways with invalid coordinates
+      case (_, _) if x.equals(null) || y.equals(null) || x.equals(Double.NaN) || y.equals(Double.NaN) => null
+      // drop ways that don't contain valid geometries
+      case (_, _) => Point(x, y).toWKB(4326)
+    }
+  )
 }
