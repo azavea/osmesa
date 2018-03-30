@@ -28,7 +28,7 @@ package object functions {
 
   // Convert BigDecimals to double
   // Reduces size taken for representation at the expense of some precision loss.
-  val asDouble = udf((bd: java.math.BigDecimal) => {
+  val asDouble: UserDefinedFunction = udf((bd: java.math.BigDecimal) => {
     Option(bd).map(_.doubleValue).getOrElse(Double.NaN)
   })
 
