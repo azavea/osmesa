@@ -9,6 +9,7 @@ import org.apache.log4j.Logger
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
+import osmesa.functions._
 import osmesa.functions.osm._
 import spray.json._
 
@@ -18,12 +19,6 @@ object ProcessOSM {
 
   def preprocessNodes(history: DataFrame): DataFrame = {
     import history.sparkSession.implicits._
-
-    // Convert BigDecimals to double
-    // Reduces size taken for representation at the expense of some precision loss.
-    val double = udf((bd: java.math.BigDecimal) => {
-      Option(bd).map(_.doubleValue).getOrElse(Double.NaN)
-    })
 
     // Associate last-available tags to deleted nodes and clean coordinates
     @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
@@ -194,22 +189,12 @@ object ProcessOSM {
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
     import nodes.sparkSession.implicits._
 
-    // Point generation
-    val asWKB = udf((x: Double, y: Double) =>
-      (x, y) match {
-        // drop ways with invalid coordinates
-        case (x, y) if x.equals(null) || y.equals(null) || x.equals(Double.NaN) || y.equals(Double.NaN) => null
-        // drop ways that don't contain valid geometries
-        case (x, y) => Point(x, y).toWKB(4326)
-      }
-    )
-
     // Create point geometries
     // "Uninteresting" (untagged) nodes are not created as points, as creation is simple enough that this can be done when
     // assembling way and relation geometries.
     nodes
       .where(size('tags) > 0)
-      .select('changeset, 'id, 'version, 'tags, asWKB('lon, 'lat).as('geom), 'timestamp.as('updated), 'validUntil, 'visible, 'creation, 'authors, 'user.as('lastAuthor))
+      .select('changeset, 'id, 'version, 'tags, ST_Point('lon, 'lat).as('geom), 'timestamp.as('updated), 'validUntil, 'visible, 'creation, 'authors, 'user.as('lastAuthor))
       .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
 
   }
@@ -290,41 +275,9 @@ object ProcessOSM {
     val taggedWays = fullJoinedWays
       .join(ways.select('id, 'version, 'tags), Seq("id", "version"))
 
-    // Define geometry-related UDFs
-
-    val asWKB = udf((ways: Seq[Row], isArea: Boolean) => {
-      val coords = ways
-        .sortWith(_.getAs[Int]("idx") < _.getAs[Int]("idx"))
-        .map(row => (row.getAs[Double]("lon"), row.getAs[Double]("lat")))
-
-      val geom = coords match {
-        // drop ways with invalid coordinates
-        // check for nulls (or add a coalesce to the select after join); since posexplode_outer is used, there will always be
-        // a row but it may contain null (not NaN) values
-        case _ if coords.exists { case (x, y) => x == null || x.equals(Double.NaN) || y == null || y.equals(Double.NaN) } => None
-        // drop ways that don't contain valid geometries
-        case _ if coords.isEmpty => None
-        case _ if coords.length == 1 =>
-          Some(Point(coords.head._1, coords.head._2))
-        case _ =>
-          val line = Line(coords)
-
-          Some(isArea match {
-            case true if line.isClosed && coords.length >= 4 => Polygon(line)
-            case _ => line
-          })
-      }
-
-      geom match {
-        // drop invalid geometries
-        case Some(g) if g.isValid => g.toWKB(4326)
-        case _ => null
-      }
-    })
-
     // Create WKB geometries (LineStrings and Polygons)
     val wayGeoms = taggedWays
-      .withColumn("geom", asWKB('coords, isArea('tags)))
+      .withColumn("geom", buildWay('coords, isArea('tags)))
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'visible)
 
     // TODO extract into an augmentWays function
