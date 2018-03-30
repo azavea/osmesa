@@ -184,9 +184,12 @@ package object osm {
 
   val buildMultiPolygon: UserDefinedFunction = udf((ways: Seq[Row], id: Long, version: Long, timestamp: Timestamp) => {
     try {
-      // bail early if null values are present where they should exist (members w/ type=way)
       if (ways.exists(row => row.getAs[String]("type") == "way" && Option(row.getAs[Array[Byte]]("geom")).isEmpty)) {
+        // bail early if null values are present where they should exist (members w/ type=way)
         logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
+        null
+      } else if (ways.forall(row => Option(row.getAs[String]("type")).isEmpty && Option(row.getAs[Array[Byte]]("geom")).isEmpty)) {
+        // all members are null
         null
       } else {
         val coords: Seq[(String, Line)] = ways
