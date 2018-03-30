@@ -1,6 +1,7 @@
 package osmesa
 
 import java.io._
+import java.sql.Timestamp
 
 import geotrellis.vector._
 import geotrellis.vector.io._
@@ -16,6 +17,22 @@ import spray.json._
 object ProcessOSM {
 
   lazy val logger: Logger = Logger.getRootLogger
+
+  /**
+    * Snapshot preprocessed elements.
+    *
+    * @param df Elements (including 'validUntil column)
+    * @param timestamp Optional timestamp to snapshot at
+    * @return DataFrame containing valid elements at timestamp (or now)
+    */
+  def snapshot(df: DataFrame, timestamp: Timestamp = null): DataFrame = {
+    import df.sparkSession.implicits._
+
+    df
+      .where(
+        'timestamp <= coalesce(lit(timestamp), current_timestamp)
+          and coalesce(lit(timestamp), current_timestamp) < coalesce('validUntil, date_add(current_timestamp, 1)))
+  }
 
   def preprocessNodes(history: DataFrame): DataFrame = {
     import history.sparkSession.implicits._
@@ -60,16 +77,6 @@ object ProcessOSM {
       .join(nodeVersions, Seq("id", "version"))
       .join(nodeCreations, Seq("id"))
       .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
-
-    // Write out pre-processed nodes
-    // snapshot of historical nodes with validity ranges
-    // ns.repartition(1).write.format("orc").save("data/ri-nodes")
-
-    // Create a "planet" equivalent for currently-valid nodes
-    // "planet" snapshot nodes
-    // ns.where('validUntil.isNull and 'visible)
-    //   .drop('validUntil)
-    //   .drop('visible)
 
     ns
   }
@@ -121,17 +128,6 @@ object ProcessOSM {
       .join(wayCreations, Seq("id"))
       .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
 
-    // Write out pre-processed ways
-    // snapshot of historical ways with validity ranges
-    // ws.repartition(1).write.format("orc").save("data/ri-ways")
-
-    // Create a “planet” equivalent for currently-valid ways
-    // "planet" snapshot ways
-    // NOTE: nds is array<long> rather than array<struct<ref:long>> (as in the PDS ORC files)
-    // ws.where('validUntil.isNull and 'visible)
-    //   .drop('validUntil)
-    //   .drop('visible)
-
     ws
   }
 
@@ -171,17 +167,6 @@ object ProcessOSM {
     val rs = relations
       .join(relationVersions, Seq("id", "version"))
       .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
-
-    // Write out pre-processed relations
-    // snapshot of historical relations with validity ranges
-    // rs.repartition(1).write.format("orc").save("data/ri-relations")
-
-    // Create a “planet” equivalent for currently-valid relations
-    // "planet" snapshot relation
-    // rs
-    //   .where('validUntil.isNull and 'visible)
-    //   .drop('validUntil)
-    //   .drop('visible)
 
     rs
   }
