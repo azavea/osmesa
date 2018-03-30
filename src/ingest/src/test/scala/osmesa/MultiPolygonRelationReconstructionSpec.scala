@@ -71,7 +71,8 @@ class MultiPolygonRelationExamples extends SparkPoweredTables {
     relation(6710544), // complex multipolygon
     relation(191199), // 4 segments; 2 are components of another (thus duplicates)
     relation(61315), // incomplete member list (sourced from an extract of a neighboring state)
-    relation(2554903) // boundary w/ admin_centre + label node members
+    relation(2554903), // boundary w/ admin_centre + label node members
+    relation(191204) // no members
   )
 }
 
