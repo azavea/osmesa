@@ -210,30 +210,30 @@ object ProcessOSM {
     // Union with raw ways to include those in the time line (if they weren't already triggered by node modifications at the same time)
     // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where there should
     // probably be one, grouped by the changeset).
-    val allWayVersions = ways.select('id, 'version, 'nds, 'visible)
+    val allWayVersions = ways.select('id, 'version, 'nds)
       .join(waysByChangeset, Seq("id", "version"))
-      .union(ways.select('id, 'version, 'nds, 'visible, 'changeset, 'timestamp.as('updated)))
+      .union(ways.select('id, 'version, 'nds, 'changeset, 'timestamp.as('updated)))
       .distinct
 
     val explodedWays = allWayVersions
-      .select('changeset, 'id, 'version, 'updated, 'visible, posexplode_outer('nds).as(Seq("idx", "ref")))
+      .select('changeset, 'id, 'version, 'updated, posexplode_outer('nds).as(Seq("idx", "ref")))
       // repartition including updated timestamp to avoid skew (version is insufficient, as
       // multiple instances may exist with the same version)
       .repartition('id, 'updated)
 
     val waysAndNodes = explodedWays
       .join(nodes.select('id.as('ref), 'version.as('ref_version), 'timestamp, 'validUntil), Seq("ref"), "left_outer")
-      .where(!'visible or 'timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
+      .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
 
     val fullJoinedWays = waysAndNodes
       .join(nodes.select('id.as('ref), 'version.as('ref_version), 'lat, 'lon), Seq("ref", "ref_version"), "left_outer")
-      .select('changeset, 'id, 'version, 'updated, 'idx, 'lat, 'lon, 'visible)
-      .groupBy('changeset, 'id, 'version, 'updated, 'visible)
+      .select('changeset, 'id, 'version, 'updated, 'idx, 'lat, 'lon)
+      .groupBy('changeset, 'id, 'version, 'updated)
       .agg(collect_list(struct('idx, 'lon, 'lat)).as('coords))
 
     // Join tags into ways w/ nodes
     val taggedWays = fullJoinedWays
-      .join(ways.select('id, 'version, 'tags), Seq("id", "version"))
+      .join(ways.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
 
     // Create WKB geometries (LineStrings and Polygons)
     val wayGeoms = taggedWays
