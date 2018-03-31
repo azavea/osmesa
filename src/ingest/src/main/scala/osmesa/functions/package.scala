@@ -42,7 +42,7 @@ package object functions {
   val ST_Point: UserDefinedFunction = udf((x: Double, y: Double) =>
     (x, y) match {
       // drop ways with invalid coordinates
-      case (_, _) if x.equals(null) || y.equals(null) || x.equals(Double.NaN) || y.equals(Double.NaN) => null
+      case (_, _) if x.equals(Double.NaN) || y.equals(Double.NaN) => null
       // drop ways that don't contain valid geometries
       case (_, _) => Point(x, y).toWKB(4326)
     }
