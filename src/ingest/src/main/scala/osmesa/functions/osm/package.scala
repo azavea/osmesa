@@ -135,13 +135,15 @@ package object osm {
   val buildWay: UserDefinedFunction = udf((nodes: Seq[Row], isArea: Boolean) => {
     val coords = nodes
       .sortWith(_.getAs[Int]("idx") < _.getAs[Int]("idx"))
-      .map(row => (row.getAs[Double]("lon"), row.getAs[Double]("lat")))
+      .map(row =>
+        (Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN),
+          Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN)))
 
     val geom = coords match {
       // drop ways with invalid coordinates
-      // check for nulls (or add a coalesce to the select after join); since posexplode_outer is used, there will always be
-      // a row but it may contain null (not NaN) values
-      case _ if coords.exists { case (x, y) => x == null || x.equals(Double.NaN) || y == null || y.equals(Double.NaN) } => None
+      // check for nulls (or add a coalesce to the select after join); since posexplode_outer is used, there will
+      // always be a row but it may be empty
+      case _ if coords.exists { case (x, y) => x.equals(Double.NaN) || y.equals(Double.NaN) } => None
       // drop ways that don't contain valid geometries
       case _ if coords.isEmpty => None
       case _ if coords.length == 1 =>
