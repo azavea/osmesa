@@ -128,7 +128,7 @@ object ProcessOSM {
       // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
       // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
       history
-        .where('type === "way")
+        .where('type === "relation")
         .select(
           'id,
           when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
