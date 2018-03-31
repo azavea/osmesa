@@ -192,40 +192,40 @@ object ProcessOSM {
     // Create (or re-use) a lookup table for node → ways
     val nodesToWays = _nodesToWays.getOrElse[DataFrame] {
       ways
-        .select(explode('nds).as('id), 'id.as('way_id), 'version, 'timestamp, 'validUntil)
+        .select(explode('nds).as('id), 'id.as('wayId), 'version, 'timestamp, 'validUntil)
     }
 
     // Create a way entry for each changeset in which a node was modified, containing the timestamp of the node that triggered
     // the association. This will later be used to assemble ways at each of those points in time.
     // If you need authorship, join on changesets
-    val referencedWaysByChangeset = nodes
+    val waysByChangeset = nodes
       .select('changeset, 'id, 'timestamp.as('updated))
       .join(nodesToWays, Seq("id"))
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
-      .select('changeset, 'way_id.as('id), 'version, 'updated)
+      .select('changeset, 'wayId.as('id), 'version, 'updated)
       .groupBy('changeset, 'id)
       .agg(max('version).as('version), max('updated).as('updated))
 
-    // join w/ referencedWaysByChangeset (on changeset, way_id) later to pick up way versions
-    // Union with raw ways to include those in the timeline (if they weren't already triggered by node modifications at the same time)
+    // join w/ waysByChangeset (on changeset, way id) later to pick up way versions
+    // Union with raw ways to include those in the time line (if they weren't already triggered by node modifications at the same time)
     // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where there should
     // probably be one, grouped by the changeset).
-    val allReferencedWays = ways.select('id, 'version, 'nds, 'visible)
-      .join(referencedWaysByChangeset, Seq("id", "version"))
+    val allWayVersions = ways.select('id, 'version, 'nds, 'visible)
+      .join(waysByChangeset, Seq("id", "version"))
       .union(ways.select('id, 'version, 'nds, 'visible, 'changeset, 'timestamp.as('updated)))
       .distinct
 
-    val fullReferencedWays = allReferencedWays
+    val explodedWays = allWayVersions
       .select('changeset, 'id, 'version, 'updated, 'visible, posexplode_outer('nds).as(Seq("idx", "ref")))
       // repartition including updated timestamp to avoid skew (version is insufficient, as
       // multiple instances may exist with the same version)
       .repartition('id, 'updated)
 
-    val joinedWays = fullReferencedWays
+    val waysAndNodes = explodedWays
       .join(nodes.select('id.as('ref), 'version.as('ref_version), 'timestamp, 'validUntil), Seq("ref"), "left_outer")
       .where(!'visible or 'timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
 
-    val fullJoinedWays = joinedWays
+    val fullJoinedWays = waysAndNodes
       .join(nodes.select('id.as('ref), 'version.as('ref_version), 'lat, 'lon), Seq("ref", "ref_version"), "left_outer")
       .select('changeset, 'id, 'version, 'updated, 'idx, 'lat, 'lon, 'visible)
       .groupBy('changeset, 'id, 'version, 'updated, 'visible)
@@ -263,24 +263,57 @@ object ProcessOSM {
     * Nodes and ways contain implicit timestamps that will be used to generate minor versions of geometry that they're
     * associated with (each entry that exists within a changeset).
     *
-    * @param relations DataFrame containing relations to reconstruct.
+    * @param _relations DataFrame containing relations to reconstruct.
     * @param geoms     DataFrame containing way geometries to use in reconstruction.
     * @return Relations geometries.
     */
-  def reconstructRelationGeometries(relations: DataFrame, geoms: DataFrame): DataFrame = {
-    import relations.sparkSession.implicits._
+  def reconstructRelationGeometries(_relations: DataFrame, geoms: DataFrame): DataFrame = {
+    import _relations.sparkSession.implicits._
 
     // TODO 1280388@v1 for an old-style multipolygon (tags on ways)
-    // TODO use max(relations("timestamp"), wayGeoms("timestamp")) as the assigned timestamp
     // TODO remove ways without unique tags that participate in multipolygon relations
-    val members = relations
-      .where(isMultiPolygon('tags))
-      .select('changeset, 'id, 'version, 'timestamp, explode_outer('members).as("member"))
+
+    val relations = preprocessRelations(_relations).where(isMultiPolygon('tags))
+
+    val waysToRelations = relations
+      .select(explode('members).as('member), 'id.as('relationId), 'version, 'timestamp, 'validUntil)
+      .withColumn("type", $"member.type")
+      .withColumn("id", $"member.ref")
+      // role isn't needed for any lookups (here)
+      // .withColumn("role", $"member.role")
+      .drop('member)
+
+    // Create a relation entry for each changeset in which a geometry was modified, containing the timestamp and
+    // changeset of the geometry that triggered the association. This will later be used to assemble relations at each
+    // of those points in time.
+    // If you need authorship, join on changesets
+    val relationsByChangeset = geoms
+      // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
+      .withColumn("type", lit("way"))
+      .select('type, 'changeset, 'id, 'updated)
+      .join(waysToRelations, Seq("id", "type"))
+      .where(waysToRelations("timestamp") <= geoms("updated") and geoms("updated") < coalesce(waysToRelations("validUntil"), current_timestamp))
+      .select('changeset, 'relationId.as('id), 'version, 'updated)
+      .groupBy('changeset, 'id)
+      .agg(max('version).as('version), max('updated).as('updated))
+
+    // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where
+    // there should probably be one, grouped by the changeset).
+    val allRelationVersions = relations.select('id, 'version, 'members, 'visible)
+      // join w/ relationsByChangeset (on changeset, relation id) later to pick up relation versions
+      .join(relationsByChangeset, Seq("id", "version"))
+      // Union with raw relations to include those in the time line (if they weren't already triggered by geometry
+      // modifications at the same time)
+      .union(relations.select('id, 'version, 'members, 'visible, 'changeset, 'timestamp.as('updated)))
+      .distinct
+
+    val members = allRelationVersions
+      .select('changeset, 'id, 'version, 'updated, explode_outer('members).as("member"))
       .select(
         'changeset,
         'id,
         'version,
-        'timestamp,
+        'updated,
         'member.getField("type").as('type),
         'member.getField("ref").as('ref),
         'member.getField("role").as('role)
@@ -288,21 +321,23 @@ object ProcessOSM {
       .join(geoms.select('type, 'id.as("ref"), 'updated, 'validUntil, 'geom), Seq("type", "ref"), "left_outer")
       .where(
         'geom.isNull or // allow null geoms through so we can check data validity later
-          (geoms("updated") <= relations("timestamp") and relations("timestamp") < coalesce(geoms("validUntil"), current_timestamp)))
-
-    // Assign `minorVersion` and rewrite `validUntil` to match
-    @transient val idAndVersionByTimestamp = Window.partitionBy('id, 'version).orderBy('timestamp)
-    @transient val idByTimestamp = Window.partitionBy('id).orderBy('timestamp)
+          (geoms("updated") <= allRelationVersions("updated") and allRelationVersions("updated") < coalesce(geoms("validUntil"), current_timestamp)))
+      .drop(geoms("updated"))
+      .drop(geoms("validUntil"))
 
     val relationGeoms = members
-      .groupBy('changeset, 'id, 'version, 'timestamp)
+      .groupBy('changeset, 'id, 'version, 'updated)
       .agg(collect_list(struct('type, 'role, 'geom)).as('parts))
       .select(
         'id,
-        buildMultiPolygon('parts, 'id, 'version, 'timestamp).as('geom),
+        buildMultiPolygon('parts, 'id, 'version, 'updated).as('geom),
         'changeset,
-        'timestamp,
+        'updated,
         'version)
+
+    // Assign `minorVersion` and rewrite `validUntil` to match
+    @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
+    @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
@@ -312,11 +347,11 @@ object ProcessOSM {
         'geom,
         'tags,
         'changeset,
-        'timestamp.as('updated),
-        (lead('timestamp, 1) over idByTimestamp).as('validUntil),
+        'updated,
+        (lead('updated, 1) over idByUpdated).as('validUntil),
         'visible,
         'version,
-        ((row_number over idAndVersionByTimestamp) - 1).as('minorVersion))
+        ((row_number over idAndVersionByUpdated) - 1).as('minorVersion))
   }
 
   def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {
