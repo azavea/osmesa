@@ -66,11 +66,12 @@ object ExtractMultiPolygons extends CommandApp(
 
       // DOWN: get all versions of raw elements
 
-      // get all ways referenced by relations
-      val relations = ProcessOSM.preprocessRelations(df.where('type === "relation"))
-
-      val wayIds = relations
+      // get all multipolygon relations
+      val relations = ProcessOSM.preprocessRelations(df)
         .where(isMultiPolygon('tags))
+
+      // get all ways referenced by relations
+      val wayIds = relations
         .select(explode('members).as('member))
         .where($"member.type" === "way")
         .select($"member.ref".as("id"))
@@ -91,9 +92,7 @@ object ExtractMultiPolygons extends CommandApp(
         .select('id)
         .distinct
 
-      val nodes = df.where('type === "node")
-
-      val referencedNodes = ProcessOSM.preprocessNodes(nodes)
+      val referencedNodes = ProcessOSM.preprocessNodes(df)
         .join(nodeIds, Seq("id"))
 
       // UP: assemble all versions + minor versions
@@ -104,13 +103,16 @@ object ExtractMultiPolygons extends CommandApp(
         ProcessOSM.reconstructWayGeometries(referencedWays, referencedNodes, Some(nodesToWays))
       }.withColumn("type", lit("way"))
 
+      println(s"${wayGeoms.count} way geometries")
+
       // TODO create versions (w/ 'updated) for each geometry change (node / way change, but not all) that modified the relation
 
       val relationGeoms = ProcessOSM.reconstructRelationGeometries(relations, wayGeoms)
 
       relationGeoms
-        .select('id, 'version, 'timestamp, 'changeset, ST_AsText('geom).as('wkt))
-        .orderBy('id, 'version, 'timestamp)
+        .withColumn("wkt", ST_AsText('geom))
+        .drop('geom)
+        .orderBy('id, 'version, 'updated)
         .repartition(1).write.orc(outGeoms)
 
       ss.stop()

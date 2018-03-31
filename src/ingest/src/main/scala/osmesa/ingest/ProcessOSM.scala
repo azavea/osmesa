@@ -162,8 +162,6 @@ object ProcessOSM {
         'changeset,
         'timestamp.as('updated),
         'validUntil,
-        'uid,
-        'user,
         'visible,
         'version)
   }
@@ -199,6 +197,7 @@ object ProcessOSM {
 
     // Create a way entry for each changeset in which a node was modified, containing the timestamp of the node that triggered
     // the association. This will later be used to assemble ways at each of those points in time.
+    // If you need authorship, join on changesets
     val referencedWaysByChangeset = nodes
       .select('changeset, 'id, 'timestamp.as('updated))
       .join(nodesToWays, Seq("id"))
@@ -253,8 +252,6 @@ object ProcessOSM {
         'changeset,
         'updated,
         (lead('updated, 1) over idByUpdated).as('validUntil),
-        'uid,
-        'user,
         'visible,
         'version,
         ((row_number over idAndVersionByUpdated) - 1).as('minorVersion))
@@ -294,24 +291,32 @@ object ProcessOSM {
           (geoms("updated") <= relations("timestamp") and relations("timestamp") < coalesce(geoms("validUntil"), current_timestamp)))
 
     // Assign `minorVersion` and rewrite `validUntil` to match
-    @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
-    @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
+    @transient val idAndVersionByTimestamp = Window.partitionBy('id, 'version).orderBy('timestamp)
+    @transient val idByTimestamp = Window.partitionBy('id).orderBy('timestamp)
 
-    members
+    val relationGeoms = members
       .groupBy('changeset, 'id, 'version, 'timestamp)
       .agg(collect_list(struct('type, 'role, 'geom)).as('parts))
       .select(
         'id,
         buildMultiPolygon('parts, 'id, 'version, 'timestamp).as('geom),
+        'changeset,
+        'timestamp,
+        'version)
+
+    // Join metadata to avoid passing it through exploded shuffles
+    relationGeoms
+      .join(relations.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
+      .select(
+        'id,
+        'geom,
         'tags,
         'changeset,
-        'updated,
-        (lead('updated, 1) over idByUpdated).as('validUntil),
-        'uid,
-        'user,
+        'timestamp.as('updated),
+        (lead('timestamp, 1) over idByTimestamp).as('validUntil),
         'visible,
         'version,
-        ((row_number over idAndVersionByUpdated) - 1).as('minorVersion))
+        ((row_number over idAndVersionByTimestamp) - 1).as('minorVersion))
   }
 
   def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {
