@@ -145,7 +145,7 @@ package object osm {
       // always be a row but it may be empty
       case _ if coords.exists { case (x, y) => x.equals(Double.NaN) || y.equals(Double.NaN) } => None
       // drop ways that don't contain valid geometries
-      case _ if coords.isEmpty => None
+      case _ if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
       case _ if coords.length == 1 =>
         Some(Point(coords.head._1, coords.head._2))
       case _ =>
@@ -217,9 +217,6 @@ package object osm {
       if (ways.exists(row => row.getAs[String]("type") == "way" && Option(row.getAs[Array[Byte]]("geom")).isEmpty)) {
         // bail early if null values are present where they should exist (members w/ type=way)
         logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
-        null
-      } else if (ways.forall(row => Option(row.getAs[String]("type")).isEmpty && Option(row.getAs[Array[Byte]]("geom")).isEmpty)) {
-        // all members are null
         null
       } else {
         val coords: Seq[(String, Line)] = ways
