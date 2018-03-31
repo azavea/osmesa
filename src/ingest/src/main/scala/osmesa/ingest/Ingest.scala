@@ -72,17 +72,25 @@ object Util {
  *
  * sbt "project ingest" assembly
  *
- * spark-submit --class osmesa.IngestApp ingest/target/scala-2.11/osmesa-ingest.jar --orc=$HOME/data/osm/isle-of-man.orc --bucket=geotrellis-test --key=jpolchlopek/vectortiles --layer=history
+ * spark-submit \
+ *   --class osmesa.Ingest \
+ *   ingest/target/scala-2.11/osmesa-ingest.jar \
+ *   --orc=$HOME/data/osm/isle-of-man.orc \
+ *   --changesets=$HOME/data/isle-of-man-changesets.orc \
+ *   --bucket=geotrellis-test \
+ *   --key=jpolchlopek/vectortiles \
+ *   --layer=history
  *
  */
 
-object IngestApp extends CommandApp(
+object Ingest extends CommandApp(
   name = "osmesa-ingest",
   header = "Ingest OSM ORC into GeoMesa instance",
   main = {
 
     /* CLI option handling */
-    val orcO = Opts.option[String]("orc", help = "Location of the .orc file to process")
+    val orcO = Opts.option[String]("orc", help = "Location of the ORC file to process")
+    val changesetsO = Opts.option[String]("changesets", help = "Location of the ORC file containing changesets")
     val bucketO = Opts.option[String]("bucket", help = "S3 bucket to write VTs to")
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
     val layerO = Opts.option[String]("layer", help = "Name of the output Layer")
@@ -90,7 +98,7 @@ object IngestApp extends CommandApp(
     val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
     val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
 
-    (orcO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO).mapN { (orc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir) =>
+    (orcO, changesetsO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO).mapN { (orc, changesetsSrc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir) =>
 
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
@@ -114,6 +122,7 @@ object IngestApp extends CommandApp(
       Logger.getRootLogger.setLevel(Level.WARN)
 
       val df = ss.read.orc(orc)
+      val changesets = ss.read.orc(changesetsSrc)
 
       val cache = Option(new URI(cacheDir).getScheme) match {
         case Some("s3") => Caching.onS3(cacheDir)
@@ -139,15 +148,19 @@ object IngestApp extends CommandApp(
       }
 
       val nodeAugmentations = nodeGeoms
+        .join(changesets.select('id.as('changeset), 'uid, 'user), Seq("changeset"))
         .groupBy('id)
         .agg(min('timestamp).as('created), collect_set('user).as('authors))
 
       val wayAugmentations = wayGeoms
+        .join(changesets.select('id.as('changeset), 'uid, 'user), Seq("changeset"))
         .groupBy('id)
         .agg(min('timestamp).as('created), collect_set('user).as('authors))
 
-      val latestNodeGeoms = ProcessOSM.snapshot(nodeGeoms).join(nodeAugmentations, Seq("id"))
-      val latestWayGeoms = ProcessOSM.snapshot(wayGeoms).join(wayAugmentations, Seq("id"))
+      val latestNodeGeoms = ProcessOSM.snapshot(nodeGeoms)
+        .join(nodeAugmentations, Seq("id"))
+      val latestWayGeoms = ProcessOSM.snapshot(wayGeoms)
+        .join(wayAugmentations, Seq("id"))
 
       println("PRIOR TO WAY/NODE UNION")
       latestNodeGeoms.printSchema
