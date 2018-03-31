@@ -106,6 +106,7 @@ object ExtractMultiPolygons extends CommandApp(
       val relationGeoms = ProcessOSM.reconstructRelationGeometries(relations, wayGeoms)
 
       relationGeoms
+        .where('geom.isNotNull)
         .withColumn("wkt", ST_AsText('geom))
         .drop('geom)
         .orderBy('id, 'version, 'updated)
