@@ -14,8 +14,7 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions.{isnull, lit}
-import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.functions._
 import osmesa.ingest.util.Caching
 import vectorpipe._
 
@@ -112,40 +111,57 @@ object IngestApp extends CommandApp(
       import ss.implicits._
 
       /* Silence the damn INFO logger */
-      Logger.getRootLogger().setLevel(Level.WARN)
+      Logger.getRootLogger.setLevel(Level.WARN)
 
       val df = ss.read.orc(orc)
 
       val cache = Option(new URI(cacheDir).getScheme) match {
         case Some("s3") => Caching.onS3(cacheDir)
         // bare paths don't get a scheme
-        case None if Option(cacheDir).isDefined => Caching.onFs(cacheDir)
+        case None if cacheDir != "" => Caching.onFs(cacheDir)
         case _ => Caching.none
       }
 
-      val ppnodes = cache.orc("prepared_nodes.orc")({ ProcessOSM.preprocessNodes(df) })
-      val ppways = cache.orc("prepared_ways.orc")({ ProcessOSM.preprocessWays(df) })
-      val nodeGeoms = cache.orc("node_geoms.orc")({ ProcessOSM.constructPointGeometries(ppnodes) })
-      val wayGeoms = cache.orc("way_geoms.orc")({ ProcessOSM.reconstructWayGeometries(ppways, ppnodes) })
+      val ppnodes = cache.orc("prepared_nodes.orc") {
+        ProcessOSM.preprocessNodes(df)
+      }
+
+      val ppways = cache.orc("prepared_ways.orc") {
+        ProcessOSM.preprocessWays(df)
+      }
+
+      val nodeGeoms = cache.orc("node_geoms.orc") {
+        ProcessOSM.constructPointGeometries(ppnodes)
+      }.withColumn("minorVersion", typedLit[Int](null))
+
+      val wayGeoms = cache.orc("way_geoms.orc") {
+        ProcessOSM.reconstructWayGeometries(ppways, ppnodes)
+      }
+
+      val nodeAugmentations = nodeGeoms
+        .groupBy('id)
+        .agg(min('timestamp).as('created), collect_set('user).as('authors))
+
+      val wayAugmentations = wayGeoms
+        .groupBy('id)
+        .agg(min('timestamp).as('created), collect_set('user).as('authors))
+
+      val latestNodeGeoms = ProcessOSM.snapshot(nodeGeoms).join(nodeAugmentations, Seq("id"))
+      val latestWayGeoms = ProcessOSM.snapshot(wayGeoms).join(wayAugmentations, Seq("id"))
 
       println("PRIOR TO WAY/NODE UNION")
-      nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)).printSchema
-      wayGeoms.printSchema
-      val orderedColumns: List[Column] = List('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'creation, 'authors, 'minorVersion, 'lastAuthor)
-      val geoms = cache.orc(s"compputed_geoms_z${maxZoomLevel}.orc")({
-        wayGeoms
-          .select(orderedColumns: _*)
-          .union(
-            nodeGeoms
-              .withColumn("minorVersion", lit(null).cast(IntegerType))
-              .select(orderedColumns: _*)
-          ).where(!isnull('geom))
-      })
+      latestNodeGeoms.printSchema
+      latestWayGeoms.printSchema
 
+      val geoms = cache.orc(s"computed_geoms_z${maxZoomLevel}.orc") {
+        latestWayGeoms
+          .union(latestNodeGeoms)
+          .where('geom.isNotNull)
+      }
 
       val features: RDD[GenerateVT.VTF[Geometry]] = geoms
         .rdd
-        .map { row =>
+        .flatMap { row =>
           val changeset = row.getAs[Long]("changeset")
           val id = row.getAs[Long]("id")
           val version = row.getAs[Long]("version")
@@ -156,27 +172,30 @@ object IngestApp extends CommandApp(
           val creation = row.getAs[java.sql.Timestamp]("creation")
           val authors = row.getAs[Set[String]]("authors").toList.mkString(",")
           val validUntil = row.getAs[java.sql.Timestamp]("validUntil")
-          val lastAuthor = row.getAs[String]("lastAuthor")
+          val user = row.getAs[String]("user")
 
-          // TODO check validity of reprojected geometry + change this to a flatMap so those can be omitted
-
-          Feature(
-            geom.readWKB.reproject(LatLng, WebMercator),
-            tags.map {
-              case (k, v) => (k, VString(v))
-            } ++ Map(
-              "__changeset" -> VInt64(changeset),
-              "__id" -> VInt64(id),
-              "__version" -> VInt64(version),
-              "__minorVersion" -> VInt64(minorVersion),
-              "__updated" -> VInt64(updated.getTime),
-              "__validUntil" -> VInt64(Option(validUntil).map(_.getTime).getOrElse(0)),
-              "__vtileGen" -> VInt64(new java.sql.Timestamp(System.currentTimeMillis()).getTime),
-              "__creation" -> VInt64(creation.getTime),
-              "__authors" -> VString(authors),
-              "__lastAuthor" -> VString(lastAuthor)
-            )
-          )
+          // check validity of reprojected geometry
+          geom.readWKB.reproject(LatLng, WebMercator) match {
+            case g if g.isValid =>
+              Seq(Feature(
+                g,
+                tags.map {
+                  case (k, v) => (k, VString(v))
+                } ++ Map(
+                  "__changeset" -> VInt64(changeset),
+                  "__id" -> VInt64(id),
+                  "__version" -> VInt64(version),
+                  "__minorVersion" -> VInt64(minorVersion),
+                  "__updated" -> VInt64(updated.getTime),
+                  "__validUntil" -> VInt64(Option(validUntil).map(_.getTime).getOrElse(0)),
+                  "__vtileGen" -> VInt64(new java.sql.Timestamp(System.currentTimeMillis()).getTime),
+                  "__creation" -> VInt64(creation.getTime),
+                  "__authors" -> VString(authors),
+                  "__lastAuthor" -> VString(user)
+                )
+              ))
+            case _ => Seq()
+          }
         }
 
       val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
