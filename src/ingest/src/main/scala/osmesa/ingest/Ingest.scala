@@ -132,7 +132,7 @@ object IngestApp extends CommandApp(
 
       val nodeGeoms = cache.orc("node_geoms.orc") {
         ProcessOSM.constructPointGeometries(ppnodes)
-      }.withColumn("minorVersion", typedLit[Int](null))
+      }.withColumn("minorVersion", lit(0))
 
       val wayGeoms = cache.orc("way_geoms.orc") {
         ProcessOSM.reconstructWayGeometries(ppways, ppnodes)
