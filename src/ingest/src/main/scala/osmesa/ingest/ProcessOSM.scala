@@ -19,9 +19,9 @@ object ProcessOSM {
   lazy val logger: Logger = Logger.getRootLogger
 
   /**
-    * Snapshot preprocessed elements.
+    * Snapshot pre-processed elements.
     *
-    * @param df Elements (including 'validUntil column)
+    * @param df        Elements (including 'validUntil column)
     * @param timestamp Optional timestamp to snapshot at
     * @return DataFrame containing valid elements at timestamp (or now)
     */
@@ -34,154 +34,157 @@ object ProcessOSM {
           and coalesce(lit(timestamp), current_timestamp) < coalesce('validUntil, date_add(current_timestamp, 1)))
   }
 
+  /**
+    * Pre-process nodes. Copies coordinates + tags from versions prior to being deleted (!'visible), as they're cleared
+    * out otherwise, and adds 'validUntil.
+    *
+    * @param history DataFrame containing nodes.
+    * @return processed nodes.
+    */
   def preprocessNodes(history: DataFrame): DataFrame = {
     import history.sparkSession.implicits._
 
-    // Associate last-available tags to deleted nodes and clean coordinates
-    @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
+    if (history.columns.contains("validUntil")) {
+      history
+    } else {
+      @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-    // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
-    // this is suitable for appending to directly (since none of the values need to change ever)
-    val nodes = history
-      .where('type === "node")
-      .select(
-        'id,
-        when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
-        when(!'visible, null).otherwise(asDouble('lat)).as('lat),
-        when(!'visible, null).otherwise(asDouble('lon)).as('lon),
-        'changeset,
-        'timestamp,
-        'uid,
-        'user,
-        'version,
-        'visible)
+      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
+      // this is suitable for appending to directly (since none of the values need to change ever)
 
-    // Get the last version of each node modified in a changeset
-    // This treats changeset closure as "intended state" by the editor.
-    val nodeVersions = nodes
-      .groupBy('id, 'changeset)
-      .agg(max('version).as('version))
-      .drop('changeset)
+      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
+      // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
+      history
+        .where('type === "node")
+        .select(
+          'id,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
+          when(!'visible, null).otherwise(asDouble('lat)).as('lat),
+          when(!'visible, null).otherwise(asDouble('lon)).as('lon),
+          'changeset,
+          'timestamp,
+          (lead('timestamp, 1) over idByUpdated).as('validUntil),
+          'uid,
+          'user,
+          'version,
+          'visible)
+    }
 
-    // Creation times for nodes
-    val nodeCreations = nodes
-      .groupBy('id)
-      .agg(min('timestamp).as('creation), collect_set('user).as('authors))
-
-    // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
-    // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
-    // Select full metadata for the last version of a node by changeset and add "validUntil" for joining with other types
-    // this means that the final edit within a changeset is the intended end state for a given node (after possibly having been moved
-    // around or adjusted to deal with edits in other changesets)
-    val ns = nodes
-      .join(nodeVersions, Seq("id", "version"))
-      .join(nodeCreations, Seq("id"))
-      .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
-
-    ns
+    // TODO augment elsewhere
+    //        // Creation times for nodes
+    //        val nodeCreations = nodes
+    //          .groupBy('id)
+    //          .agg(min('timestamp).as('creation), collect_set('user).as('authors))
   }
 
+  /**
+    * Pre-process ways. Copies tags from versions prior to being deleted (!'visible), as they're cleared out
+    * otherwise, dereferences 'nds.ref, and adds 'validUntil.
+    *
+    * @param history DataFrame containing ways.
+    * @return processed ways.
+    */
   def preprocessWays(history: DataFrame): DataFrame = {
     import history.sparkSession.implicits._
 
-    // Prepare ways for geometric assembly.
-    // Associate last-available tags to deleted ways
+    if (history.columns.contains("validUntil")) {
+      history
+    } else {
+      @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-    @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
+      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
+      // this is suitable for appending to directly (since none of the values need to change ever)
 
-    // when an element has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
-    // this is suitable for appending to directly (since none of the values need to change ever)
-    val ways = history
-      .where('type === "way")
-      .select(
-        'id,
-        when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
-        $"nds.ref".as('nds),
-        'changeset,
-        'timestamp,
-        'uid,
-        'user,
-        'version,
-        'visible
-      )
+      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
+      // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
+      history
+        .where('type === "way")
+        .select(
+          'id,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
+          $"nds.ref".as('nds),
+          'changeset,
+          'timestamp,
+          (lead('timestamp, 1) over idByUpdated).as('validUntil),
+          'uid,
+          'user,
+          'version,
+          'visible)
+    }
 
-    // Get the last version of each way modified in a changeset
-    // This treats changeset closure as "intended state" by the editor.
-    val wayVersions = ways
-      .groupBy('id, 'changeset)
-      .agg(max('version).as('version))
-      .drop('changeset)
-
-    // Creation times for ways
-    val wayCreations = ways
-      .groupBy('id)
-      .agg(min('timestamp).as('creation), collect_set('user).as('authors))
-
-    // Add `validUntil`
-    // This allows time slices to be made more effectively by filtering for ways that were valid between `timestamp` and `validUntil`.
-    // Ways with `null` `validUntil` are currently valid.
-    // Select full metadata for the last version of a way by changeset and add "validUntil" for joining with other types.
-    // This means that the final edit within a changeset is the intended end state for a given way (after possibly having been moved
-    // around or adjusted to deal with edits in other changesets)
-    val ws = ways
-      .join(wayVersions, Seq("id", "version"))
-      .join(wayCreations, Seq("id"))
-      .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
-
-    ws
+    // TODO augment elsewhere
+    //    // Creation times for ways
+    //    val wayCreations = ways
+    //      .groupBy('id)
+    //      .agg(min('timestamp).as('creation), collect_set('user).as('authors))
   }
 
+  /**
+    * Pre-process relations. Copies tags from versions prior to being deleted (!'visible), as they're cleared out
+    * otherwise, and adds 'validUntil.
+    *
+    * @param history DataFrame containing relations.
+    * @return processed relations.
+    */
   def preprocessRelations(history: DataFrame): DataFrame = {
     import history.sparkSession.implicits._
 
-    // Prepare relations for geometric assembly.
-    // Associate last-available tags to deleted ways
+    if (history.columns.contains("validUntil")) {
+      history
+    } else {
+      @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-    @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
+      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
+      // this is suitable for appending to directly (since none of the values need to change ever)
 
-    // when an element has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
-    // this is suitable for appending to directly (since none of the values need to change ever)
-    val relations = history
-      .where('type === "relation")
-      .select(
-        'id,
-        when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
-        'members,
-        'changeset,
-        'timestamp,
-        'uid,
-        'user,
-        'version,
-        'visible)
+      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
+      // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
+      history
+        .where('type === "way")
+        .select(
+          'id,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags).as('tags),
+          'members,
+          'changeset,
+          'timestamp,
+          (lead('timestamp, 1) over idByUpdated).as('validUntil),
+          'uid,
+          'user,
+          'version,
+          'visible)
+    }
 
-    // get the last version of each relation by changeset
-    val relationVersions = relations
-      .groupBy('id, 'changeset)
-      .agg(max('version).as('version))
-      .drop('changeset)
-
-    // Add `validUntil`
-    // This allows time slices to be made more effectively by filtering for relations that were valid between `timestamp` and `validUntil`.
-    // select full metadata for the last version of a relation by changeset and add "validUntil" for joining with other types
-    // this means that the final edit within a changeset is the intended end state for a given relation (after possibly having been moved around or adjusted to deal with edits in other changesets)
-    val rs = relations
-      .join(relationVersions, Seq("id", "version"))
-      .withColumn("validUntil", lead('timestamp, 1) over idByUpdated)
-
-    rs
+    // TODO augment
   }
 
+  /**
+    * Construct point geometries. "Uninteresting" nodes are not included (although they may be necessary for way +
+    * relation assembly).
+    *
+    * @param nodes DataFram containing nodes
+    * @return Nodes as Point geometries
+    */
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
     import nodes.sparkSession.implicits._
 
-    // Create point geometries
-    // "Uninteresting" (untagged) nodes are not created as points, as creation is simple enough that this can be done when
-    // assembling way and relation geometries.
     nodes
+      // TODO get a list of generally ignored tags (and provide it as an optional parameter)
       .where(size('tags) > 0)
-      .select('changeset, 'id, 'version, 'tags, ST_Point('lon, 'lat).as('geom), 'timestamp.as('updated), 'validUntil, 'visible, 'creation, 'authors, 'user.as('lastAuthor))
-      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible
-
+      .select(
+        'id,
+        ST_Point('lon, 'lat).as('geom),
+        'tags,
+        'changeset,
+        'timestamp.as('updated),
+        'validUntil,
+        'uid,
+        'user,
+        'visible,
+        'version,
+        // TODO augmentNodes
+        'creation,
+        'authors,
+        'user.as('lastAuthor))
   }
 
   /**
@@ -190,31 +193,21 @@ object ProcessOSM {
     * Nodes and ways contain implicit timestamps that will be used to generate minor versions of geometry that they're
     * associated with (each entry that exists within a changeset).
     *
-    * @param _nodes
-    * @param _ways
-    * @param _nodesToWays
-    * @return
+    * @param _ways        DataFrame containing ways to reconstruct.
+    * @param _nodes       DataFrame containing nodes used to construct ways.
+    * @param _nodesToWays Optional lookup table.
+    * @return Way geometries.
     */
-  def reconstructWayGeometries(_nodes: DataFrame, _ways: DataFrame, _nodesToWays: Option[DataFrame] = None): DataFrame = {
+  def reconstructWayGeometries(_ways: DataFrame, _nodes: DataFrame, _nodesToWays: Option[DataFrame] = None): DataFrame = {
     import _nodes.sparkSession.implicits._
 
-    // These should have already been pre-processed to incorporate a `validUntil` column; if not, do so
-    // TODO move this check into preprocessNodes
-    val nodes = if (_nodes.columns.contains("validUntil")) {
-      _nodes
-    } else {
-      preprocessNodes(_nodes)
-    }
+    val nodes = preprocessNodes(_nodes)
       // some nodes at (0, 0) are valid, but most are not (and some are redacted, which causes problems when clipping the
       // resulting geometries to a grid)
+      // TODO this probably needs to be fixed in osm2orc by writing out Double.NaN instead of null
       .where('lat =!= 0 and 'lon =!= 0)
 
-    // TODO move this check into preprocessWays
-    val ways = if (_ways.columns.contains("validUntil")) {
-      _ways
-    } else {
-      preprocessWays(_ways)
-    }
+    val ways = preprocessWays(_ways)
 
     // Create (or re-use) a lookup table for node → ways
     val nodesToWays = _nodesToWays.getOrElse[DataFrame] {
@@ -243,8 +236,9 @@ object ProcessOSM {
 
     val fullReferencedWays = allReferencedWays
       .select('changeset, 'id, 'version, 'updated, 'visible, posexplode_outer('nds).as(Seq("idx", "ref")))
-      .repartition('id, 'updated) // repartition including updated timestamp to avoid skew (version is insufficient, as
-    // multiple instances may exist with the same version)
+      // repartition including updated timestamp to avoid skew (version is insufficient, as
+      // multiple instances may exist with the same version)
+      .repartition('id, 'updated)
 
     val joinedWays = fullReferencedWays
       .join(nodes.select('id.as('ref), 'version.as('ref_version), 'timestamp, 'validUntil), Seq("ref"), "left_outer")
@@ -273,13 +267,33 @@ object ProcessOSM {
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
     wayGeoms
-      .withColumn("validUntil", lead('updated, 1) over idByUpdated)
-      .withColumn("minorVersion", (row_number() over idAndVersionByUpdated) - 1)
-      .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'validUntil, 'visible, 'minorVersion)
+      .select(
+        'id,
+        'geom,
+        'tags,
+        'changeset,
+        'updated,
+        (lead('updated, 1) over idByUpdated).as('validUntil),
+        'uid,
+        'user,
+        'visible,
+        'version,
+        ((row_number over idAndVersionByUpdated) - 1).as('minorVersion))
+
     //      .join(augmentedFields, Seq("id", "version")) // TODO extract into augmentWays function
     //      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible TODO extract into a latest function
   }
 
+  /**
+    * Reconstruct relation geometries.
+    *
+    * Nodes and ways contain implicit timestamps that will be used to generate minor versions of geometry that they're
+    * associated with (each entry that exists within a changeset).
+    *
+    * @param relations DataFrame containing relations to reconstruct.
+    * @param geoms     DataFrame containing way geometries to use in reconstruction.
+    * @return Relations geometries.
+    */
   def reconstructRelationGeometries(relations: DataFrame, geoms: DataFrame): DataFrame = {
     import relations.sparkSession.implicits._
 
@@ -294,19 +308,34 @@ object ProcessOSM {
         'id,
         'version,
         'timestamp,
-        'member.getField("type").as("type"),
-        'member.getField("ref").as("ref"),
-        'member.getField("role").as("role")
+        'member.getField("type").as('type),
+        'member.getField("ref").as('ref),
+        'member.getField("role").as('role)
       )
       .join(geoms.select('type, 'id.as("ref"), 'updated, 'validUntil, 'geom), Seq("type", "ref"), "left_outer")
       .where(
         'geom.isNull or // allow null geoms through so we can check data validity later
           (geoms("updated") <= relations("timestamp") and relations("timestamp") < coalesce(geoms("validUntil"), current_timestamp)))
 
+    // Assign `minorVersion` and rewrite `validUntil` to match
+    @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
+    @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
+
     members
       .groupBy('changeset, 'id, 'version, 'timestamp)
       .agg(collect_list(struct('type, 'role, 'geom)).as('parts))
-      .select('id, 'version, 'timestamp, 'changeset, buildMultiPolygon('parts, 'id, 'version, 'timestamp).as("geom"))
+      .select(
+        'id,
+        buildMultiPolygon('parts, 'id, 'version, 'timestamp).as('geom),
+        'tags,
+        'changeset,
+        'updated,
+        (lead('updated, 1) over idByUpdated).as('validUntil),
+        'uid,
+        'user,
+        'visible,
+        'version,
+        ((row_number over idAndVersionByUpdated) - 1).as('minorVersion))
   }
 
   def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {

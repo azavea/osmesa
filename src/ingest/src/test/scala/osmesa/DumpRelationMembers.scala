@@ -102,7 +102,7 @@ object DumpRelationMembers extends CommandApp(
       // assemble way geometries
 
       val wayGeoms = cache.orc("way-geoms") {
-        ProcessOSM.reconstructWayGeometries(referencedNodes, referencedWays, Some(nodesToWays))
+        ProcessOSM.reconstructWayGeometries(referencedWays, referencedNodes, Some(nodesToWays))
       }
 
       val members = relations
