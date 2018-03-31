@@ -78,6 +78,7 @@ object MakeGeometries extends CommandApp(
         ProcessOSM.reconstructRelationGeometries(df, wayGeoms)
       }
 
+      // TODO remove untagged way geoms and ones that contribute to ways but have no inherent value
       nodeGeoms
         .union(wayGeoms)
         .union(relationGeoms)
