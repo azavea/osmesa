@@ -28,14 +28,14 @@ package object functions {
 
   val ST_IsEmpty: UserDefinedFunction = udf((geom: Array[Byte]) => {
     geom match {
-      case null => null
+      case null => true
       case _ => geom.readWKB.isEmpty
     }
   })
 
   val ST_IsValid: UserDefinedFunction = udf((geom: Array[Byte]) => {
     geom match {
-      case null => null
+      case null => false
       case _ => geom.readWKB.isValid
     }
   })
