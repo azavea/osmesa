@@ -133,22 +133,21 @@ package object osm {
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
 
   val buildWay: UserDefinedFunction = udf((nodes: Seq[Row], isArea: Boolean) => {
-    val coords = nodes
+    val geom = nodes
       .sortWith(_.getAs[Int]("idx") < _.getAs[Int]("idx"))
       .map(row =>
         (Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN),
           Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN)))
-
-    val geom = coords match {
+    match {
       // drop ways with invalid coordinates
       // check for nulls (or add a coalesce to the select after join); since posexplode_outer is used, there will
       // always be a row but it may be empty
-      case _ if coords.exists { case (x, y) => x.equals(Double.NaN) || y.equals(Double.NaN) } => None
+      case coords if coords.exists { case (x, y) => x.equals(Double.NaN) || y.equals(Double.NaN) } => None
       // drop ways that don't contain valid geometries
-      case _ if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
-      case _ if coords.length == 1 =>
+      case coords if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
+      case coords if coords.length == 1 =>
         Some(Point(coords.head._1, coords.head._2))
-      case _ =>
+      case coords =>
         val line = Line(coords)
 
         Some(isArea match {
