@@ -161,7 +161,7 @@ object ProcessOSM {
     * Construct point geometries. "Uninteresting" nodes are not included (although they may be necessary for way +
     * relation assembly).
     *
-    * @param nodes DataFram containing nodes
+    * @param nodes DataFrame containing nodes
     * @return Nodes as Point geometries
     */
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
@@ -204,7 +204,8 @@ object ProcessOSM {
     val nodes = preprocessNodes(_nodes)
       // some nodes at (0, 0) are valid, but most are not (and some are redacted, which causes problems when clipping the
       // resulting geometries to a grid)
-      // TODO this probably needs to be fixed in osm2orc by writing out Double.NaN instead of null
+      // TODO this probably needs to be fixed in osm2orc by writing out Double.NaN instead of null (which requires
+      // osm4j-core to not use primitive types for nodes
       .where('lat =!= 0 and 'lon =!= 0)
 
     val ways = preprocessWays(_ways)
