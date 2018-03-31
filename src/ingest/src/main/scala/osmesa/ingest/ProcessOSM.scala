@@ -153,7 +153,7 @@ object ProcessOSM {
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
     import nodes.sparkSession.implicits._
 
-    nodes
+    preprocessNodes(nodes)
       .where(size('tags) > 0)
       .select(
         'id,
