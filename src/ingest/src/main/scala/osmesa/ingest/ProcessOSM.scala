@@ -69,12 +69,6 @@ object ProcessOSM {
           'version,
           'visible)
     }
-
-    // TODO augment elsewhere
-    //        // Creation times for nodes
-    //        val nodeCreations = nodes
-    //          .groupBy('id)
-    //          .agg(min('timestamp).as('creation), collect_set('user).as('authors))
   }
 
   /**
@@ -111,12 +105,6 @@ object ProcessOSM {
           'version,
           'visible)
     }
-
-    // TODO augment elsewhere
-    //    // Creation times for ways
-    //    val wayCreations = ways
-    //      .groupBy('id)
-    //      .agg(min('timestamp).as('creation), collect_set('user).as('authors))
   }
 
   /**
@@ -153,8 +141,6 @@ object ProcessOSM {
           'version,
           'visible)
     }
-
-    // TODO augment
   }
 
   /**
@@ -168,7 +154,6 @@ object ProcessOSM {
     import nodes.sparkSession.implicits._
 
     nodes
-      // TODO get a list of generally ignored tags (and provide it as an optional parameter)
       .where(size('tags) > 0)
       .select(
         'id,
@@ -180,11 +165,7 @@ object ProcessOSM {
         'uid,
         'user,
         'visible,
-        'version,
-        // TODO augmentNodes
-        'creation,
-        'authors,
-        'user.as('lastAuthor))
+        'version)
   }
 
   /**
@@ -205,7 +186,7 @@ object ProcessOSM {
       // some nodes at (0, 0) are valid, but most are not (and some are redacted, which causes problems when clipping the
       // resulting geometries to a grid)
       // TODO this probably needs to be fixed in osm2orc by writing out Double.NaN instead of null (which requires
-      // osm4j-core to not use primitive types for nodes
+      // osm4j-core to not use primitive types for node coordinates)
       .where('lat =!= 0 and 'lon =!= 0)
 
     val ways = preprocessWays(_ways)
@@ -260,9 +241,6 @@ object ProcessOSM {
       .withColumn("geom", buildWay('coords, isArea('tags)))
       .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'visible)
 
-    // TODO extract into an augmentWays function
-    //    val augmentedFields = ways.select('id, 'version, 'creation, 'authors, 'user.as('lastAuthor))
-
     // Assign `minorVersion` and rewrite `validUntil` to match
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
@@ -280,9 +258,6 @@ object ProcessOSM {
         'visible,
         'version,
         ((row_number over idAndVersionByUpdated) - 1).as('minorVersion))
-
-    //      .join(augmentedFields, Seq("id", "version")) // TODO extract into augmentWays function
-    //      .where('visible and isnull('validUntil)) // This filters things down to all and only the most current geoms which are visible TODO extract into a latest function
   }
 
   /**
