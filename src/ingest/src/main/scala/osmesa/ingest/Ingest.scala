@@ -1,13 +1,11 @@
 package osmesa
 
-import osmesa.ingest.util.Caching
+import java.net.URI
 
-import geotrellis.proj4.{LatLng, WebMercator, Transform}
+import cats.implicits._
+import com.monovore.decline._
+import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.spark._
-import geotrellis.spark.io._
-import geotrellis.spark.io.file._
-import geotrellis.spark.io.index.ZCurveKeyIndexMethod
-import geotrellis.spark.io.s3.{S3AttributeStore, S3LayerWriter}
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vector.io._
@@ -18,23 +16,17 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{isnull, lit}
 import org.apache.spark.sql.types.IntegerType
+import osmesa.ingest.util.Caching
 import vectorpipe._
-import vectorpipe.LayerMetadata
-import cats.implicits._
-import com.monovore.decline._
-import org.geotools.data.DataStore
-import spray.json._
-
-import java.time.Instant
-import java.net.URI
 
 object Util {
-  import spray.json._
-  import spray.json.DefaultJsonProtocol._
-  import vectorpipe.osm._
   import java.io.ByteArrayInputStream
+
+  import com.amazonaws.services.s3.model.ObjectMetadata
   import geotrellis.spark.io.s3.S3Client
-  import com.amazonaws.services.s3.model.{ObjectMetadata, AmazonS3Exception}
+  import spray.json.DefaultJsonProtocol._
+  import spray.json._
+  import vectorpipe.osm._
 
   implicit object ElementMetaWriter extends JsonWriter[ElementMeta] {
     def write(m: ElementMeta): JsValue =
@@ -134,7 +126,7 @@ object IngestApp extends CommandApp(
       val ppnodes = cache.orc("prepared_nodes.orc")({ ProcessOSM.preprocessNodes(df) })
       val ppways = cache.orc("prepared_ways.orc")({ ProcessOSM.preprocessWays(df) })
       val nodeGeoms = cache.orc("node_geoms.orc")({ ProcessOSM.constructPointGeometries(ppnodes) })
-      val wayGeoms = cache.orc("way_geoms.orc")({ ProcessOSM.reconstructWayGeometries(ppnodes, ppways) })
+      val wayGeoms = cache.orc("way_geoms.orc")({ ProcessOSM.reconstructWayGeometries(ppways, ppnodes) })
 
       println("PRIOR TO WAY/NODE UNION")
       nodeGeoms.withColumn("minorVersion", lit(null).cast(IntegerType)).printSchema
