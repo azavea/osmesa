@@ -7,24 +7,11 @@ import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
 
 package object functions {
-  // useful for debugging
-  val isValid: UserDefinedFunction = udf((geom: Array[Byte]) => {
-    geom match {
-      case null => true
-      case _ => geom.readWKB.isValid
-    }
-  })
-
   private def _reproject(geom: Array[Byte], targetCRS: CRS = WebMercator) =
     geom match {
       case null => null
       case _ => geom.readWKB.reproject(LatLng, targetCRS).toWKB(targetCRS.epsgCode.get)
     }
-
-  // useful for debugging; some geometries that are valid as 4326 are not as 3857
-  val reproject: UserDefinedFunction = udf {
-    (geom: Array[Byte], targetCRS: CRS) => _reproject(geom, targetCRS)
-  }
 
   // Convert BigDecimals to double
   // Reduces size taken for representation at the expense of some precision loss.
@@ -39,6 +26,20 @@ package object functions {
     }
   })
 
+  val ST_IsEmpty: UserDefinedFunction = udf((geom: Array[Byte]) => {
+    geom match {
+      case null => null
+      case _ => geom.readWKB.isEmpty
+    }
+  })
+
+  val ST_IsValid: UserDefinedFunction = udf((geom: Array[Byte]) => {
+    geom match {
+      case null => null
+      case _ => geom.readWKB.isValid
+    }
+  })
+
   val ST_Point: UserDefinedFunction = udf((x: Double, y: Double) =>
     (x, y) match {
       // drop ways with invalid coordinates
@@ -47,4 +48,8 @@ package object functions {
       case (_, _) => Point(x, y).toWKB(4326)
     }
   )
+
+  val ST_Transform: UserDefinedFunction = udf {
+    (geom: Array[Byte], targetCRS: CRS) => _reproject(geom, targetCRS)
+  }
 }
