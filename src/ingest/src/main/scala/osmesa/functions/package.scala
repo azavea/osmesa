@@ -1,5 +1,7 @@
 package osmesa
 
+import java.math.BigDecimal
+
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.vector._
 import geotrellis.vector.io._
@@ -15,30 +17,21 @@ package object functions {
 
   // Convert BigDecimals to double
   // Reduces size taken for representation at the expense of some precision loss.
-  val asDouble: UserDefinedFunction = udf((bd: java.math.BigDecimal) => {
-    Option(bd).map(_.doubleValue).getOrElse(Double.NaN)
-  })
+  val asDouble: UserDefinedFunction = udf {
+    Option(_: BigDecimal).map(_.doubleValue).getOrElse(Double.NaN)
+  }
 
-  val ST_AsText: UserDefinedFunction = udf((geom: Array[Byte]) => {
-    geom match {
-      case null => ""
-      case _ => geom.readWKB.toWKT
-    }
-  })
+  val ST_AsText: UserDefinedFunction = udf {
+    Option(_: Array[Byte]).map(_.readWKB.toWKT).getOrElse("")
+  }
 
-  val ST_IsEmpty: UserDefinedFunction = udf((geom: Array[Byte]) => {
-    geom match {
-      case null => true
-      case _ => geom.readWKB.isEmpty
-    }
-  })
+  val ST_IsEmpty: UserDefinedFunction = udf {
+    Option(_: Array[Byte]).forall(_.readWKB.isEmpty)
+  }
 
-  val ST_IsValid: UserDefinedFunction = udf((geom: Array[Byte]) => {
-    geom match {
-      case null => false
-      case _ => geom.readWKB.isValid
-    }
-  })
+  val ST_IsValid: UserDefinedFunction = udf {
+    Option(_: Array[Byte]).exists(_.readWKB.isValid)
+  }
 
   val ST_Point: UserDefinedFunction = udf((x: Double, y: Double) =>
     (x, y) match {
@@ -50,6 +43,6 @@ package object functions {
   )
 
   val ST_Transform: UserDefinedFunction = udf {
-    (geom: Array[Byte], targetCRS: CRS) => _reproject(geom, targetCRS)
+    _reproject(_: Array[Byte], _: CRS)
   }
 }
