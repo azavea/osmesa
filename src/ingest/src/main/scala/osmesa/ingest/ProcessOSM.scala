@@ -374,7 +374,7 @@ object ProcessOSM {
             case Seq(JsString(code)) =>
               CountryId(code)
             case v =>
-              throw new DeserializationException(s"CountryId expected, got $v")
+              throw DeserializationException(s"CountryId expected, got $v")
           }
 
         def write(v: CountryId): JsValue =
