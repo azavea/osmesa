@@ -85,7 +85,7 @@ object ExtractMultiPolygons extends CommandApp(
 
       // create a lookup table for node → ways (using only the ways we'd previously identified)
       val nodesToWays = ProcessOSM.preprocessWays(referencedWays)
-        .select(explode('nds).as('id), 'id.as('way_id), 'version, 'timestamp, 'validUntil)
+        .select(explode('nds).as('id), 'id.as('wayId), 'version, 'timestamp, 'validUntil)
 
       // extract the referenced nodes from the lookup table
       val nodeIds = nodesToWays
@@ -102,10 +102,6 @@ object ExtractMultiPolygons extends CommandApp(
       val wayGeoms = cache.orc("way-geoms") {
         ProcessOSM.reconstructWayGeometries(referencedWays, referencedNodes, Some(nodesToWays))
       }.withColumn("type", lit("way"))
-
-      println(s"${wayGeoms.count} way geometries")
-
-      // TODO create versions (w/ 'updated) for each geometry change (node / way change, but not all) that modified the relation
 
       val relationGeoms = ProcessOSM.reconstructRelationGeometries(relations, wayGeoms)
 
