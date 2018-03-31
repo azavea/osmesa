@@ -318,7 +318,8 @@ object ProcessOSM {
         'member.getField("ref").as('ref),
         'member.getField("role").as('role)
       )
-      .join(geoms.select('type, 'id.as("ref"), 'updated, 'validUntil, 'geom), Seq("type", "ref"), "left_outer")
+      // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
+      .join(geoms.select(lit("way").as('type), 'id.as("ref"), 'updated, 'validUntil, 'geom), Seq("type", "ref"), "left_outer")
       .where(
         'geom.isNull or // allow null geoms through so we can check data validity later
           (geoms("updated") <= allRelationVersions("updated") and allRelationVersions("updated") < coalesce(geoms("validUntil"), current_timestamp)))
