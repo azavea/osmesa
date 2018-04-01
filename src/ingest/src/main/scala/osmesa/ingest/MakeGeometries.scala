@@ -9,7 +9,6 @@ import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.ingest.util.Caching
-import osmesa.functions._
 
 /*
  * Usage example:
@@ -82,9 +81,6 @@ object MakeGeometries extends CommandApp(
       nodeGeoms
         .union(wayGeoms.where(size('tags) > 0))
         .union(relationGeoms)
-        .withColumn("wkt", ST_AsText('geom))
-        .drop('geom)
-        .drop('tags)
         .repartition(numPartitions)
         .write
         .orc(out)
