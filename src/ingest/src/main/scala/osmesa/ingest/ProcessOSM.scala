@@ -271,7 +271,6 @@ object ProcessOSM {
     import _relations.sparkSession.implicits._
 
     // TODO 1280388@v1 for an old-style multipolygon (tags on ways)
-    // TODO remove ways without unique tags that participate in multipolygon relations
 
     val relations = preprocessRelations(_relations).where(isMultiPolygon('tags))
 
