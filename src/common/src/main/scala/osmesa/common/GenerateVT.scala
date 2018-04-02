@@ -103,7 +103,9 @@ object GenerateVT {
       val (sk, feat) = arg
       val fid = feat.data("__id").asInstanceOf[VString].value
       val baseEx = layout.mapTransform(sk)
-      val ex = Extent(baseEx.xmin - baseEx.width, baseEx.ymin - baseEx.height, baseEx.xmax + baseEx.width, baseEx.ymax + baseEx.height)
+      // TODO this is where buffer gets configured; allow it to be provided per-layer as a %
+      // val ex = Extent(baseEx.xmin - baseEx.width, baseEx.ymin - baseEx.height, baseEx.xmax + baseEx.width, baseEx.ymax + baseEx.height)
+      val ex = baseEx
       feat.geom match {
         case pt: Point => (Seq(PointFeature(pt, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
         case l: Line =>
