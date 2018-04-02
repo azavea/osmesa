@@ -347,7 +347,7 @@ object ProcessOSM {
         'member.getField("ref") as 'ref,
         'member.getField("role") as 'role
       )
-      .repartition('id, 'updated)
+      .repartition('changeset, 'id, 'version, 'updated)
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
       .join(geoms.select(lit("way") as 'type, 'id as "ref", 'updated, 'validUntil, 'geom), Seq("type", "ref"), "left_outer")
       .where(
