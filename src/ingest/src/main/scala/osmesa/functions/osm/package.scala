@@ -164,6 +164,8 @@ package object osm {
     }
   })
 
+  class AssemblyException(msg: String) extends Exception(msg)
+
   // create fully-formed rings from line segments
   @tailrec
   private def connectSegments(segments: List[Array[Coordinate]], rings: List[Array[Coordinate]] = List.empty[Array[Coordinate]]): List[Array[Coordinate]] = {
@@ -171,12 +173,12 @@ package object osm {
       case Nil => rings
       case h :: t if h.head equals2D h.last => connectSegments(t, rings :+ h)
       case h :: t =>
-        connectSegments(t.find(line => h.last equals2D  line.head) match {
+        connectSegments(t.find(line => h.last equals2D line.head) match {
           case Some(next) => h ++ next.tail :: t.filterNot(line => line sameElements next)
           case None =>
             t.find(line => h.last == line.last) match {
               case Some(next) => h ++ next.reverse.tail :: t.filterNot(line => line sameElements next)
-              case None => throw new Exception("Unable to connect segments.")
+              case None => throw new AssemblyException("Unable to connect segments.")
             }
         }, rings)
     }
@@ -200,7 +202,7 @@ package object osm {
                   r.union(r2).toGeometry match {
                     case Some(p: Polygon) => List(p)
                     case Some(mp: MultiPolygon) => mp.polygons
-                    case _ => throw new Exception("Union failed.")
+                    case _ => throw new AssemblyException("Union failed.")
                   }
                 }
             }
@@ -295,7 +297,7 @@ package object osm {
       }
     } catch {
       case e: Throwable =>
-        logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): $e")
+        logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
         null
     }
   })
