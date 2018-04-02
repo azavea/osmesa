@@ -22,7 +22,7 @@ class S3Caching(cacheDir: String) extends Caching {
     cacheDir + "/" + filename
 
   private def s3exists(filename: String): Boolean =
-    s3client.doesObjectExist(bucket, prefix(filename))
+    s3client.doesObjectExist(bucket, prefix(filename) + "/_SUCCESS")
 
   def orc(filename: String)(sparkjob: => DataFrame)(implicit ss: SparkSession): DataFrame = {
     if (s3exists(filename)) {
