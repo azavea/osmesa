@@ -5,13 +5,13 @@ import com.monovore.decline._
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.spark.SpatialKey
 import geotrellis.spark.tiling.{LayoutLevel, ZoomedLayoutScheme}
+import geotrellis.vector.io._
 import geotrellis.vector.{Feature, Geometry}
+import geotrellis.vectortile.{VInt64, VString}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
-import geotrellis.vector.io._
-import geotrellis.vectortile.{VInt64, VString}
 
 /*
  * Usage example:
@@ -38,7 +38,7 @@ object MakeTiles extends CommandApp(
     val bucketO = Opts.option[String]("bucket", help = "S3 bucket to write VTs to")
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
 
-    (orcO, changesetsO, bucketO, prefixO).mapN { (orc, changesetsSrc, bucket, prefix) =>
+    (orcO, changesetsO, bucketO, prefixO).mapN { (orc, changesets, bucket, prefix) =>
       /* Settings compatible for both local and EMR execution */
       val conf = new SparkConf()
         .setIfMissing("spark.master", "local[*]")
@@ -52,14 +52,10 @@ object MakeTiles extends CommandApp(
         .enableHiveSupport
         .getOrCreate
 
-      import ss.implicits._
-
       /* Silence the damn INFO logger */
       Logger.getRootLogger.setLevel(Level.WARN)
 
-      val changesets = ss.read.orc(changesetsSrc)
-      val geoms = ss.read.orc(orc)
-        .join(changesets.select('id as 'changeset, 'uid, 'user), Seq("changeset"))
+      val geoms = ProcessOSM.addUserMetadata(ss.read.orc(orc), ss.read.orc(changesets))
 
       val features: RDD[GenerateVT.VTF[Geometry]] = geoms
         .rdd

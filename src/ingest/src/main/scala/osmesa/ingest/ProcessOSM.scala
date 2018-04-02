@@ -355,7 +355,21 @@ object ProcessOSM {
         ((row_number over idAndVersionByUpdated) - 1).as('minorVersion))
   }
 
-  def geometriesByRegion(nodeGeoms: Dataset[Row], wayGeoms: Dataset[Row]): DataFrame = {
+  /**
+    * Augment geometries with user metadata.
+    *
+    * @param geoms Geometries to augment.
+    * @param changesets Changesets DataFrame with user metadata.
+    * @return Geometries augmented with user metadata.
+    */
+  def addUserMetadata(geoms: DataFrame, changesets: DataFrame): DataFrame = {
+    import geoms.sparkSession.implicits._
+
+    geoms
+      .join(changesets.select('id as 'changeset, 'uid, 'user), Seq("changeset"))
+  }
+
+  def geometriesByRegion(nodeGeoms: DataFrame, wayGeoms: DataFrame): DataFrame = {
     import nodeGeoms.sparkSession.implicits._
 
     // Geocode geometries by country
