@@ -71,6 +71,15 @@ object MakeTiles extends CommandApp(
           val minorVersion = row.getAs[Int]("minorVersion")
           val uid = row.getAs[Long]("uid")
           val user = row.getAs[String]("user")
+          val _type = row.getAs[Byte]("_type")
+
+          // e.g. n123, w456, r789
+          val elementId = _type match {
+            case ProcessOSM.NODE_TYPE => s"n${id}"
+            case ProcessOSM.WAY_TYPE => s"w${id}"
+            case ProcessOSM.RELATION_TYPE => s"r${id}"
+            case _ => id.toString
+          }
 
           // check validity of reprojected geometry
           Option(geom).map(_.readWKB.reproject(LatLng, WebMercator)) match {
@@ -80,7 +89,7 @@ object MakeTiles extends CommandApp(
                 tags.map {
                   case (k, v) => (k, VString(v))
                 } ++ Map(
-                  "__id" -> VInt64(id),
+                  "__id" -> VString(elementId),
                   "__changeset" -> VInt64(changeset),
                   "__updated" -> VInt64(updated.getTime),
                   "__validUntil" -> VInt64(Option(validUntil).map(_.getTime).getOrElse(0)),

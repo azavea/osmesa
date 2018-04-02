@@ -53,7 +53,7 @@ object GenerateVT {
   def makeVectorTiles[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, VTF[G]))], layout: LayoutDefinition, layerName: String): RDD[(SpatialKey, VectorTile)] = {
     type FeatureTup = (Seq[VTF[Point]], Seq[VTF[MultiPoint]], Seq[VTF[Line]], Seq[VTF[MultiLine]], Seq[VTF[Polygon]], Seq[VTF[MultiPolygon]])
 
-    def timedIntersect[G <: Geometry](geom: G, ex: Extent, id: Long) = {
+    def timedIntersect[G <: Geometry](geom: G, ex: Extent, id: Any) = {
       val future = Future { geom.intersection(ex) }
       Try(Await.result(future, 500 milliseconds)) match {
         case Success(res) => res
@@ -65,7 +65,7 @@ object GenerateVT {
 
     def create(arg: (SpatialKey, VTF[Geometry])): FeatureTup = {
       val (sk, feat) = arg
-      val fid = feat.data("__id").asInstanceOf[VInt64].value
+      val fid = feat.data("__id").asInstanceOf[VString].value
       val baseEx = layout.mapTransform(sk)
       val ex = Extent(baseEx.xmin - baseEx.width, baseEx.ymin - baseEx.height, baseEx.xmax + baseEx.width, baseEx.ymax + baseEx.height)
       feat.geom match {

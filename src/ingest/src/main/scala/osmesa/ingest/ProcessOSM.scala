@@ -159,13 +159,10 @@ object ProcessOSM {
 
     val nodeGeoms = ProcessOSM.constructPointGeometries(nodes)
       .withColumn("minorVersion", lit(0))
-      .withColumn("_type", lit(NODE_TYPE))
 
     val wayGeoms = ProcessOSM.reconstructWayGeometries(elements, nodes)
-      .withColumn("_type", lit(WAY_TYPE))
 
     val relationGeoms = ProcessOSM.reconstructRelationGeometries(elements, wayGeoms)
-      .withColumn("_type", lit(RELATION_TYPE))
 
     // TODO remove way geoms that contribute to relations but have no inherent value (unclear how to identify these)
     nodeGeoms
@@ -186,6 +183,7 @@ object ProcessOSM {
     preprocessNodes(nodes)
       .where(size('tags) > 0)
       .select(
+        lit(NODE_TYPE) as '_type,
         'id,
         ST_Point('lon, 'lat).as('geom),
         'tags,
@@ -276,6 +274,7 @@ object ProcessOSM {
 
     wayGeoms
       .select(
+        lit(WAY_TYPE) as '_type,
         'id,
         'geom,
         'tags,
@@ -374,6 +373,7 @@ object ProcessOSM {
     relationGeoms
       .join(relations.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
       .select(
+        lit(RELATION_TYPE) as '_type,
         'id,
         'geom,
         'tags,
