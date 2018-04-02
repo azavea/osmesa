@@ -2,6 +2,7 @@ package osmesa.functions
 
 import java.sql.Timestamp
 
+import com.vividsolutions.jts.geom.Coordinate
 import geotrellis.vector.io._
 import geotrellis.vector.{Line, MultiPolygon, Point, Polygon}
 import org.apache.log4j.Logger
@@ -165,20 +166,24 @@ package object osm {
 
   // create fully-formed rings from line segments
   @tailrec
-  private def connectSegments(segments: List[Line], rings: List[Polygon] = List.empty[Polygon]): List[Polygon] = {
+  private def connectSegments(segments: List[Array[Coordinate]], rings: List[Array[Coordinate]] = List.empty[Array[Coordinate]]): List[Array[Coordinate]] = {
     segments match {
       case Nil => rings
-      case h :: t if h.isClosed => connectSegments(t, rings :+ Polygon(h))
+      case h :: t if h.head equals2D h.last => connectSegments(t, rings :+ h)
       case h :: t =>
-        connectSegments(t.find(line => h.vertices.last == line.vertices.head) match {
-          case Some(next) => Line(h.vertices ++ next.vertices.tail) :: t.filterNot(line => line == next)
+        connectSegments(t.find(line => h.last equals2D  line.head) match {
+          case Some(next) => h ++ next.tail :: t.filterNot(line => line sameElements next)
           case None =>
-            t.find(line => h.vertices.last == line.vertices.last) match {
-              case Some(next) => Line(h.vertices ++ next.vertices.reverse.tail) :: t.filterNot(line => line == next)
+            t.find(line => h.last == line.last) match {
+              case Some(next) => h ++ next.reverse.tail :: t.filterNot(line => line sameElements next)
               case None => throw new Exception("Unable to connect segments.")
             }
         }, rings)
     }
+  }
+
+  private def connectSegments(segments: List[Line]): List[Polygon] = {
+    connectSegments(segments.map(_.jtsGeom.getCoordinates): List[Array[Coordinate]]).map(_.map(Point.jtsCoord2Point)).map(Polygon(_))
   }
 
   @tailrec
