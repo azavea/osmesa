@@ -132,6 +132,7 @@ object ProcessOSM {
       // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
       history
         .where('type === "relation")
+        .repartition('id)
         .select(
           'id,
           when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags) as 'tags,
