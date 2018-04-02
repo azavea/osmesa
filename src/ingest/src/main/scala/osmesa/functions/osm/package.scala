@@ -257,16 +257,15 @@ package object osm {
         }
 
         // reclassify rings according to their topology (ignoring roles)
-        // TODO this isn't quite right: island in lake on island in lake (inner in outer in inner in outer)
         val (classifiedOuters, classifiedInners) = (outers ++ inners).sortWith(_.area > _.area) match {
           case h :: t => t.foldLeft((List(h), List.empty[Polygon])) {
             case ((os, is), ring) =>
-              ring match {
-                // there's an inner ring that contains this one; this is an outer ring
-                case _ if is.exists(r => r.contains(ring)) => (os :+ ring, is)
-                // there's an outer ring that contains this one; this is an inner ring
-                case _ if os.exists(r => r.contains(ring)) => (os, is :+ ring)
-                case _ => (os :+ ring, is)
+              // check the number of containing elements
+              (outers ++ inners).count(r => r != ring && r.contains(ring)) % 2 match {
+                // if even, it's an outer ring
+                case 0 => (os :+ ring, is)
+                // if odd, it's an inner ring
+                case 1 => (os, is :+ ring)
               }
           }
           case Nil => (List.empty[Polygon], List.empty[Polygon])
