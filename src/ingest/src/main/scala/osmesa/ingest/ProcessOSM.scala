@@ -15,6 +15,9 @@ import osmesa.functions.osm._
 import spray.json._
 
 object ProcessOSM {
+  val NODE_TYPE: Byte = 1
+  val WAY_TYPE: Byte = 2
+  val RELATION_TYPE: Byte = 3
 
   lazy val logger: Logger = Logger.getRootLogger
 
@@ -141,6 +144,33 @@ object ProcessOSM {
           'version,
           'visible)
     }
+  }
+
+  /**
+    * Construct all geometries for a set of elements.
+    *
+    * @param elements DataFrame containing node, way, and relation elements
+    * @return DataFrame containing geometries.
+    */
+  def constructGeometries(elements: DataFrame): DataFrame = {
+    import elements.sparkSession.implicits._
+
+    val nodes = ProcessOSM.preprocessNodes(elements)
+
+    val nodeGeoms = ProcessOSM.constructPointGeometries(nodes)
+      .withColumn("minorVersion", lit(0))
+      .withColumn("_type", lit(NODE_TYPE))
+
+    val wayGeoms = ProcessOSM.reconstructWayGeometries(elements, nodes)
+      .withColumn("_type", lit(WAY_TYPE))
+
+    val relationGeoms = ProcessOSM.reconstructRelationGeometries(elements, wayGeoms)
+      .withColumn("_type", lit(RELATION_TYPE))
+
+    // TODO remove way geoms that contribute to relations but have no inherent value (unclear how to identify these)
+    nodeGeoms
+      .union(wayGeoms.where(size('tags) > 0))
+      .union(relationGeoms)
   }
 
   /**
