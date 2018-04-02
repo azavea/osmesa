@@ -1,8 +1,12 @@
 package osmesa
 
+import java.io.ByteArrayOutputStream
+import java.util.zip.{ZipEntry, ZipOutputStream}
+
 import com.amazonaws.services.s3.model.CannedAccessControlList._
 import geotrellis.spark._
 import geotrellis.spark.io.hadoop._
+import geotrellis.spark.io.index.zcurve.Z2
 import geotrellis.spark.io.s3._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
@@ -32,6 +36,38 @@ object GenerateVT {
     vectorTiles
       .mapValues(_.toBytes)
       .saveToHadoop({ sk: SpatialKey => s"${uri}/${zoom}/${sk.col}/${sk.row}.mvt" })
+  }
+
+  def saveInZips(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) = {
+    val offset = zoom % 8
+
+    val s3PathFromKey: SpatialKey => String =
+    { case sk =>
+      s"s3://${bucket}/${prefix}/${zoom - offset}/${sk.col}/${sk.row}.zip"
+    }
+
+    vectorTiles
+      .mapValues(_.toBytes)
+      .map { case (sk, data) => (SpatialKey(sk._1 / Math.pow(2, offset).intValue, sk._2 / Math.pow(2, offset).intValue), (sk, data)) }
+      .groupByKey()
+      .mapValues { case data =>
+        val out = new ByteArrayOutputStream
+        val zip = new ZipOutputStream(out)
+
+        data
+          .toSeq
+          .sortBy { case (sk, _) => Z2(sk.col, sk.row).z }
+          .foreach { case (sk, entry)  =>
+            zip.putNextEntry(new ZipEntry(s"${zoom}/${sk.col}/${sk.row}.mvt"))
+            zip.write(entry)
+            zip.closeEntry()
+          }
+
+        zip.close()
+
+        out.toByteArray
+      }
+      .saveToS3(s3PathFromKey, putObjectModifier = { o => o.withCannedAcl(PublicRead) })
   }
 
   def keyToLayout[G <: Geometry](features: RDD[VTF[G]], layout: LayoutDefinition): RDD[(SpatialKey, (SpatialKey, VTF[G]))] = {

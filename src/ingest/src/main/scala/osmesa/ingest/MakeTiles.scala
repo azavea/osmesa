@@ -38,8 +38,10 @@ object MakeTiles extends CommandApp(
     val zoomO = Opts.option[Int]("zoom", help = "Target zoom").withDefault(15)
     val bucketO = Opts.option[String]("bucket", help = "S3 bucket to write VTs to")
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
+    val tapalcatlO = Opts.flag("tapalcatl", help = "Generate zipped tiles").orFalse
 
-    (orcO, changesetsO, zoomO, bucketO, prefixO).mapN { (orc, changesets, zoom, bucket, prefix) =>
+    (orcO, changesetsO, zoomO, bucketO, prefixO, tapalcatlO).mapN { (orc, changesets, zoom, bucket, prefix, tapalcatl) =>
+
       /* Settings compatible for both local and EMR execution */
       val conf = new SparkConf()
         .setIfMissing("spark.master", "local[*]")
@@ -103,12 +105,19 @@ object MakeTiles extends CommandApp(
           }
         }
 
+      val save = if (tapalcatl) {
+        GenerateVT.saveInZips _
+      } else {
+        GenerateVT.save _
+      }
+
       val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
 
       def build[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, GenerateVT.VTF[G]))], layoutLevel: LayoutLevel): Unit = {
         val LayoutLevel(zoom, layout) = layoutLevel
 
-        GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, "all"), zoom, bucket, prefix)
+        // TODO allow buffer to be set per layer
+        save(GenerateVT.makeVectorTiles(keyedGeoms, layout, "all"), zoom, bucket, prefix)
       }
 
       val maxLayoutLevel = layoutScheme.levelForZoom(zoom)
