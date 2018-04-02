@@ -186,6 +186,14 @@ object Ingest extends CommandApp(
           val authors = row.getAs[Set[String]]("authors").toList.mkString(",")
           val validUntil = row.getAs[java.sql.Timestamp]("validUntil")
           val user = row.getAs[String]("user")
+          val _type = row.getAs[Byte]("_type")
+
+          // e.g. n123, w456, r789
+          val elementId = _type match {
+            case ProcessOSM.NODE_TYPE => s"n${id}"
+            case ProcessOSM.WAY_TYPE => s"w${id}"
+            case ProcessOSM.RELATION_TYPE => s"r${id}"
+          }
 
           // check validity of reprojected geometry
           geom.readWKB.reproject(LatLng, WebMercator) match {
@@ -196,7 +204,7 @@ object Ingest extends CommandApp(
                   case (k, v) => (k, VString(v))
                 } ++ Map(
                   "__changeset" -> VInt64(changeset),
-                  "__id" -> VInt64(id),
+                  "__id" -> VString(elementId),
                   "__version" -> VInt64(version),
                   "__minorVersion" -> VInt64(minorVersion),
                   "__updated" -> VInt64(updated.getTime),
