@@ -42,15 +42,15 @@ object GenerateVT {
     val offset = zoom % 8
 
     val s3PathFromKey: SpatialKey => String =
-    { case sk =>
+    { sk =>
       s"s3://${bucket}/${prefix}/${zoom - offset}/${sk.col}/${sk.row}.zip"
     }
 
     vectorTiles
       .mapValues(_.toBytes)
       .map { case (sk, data) => (SpatialKey(sk._1 / Math.pow(2, offset).intValue, sk._2 / Math.pow(2, offset).intValue), (sk, data)) }
-      .groupByKey()
-      .mapValues { case data =>
+      .groupByKey
+      .mapValues { data =>
         val out = new ByteArrayOutputStream
         val zip = new ZipOutputStream(out)
 
