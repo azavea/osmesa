@@ -35,10 +35,11 @@ object MakeTiles extends CommandApp(
     /* CLI option handling */
     val orcO = Opts.option[String]("orc", help = "Location of the ORC file containing geometries to process")
     val changesetsO = Opts.option[String]("changesets", help = "Location of the ORC file containing changesets")
+    val zoomO = Opts.option[Int]("zoom", help = "Target zoom").withDefault(15)
     val bucketO = Opts.option[String]("bucket", help = "S3 bucket to write VTs to")
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
 
-    (orcO, changesetsO, bucketO, prefixO).mapN { (orc, changesets, bucket, prefix) =>
+    (orcO, changesetsO, zoomO, bucketO, prefixO).mapN { (orc, changesets, zoom, bucket, prefix) =>
       /* Settings compatible for both local and EMR execution */
       val conf = new SparkConf()
         .setIfMissing("spark.master", "local[*]")
@@ -101,7 +102,7 @@ object MakeTiles extends CommandApp(
         GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, "all"), zoom, bucket, prefix)
       }
 
-      val maxLayoutLevel = layoutScheme.levelForZoom(13)
+      val maxLayoutLevel = layoutScheme.levelForZoom(zoom)
       val keyed = GenerateVT.keyToLayout(features, maxLayoutLevel.layout)
 
       build(keyed, maxLayoutLevel)
