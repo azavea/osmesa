@@ -217,6 +217,7 @@ object ProcessOSM {
       .where('lat =!= 0 and 'lon =!= 0)
 
     val ways = preprocessWays(_ways)
+      .withColumn("isArea", isArea('tags))
 
     // Create (or re-use) a lookup table for node → ways
     val nodesToWays = _nodesToWays.getOrElse[DataFrame] {
@@ -239,13 +240,13 @@ object ProcessOSM {
     // Union with raw ways to include those in the time line (if they weren't already triggered by node modifications at the same time)
     // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where there should
     // probably be one, grouped by the changeset).
-    val allWayVersions = ways.select('id, 'version, 'nds)
+    val allWayVersions = ways.select('id, 'version, 'nds, 'isArea)
       .join(waysByChangeset, Seq("id", "version"))
-      .union(ways.select('id, 'version, 'nds, 'changeset, 'timestamp as 'updated))
+      .union(ways.select('id, 'version, 'nds, 'isArea, 'changeset, 'timestamp as 'update))
       .distinct
 
     val explodedWays = allWayVersions
-      .select('changeset, 'id, 'version, 'updated, posexplode_outer('nds) as Seq("idx", "ref"))
+      .select('changeset, 'id, 'version, 'updated, 'isArea, posexplode_outer('nds) as Seq("idx", "ref"))
       // repartition including updated timestamp to avoid skew (version is insufficient, as
       // multiple instances may exist with the same version)
       .repartition('id, 'updated)
@@ -254,26 +255,19 @@ object ProcessOSM {
       .join(nodes.select('id as 'ref, 'version as 'ref_version, 'timestamp, 'validUntil), Seq("ref"), "left_outer")
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
 
-    val fullJoinedWays = waysAndNodes
+    val wayGeoms = waysAndNodes
       .join(nodes.select('id as 'ref, 'version as 'ref_version, 'lat, 'lon), Seq("ref", "ref_version"), "left_outer")
-      .select('changeset, 'id, 'version, 'updated, 'idx, 'lat, 'lon)
+      .select('changeset, 'id, 'version, 'updated, 'isArea, 'idx, 'lat, 'lon)
       .groupBy('changeset, 'id, 'version, 'updated)
-      .agg(collect_list(struct('idx, 'lon, 'lat)) as 'coords)
-
-    // Join tags into ways w/ nodes
-    val taggedWays = fullJoinedWays
-      .join(ways.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
-
-    // Create WKB geometries (LineStrings and Polygons)
-    val wayGeoms = taggedWays
-      .withColumn("geom", buildWay('coords, isArea('tags)))
-      .select('changeset, 'id, 'version, 'tags, 'geom, 'updated, 'visible)
+      // Create WKB geometries (LineStrings and Polygons)
+      .agg(collectWay('isArea, 'idx, 'lon, 'lat) as 'geom)
 
     // Assign `minorVersion` and rewrite `validUntil` to match
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
     wayGeoms
+      .join(ways.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
       .select(
         lit(WAY_TYPE) as '_type,
         'id,
