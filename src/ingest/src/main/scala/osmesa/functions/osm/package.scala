@@ -114,12 +114,18 @@ package object osm {
     )
   )
 
+  private val MULTIPOLYGON_TYPES = Set("multipolygon", "boundary")
+
+  private val BOOLEAN_VALUES = Set("yes", "no", "true", "false", "1", "0")
+
+  private val TRUTHY_VALUES = Set("yes", "true", "1")
+
   private lazy val logger = Logger.getRootLogger
 
   private val _isArea = (tags: Map[String, String]) =>
     tags match {
-      case _ if tags.contains("area") && Set("yes", "no", "true", "1").contains(tags("area").toLowerCase) =>
-        Set("yes", "true", "1").contains(tags("area").toLowerCase)
+      case _ if tags.contains("area") && BOOLEAN_VALUES.contains(tags("area").toLowerCase) =>
+        TRUTHY_VALUES.contains(tags("area").toLowerCase)
       case _ =>
         // see https://github.com/osmlab/id-area-keys (values are inverted)
         val matchingKeys = tags.keySet.intersect(AREA_KEYS.keySet)
@@ -129,7 +135,7 @@ package object osm {
   val isArea: UserDefinedFunction = udf(_isArea)
 
   private val _isMultiPolygon = (tags: Map[String, String]) =>
-    tags.contains("type") && Set("boundary", "multipolygon").contains(tags("type").toLowerCase)
+    tags.contains("type") && MULTIPOLYGON_TYPES.contains(tags("type").toLowerCase)
 
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
 
