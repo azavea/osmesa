@@ -170,6 +170,8 @@ package object osm {
     }
   })
 
+  val collectWay = new WayAssembler
+
   class AssemblyException(msg: String) extends Exception(msg)
 
   // create fully-formed rings from line segments
