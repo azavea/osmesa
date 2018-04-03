@@ -49,8 +49,8 @@ class WayAssembler extends UserDefinedAggregateFunction {
     val coords = ArrayBuffer(buffer.getAs[Seq[Seq[Double]]](0): _*)
     val isArea = input.getAs[Boolean](0)
     val idx = input.getAs[Int](1)
-    val lon = input.getAs[Double](2)
-    val lat = input.getAs[Double](3)
+    val lon = Option(input.get(2)).map(_.asInstanceOf[Double]).getOrElse(Double.NaN)
+    val lat = Option(input.get(3)).map(_.asInstanceOf[Double]).getOrElse(Double.NaN)
 
     ensureSize(coords, idx).update(idx, Seq(lon, lat))
 
@@ -84,6 +84,8 @@ class WayAssembler extends UserDefinedAggregateFunction {
         case coords if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
         // some of the coordinates are empty; this is invalid
         case coords if coords.exists(Option(_).isEmpty) => None
+        // some of the coordinates are invalid
+        case coords if coords.exists(_.exists(_.isNaN)) => None
         // 1 pair of coordinates provided
         case coords if coords.length == 1 =>
           Some(Point(coords.head.head, coords.head.last))
