@@ -10,10 +10,7 @@ import org.apache.spark.sql.functions.udf
 
 package object functions {
   private def _reproject(geom: Array[Byte], targetCRS: CRS = WebMercator) =
-    geom match {
-      case null => null
-      case _ => geom.readWKB.reproject(LatLng, targetCRS).toWKB(targetCRS.epsgCode.get)
-    }
+    Option(geom).map(_.readWKB.reproject(LatLng, targetCRS).toWKB(targetCRS.epsgCode.get)).orNull
 
   // Convert BigDecimals to double
   // Reduces size taken for representation at the expense of some precision loss.
