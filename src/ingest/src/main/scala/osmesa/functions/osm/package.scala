@@ -199,96 +199,92 @@ package object osm {
     }
   }
 
-  def buildMultiPolygon(id: Long, version: Long, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Array[Byte] = {
+  def buildMultiPolygon(id: Long, version: Long, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
     if (types.zip(wkbs).exists { case (t, g) => t == ProcessOSM.WAY_TYPE && Option(g).isEmpty }) {
       // bail early if null values are present where they should exist (members w/ type=way)
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
-      return null
-    }
+      None
+    } else {
+      val geoms = wkbs.map(Option(_).map(_.readWKB) match {
+        case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
+        case Some(geom) => geom.as[Line]
+        case None => None
+      })
 
-    val geoms = wkbs.map(Option(_).map(_.readWKB) match {
-      case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
-      case Some(geom) => geom.as[Line]
-      case None => None
-    })
+      val members: Seq[(String, Line)] = roles.zip(geoms)
+        .filter(_._2.isDefined)
+        .map(x => (x._1, x._2.get))
 
-    val members: Seq[(String, Line)] = roles.zip(geoms)
-      .filter(_._2.isDefined)
-      .map(x => (x._1, x._2.get))
+      val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = members.foldLeft((List.empty[Polygon], List.empty[Polygon], List.empty[Polygon], List.empty[Line], List.empty[Line], List.empty[Line])) {
+        case ((co, ci, cu, po, pi, pu), (role, line: Line)) =>
+          role match {
+            case "outer" if line.isClosed && line.vertexCount >= 4 => (co :+ Polygon(line), ci, cu, po, pi, pu)
+            case "outer" => (co, ci, cu, po :+ line, pi, pu)
+            case "inner" if line.isClosed && line.vertexCount >= 4 => (co, ci :+ Polygon(line), cu, po, pi, pu)
+            case "inner" => (co, ci, cu, po, pi :+ line, pu)
+            case "" if line.isClosed && line.vertexCount >= 4 => (co, ci, cu :+ Polygon(line), po, pi, pu)
+            case "" => (co, ci, cu, po, pi, pu :+ line)
+            case _ => (co, ci, cu, po, pi, pu)
+          }
+      }
 
-    val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = members.foldLeft((List.empty[Polygon], List.empty[Polygon], List.empty[Polygon], List.empty[Line], List.empty[Line], List.empty[Line])) {
-      case ((co, ci, cu, po, pi, pu), (role, geom: Line)) =>
-        Option(geom) match {
-          case Some(line) =>
-            role match {
-              case "outer" if line.isClosed && line.vertexCount >= 4 => (co :+ Polygon(line), ci, cu, po, pi, pu)
-              case "outer" => (co, ci, cu, po :+ line, pi, pu)
-              case "inner" if line.isClosed && line.vertexCount >= 4 => (co, ci :+ Polygon(line), cu, po, pi, pu)
-              case "inner" => (co, ci, cu, po, pi :+ line, pu)
-              case "" if line.isClosed  && line.vertexCount >= 4 => (co, ci, cu :+ Polygon(line), po, pi, pu)
-              case "" => (co, ci, cu, po, pi, pu :+ line)
-              case _ => (co, ci, cu, po, pi, pu)
-            }
-          case None => (co, ci, cu, po, pi, pu)
-        }
-    }
+      val future = Future {
+        try {
+          val unknowns: List[Polygon] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
 
-    val future = Future {
-      try {
-        val unknowns: List[Polygon] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
-
-        val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters.sortWith(_.length > _.length)), completeInners ++ connectSegments(partialInners.sortWith(_.length > _.length)))) {
-          case ((o: List[Polygon], i: List[Polygon]), u) =>
-            if (o.exists(_.contains(u))) {
-              (o, i :+ u)
-            } else {
-              (o :+ u, i)
-            }
-        }
-
-        // reclassify rings according to their topology (ignoring roles)
-        val (classifiedOuters, classifiedInners) = (outers ++ inners).sortWith(_.area > _.area) match {
-          case h :: t => t.foldLeft((List(h), List.empty[Polygon])) {
-            case ((os, is), ring) =>
-              // check the number of containing elements
-              (outers ++ inners).count(r => r != ring && r.contains(ring)) % 2 match {
-                // if even, it's an outer ring
-                case 0 => (os :+ ring, is)
-                // if odd, it's an inner ring
-                case 1 => (os, is :+ ring)
+          val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters.sortWith(_.length > _.length)), completeInners ++ connectSegments(partialInners.sortWith(_.length > _.length)))) {
+            case ((o: List[Polygon], i: List[Polygon]), u) =>
+              if (o.exists(_.contains(u))) {
+                (o, i :+ u)
+              } else {
+                (o :+ u, i)
               }
           }
-          case Nil => (List.empty[Polygon], List.empty[Polygon])
-        }
 
-        val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
-        val (dissolvedInners, addlOuters) = dissolveRings(classifiedInners.map(_.exterior).map(Polygon(_)) ++ addlInners)
+          // reclassify rings according to their topology (ignoring roles)
+          val (classifiedOuters, classifiedInners) = (outers ++ inners).sortWith(_.area > _.area) match {
+            case h :: t => t.foldLeft((List(h), List.empty[Polygon])) {
+              case ((os, is), ring) =>
+                // check the number of containing elements
+                (outers ++ inners).count(r => r != ring && r.contains(ring)) % 2 match {
+                  // if even, it's an outer ring
+                  case 0 => (os :+ ring, is)
+                  // if odd, it's an inner ring
+                  case 1 => (os, is :+ ring)
+                }
+            }
+            case Nil => (List.empty[Polygon], List.empty[Polygon])
+          }
 
-        val (polygons, _) = (dissolvedOuters ++ addlOuters)
-          // sort by size (descending) to use rings as part of the largest available polygon
-          .sortWith(_.area > _.area)
-          // only use inners once if they're contained by multiple outer rings
-          .foldLeft((List.empty[Polygon], dissolvedInners)) {
-          case ((ps, is), (outer)) =>
-            (ps :+ Polygon(outer.exterior, is.filter(inner => outer.contains(inner)).map(_.exterior)), is.filterNot(inner => outer.contains(inner)))
-        }
+          val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
+          val (dissolvedInners, addlOuters) = dissolveRings(classifiedInners.map(_.exterior).map(Polygon(_)) ++ addlInners)
 
-        polygons match {
-          case p :: Nil => p.toWKB(4326)
-          case ps => MultiPolygon(ps).toWKB(4326)
+          val (polygons, _) = (dissolvedOuters ++ addlOuters)
+            // sort by size (descending) to use rings as part of the largest available polygon
+            .sortWith(_.area > _.area)
+            // only use inners once if they're contained by multiple outer rings
+            .foldLeft((List.empty[Polygon], dissolvedInners)) {
+            case ((ps, is), (outer)) =>
+              (ps :+ Polygon(outer.exterior, is.filter(inner => outer.contains(inner)).map(_.exterior)), is.filterNot(inner => outer.contains(inner)))
+          }
+
+          Some(polygons match {
+            case p :: Nil => p.toWKB(4326)
+            case ps => MultiPolygon(ps).toWKB(4326)
+          })
+        } catch {
+          case e: Throwable =>
+            logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
+            None
         }
-      } catch {
-        case e: Throwable =>
-          logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
-          null
       }
-    }
 
-    Try(Await.result(future, 1 second)) match {
-      case Success(res) => res
-      case Failure(_) =>
-        logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): Assembly timed out.")
-        null
+      Try(Await.result(future, 1 second)) match {
+        case Success(res) => res
+        case Failure(_) =>
+          logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): Assembly timed out.")
+          None
+      }
     }
   }
 }
