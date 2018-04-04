@@ -98,6 +98,6 @@ class RelationAssembler extends UserDefinedAggregateFunction {
     val roles = buffer.getAs[Seq[String]](4)
     val geoms = buffer.getAs[Seq[Array[Byte]]](5)
 
-    buildMultiPolygon(id, version, updated, types, roles, geoms)
+    buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
   }
 }
