@@ -32,8 +32,8 @@ class WayAssembler extends UserDefinedAggregateFunction {
   override def deterministic: Boolean = true
 
   override def initialize(buffer: MutableAggregationBuffer): Unit = {
-    buffer(0) = Array[Array[Double]]()
-    buffer(1) = false
+    buffer.update(0, Array[Array[Double]]())
+    buffer.update(1, false)
   }
 
   private def ensureSize[A](buffer: mutable.Buffer[A], size: Int)(implicit m: ClassTag[A]): mutable.Buffer[A] = {
@@ -54,8 +54,8 @@ class WayAssembler extends UserDefinedAggregateFunction {
 
     ensureSize(coords, idx).update(idx, Seq(lon, lat))
 
-    buffer(0) = coords
-    buffer(1) = isArea
+    buffer.update(0, coords)
+    buffer.update(1, isArea)
   }
 
   override def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
@@ -71,8 +71,8 @@ class WayAssembler extends UserDefinedAggregateFunction {
       }
     }
 
-    buffer1(0) = coords
-    buffer1(1) = leftIsArea || rightIsArea
+    buffer1.update(0, coords)
+    buffer1.update(1, leftIsArea || rightIsArea)
   }
 
   override def evaluate(buffer: Row): Any = {
