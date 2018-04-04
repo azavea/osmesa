@@ -221,11 +221,11 @@ package object osm {
         Option(geom) match {
           case Some(line) =>
             role match {
-              case "outer" if line.isClosed => (co :+ Polygon(line), ci, cu, po, pi, pu)
+              case "outer" if line.isClosed && line.vertexCount >= 4 => (co :+ Polygon(line), ci, cu, po, pi, pu)
               case "outer" => (co, ci, cu, po :+ line, pi, pu)
-              case "inner" if line.isClosed => (co, ci :+ Polygon(line), cu, po, pi, pu)
+              case "inner" if line.isClosed && line.vertexCount >= 4 => (co, ci :+ Polygon(line), cu, po, pi, pu)
               case "inner" => (co, ci, cu, po, pi :+ line, pu)
-              case "" if line.isClosed => (co, ci, cu :+ Polygon(line), po, pi, pu)
+              case "" if line.isClosed  && line.vertexCount >= 4 => (co, ci, cu :+ Polygon(line), po, pi, pu)
               case "" => (co, ci, cu, po, pi, pu :+ line)
               case _ => (co, ci, cu, po, pi, pu)
             }
