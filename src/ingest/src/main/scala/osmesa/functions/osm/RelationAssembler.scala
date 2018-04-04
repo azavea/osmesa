@@ -35,6 +35,9 @@ class RelationAssembler extends UserDefinedAggregateFunction {
   override def deterministic: Boolean = true
 
   override def initialize(buffer: MutableAggregationBuffer): Unit = {
+    buffer.update(0, null)
+    buffer.update(1, null)
+    buffer.update(2, null)
     buffer.update(3, Seq[Byte]())
     buffer.update(4, Seq[String]())
     buffer.update(5, Seq[Array[Byte]]())
