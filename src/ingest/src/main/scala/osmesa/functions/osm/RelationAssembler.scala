@@ -68,22 +68,22 @@ class RelationAssembler extends UserDefinedAggregateFunction {
   }
 
   override def merge(buffer: MutableAggregationBuffer, input: Row): Unit = {
-    val leftId = buffer.getAs[Long](0)
-    val leftVersion = buffer.getAs[Int](1)
+    val leftId = Option(buffer(0)).map(_.asInstanceOf[Long])
+    val leftVersion = Option(buffer(1)).map(_.asInstanceOf[Int])
     val leftUpdated = buffer.getAs[Timestamp](2)
     val leftTypes = buffer.getAs[Seq[Byte]](3)
     val leftRoles = buffer.getAs[Seq[String]](4)
     val leftGeoms = buffer.getAs[Seq[Array[Byte]]](5)
 
-    val rightId = input.getAs[Long](0)
-    val rightVersion = input.getAs[Int](1)
+    val rightId = Option(input(0)).map(_.asInstanceOf[Long])
+    val rightVersion = Option(input(1)).map(_.asInstanceOf[Int])
     val rightUpdated = input.getAs[Timestamp](2)
     val rightTypes = input.getAs[Seq[Byte]](3)
     val rightRoles = input.getAs[Seq[String]](4)
     val rightGeoms = input.getAs[Seq[Array[Byte]]](5)
 
-    buffer.update(0, Option(leftId).getOrElse(rightId))
-    buffer.update(1, Option(leftVersion).getOrElse(rightVersion))
+    buffer.update(0, leftId.getOrElse(rightId.orNull))
+    buffer.update(1, leftVersion.getOrElse(rightVersion.orNull))
     buffer.update(2, Option(leftUpdated).getOrElse(rightUpdated))
     buffer.update(3, leftTypes ++ rightTypes)
     buffer.update(4, leftRoles ++ rightRoles)
