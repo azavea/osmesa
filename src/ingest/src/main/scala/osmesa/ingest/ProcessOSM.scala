@@ -352,13 +352,7 @@ object ProcessOSM {
 
     val relationGeoms = members
       .groupBy('changeset, 'id, 'version, 'updated)
-      .agg(collect_list(struct('type, 'role, 'geom)) as 'parts)
-      .select(
-        'id,
-        buildMultiPolygon('parts, 'id, 'version, 'updated) as 'geom,
-        'changeset,
-        'updated,
-        'version)
+      .agg(collectRelation('id, 'version, 'updated, 'type, 'role, 'geom) as 'geom)
 
     // Assign `minorVersion` and rewrite `validUntil` to match
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)

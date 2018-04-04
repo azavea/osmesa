@@ -6,11 +6,15 @@ import com.vividsolutions.jts.geom.Coordinate
 import geotrellis.vector.io._
 import geotrellis.vector.{Line, MultiPolygon, Point, Polygon}
 import org.apache.log4j.Logger
-import org.apache.spark.sql.Row
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
+import osmesa.ProcessOSM
 
 import scala.annotation.tailrec
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
+import scala.util.{Failure, Success, Try}
 
 package object osm {
   // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys).
@@ -141,6 +145,8 @@ package object osm {
 
   val collectWay = new WayAssembler
 
+  val collectRelation = new RelationAssembler
+
   class AssemblyException(msg: String) extends Exception(msg)
 
   // create fully-formed rings from line segments
@@ -193,42 +199,42 @@ package object osm {
     }
   }
 
-  // TODO type=route relations
+  def buildMultiPolygon(id: Long, version: Long, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Array[Byte] = {
+    if (types.zip(wkbs).exists { case (t, g) => t == ProcessOSM.WAY_TYPE && Option(g).isEmpty }) {
+      // bail early if null values are present where they should exist (members w/ type=way)
+      logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
+      return null
+    }
 
-  val buildMultiPolygon: UserDefinedFunction = udf((ways: Seq[Row], id: Long, version: Long, timestamp: Timestamp) => {
-    try {
-      if (ways.exists(row => row.getAs[String]("type") == "way" && Option(row.getAs[Array[Byte]]("geom")).isEmpty)) {
-        // bail early if null values are present where they should exist (members w/ type=way)
-        logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
-        null
-      } else {
-        val coords: Seq[(String, Line)] = ways
-          .map(row =>
-            (row.getAs[String]("role"), Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
-              case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
-              case Some(geom) => geom.as[Line]
-              case None => None
-            }))
-          .filter(_._2.isDefined)
-          .map(x => (x._1, x._2.get))
+    val geoms = wkbs.map(Option(_).map(_.readWKB) match {
+      case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
+      case Some(geom) => geom.as[Line]
+      case None => None
+    })
 
-        val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = coords.foldLeft((List.empty[Polygon], List.empty[Polygon], List.empty[Polygon], List.empty[Line], List.empty[Line], List.empty[Line])) {
-          case ((co, ci, cu, po, pi, pu), (role, geom: Line)) =>
-            Option(geom) match {
-              case Some(line) =>
-                role match {
-                  case "outer" if line.isClosed => (co :+ Polygon(line), ci, cu, po, pi, pu)
-                  case "outer" => (co, ci, cu, po :+ line, pi, pu)
-                  case "inner" if line.isClosed => (co, ci :+ Polygon(line), cu, po, pi, pu)
-                  case "inner" => (co, ci, cu, po, pi :+ line, pu)
-                  case "" if line.isClosed => (co, ci, cu :+ Polygon(line), po, pi, pu)
-                  case "" => (co, ci, cu, po, pi, pu :+ line)
-                  case _ => (co, ci, cu, po, pi, pu)
-                }
-              case None => (co, ci, cu, po, pi, pu)
+    val members: Seq[(String, Line)] = roles.zip(geoms)
+      .filter(_._2.isDefined)
+      .map(x => (x._1, x._2.get))
+
+    val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = members.foldLeft((List.empty[Polygon], List.empty[Polygon], List.empty[Polygon], List.empty[Line], List.empty[Line], List.empty[Line])) {
+      case ((co, ci, cu, po, pi, pu), (role, geom: Line)) =>
+        Option(geom) match {
+          case Some(line) =>
+            role match {
+              case "outer" if line.isClosed => (co :+ Polygon(line), ci, cu, po, pi, pu)
+              case "outer" => (co, ci, cu, po :+ line, pi, pu)
+              case "inner" if line.isClosed => (co, ci :+ Polygon(line), cu, po, pi, pu)
+              case "inner" => (co, ci, cu, po, pi :+ line, pu)
+              case "" if line.isClosed => (co, ci, cu :+ Polygon(line), po, pi, pu)
+              case "" => (co, ci, cu, po, pi, pu :+ line)
+              case _ => (co, ci, cu, po, pi, pu)
             }
+          case None => (co, ci, cu, po, pi, pu)
         }
+    }
 
+    val future = Future {
+      try {
         val unknowns: List[Polygon] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
 
         val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters.sortWith(_.length > _.length)), completeInners ++ connectSegments(partialInners.sortWith(_.length > _.length)))) {
@@ -271,11 +277,18 @@ package object osm {
           case p :: Nil => p.toWKB(4326)
           case ps => MultiPolygon(ps).toWKB(4326)
         }
+      } catch {
+        case e: Throwable =>
+          logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
+          null
       }
-    } catch {
-      case e: Throwable =>
-        logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
+    }
+
+    Try(Await.result(future, 1 second)) match {
+      case Success(res) => res
+      case Failure(_) =>
+        logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): Assembly timed out.")
         null
     }
-  })
+  }
 }
