@@ -2,11 +2,10 @@ package osmesa.functions
 
 import java.sql.Timestamp
 
-import com.vividsolutions.jts.geom.impl.CoordinateArraySequenceFactory
-import com.vividsolutions.jts.geom.{impl, _}
-import com.vividsolutions.jts.io.WKBReader
+import com.google.common.collect.{Range, RangeMap, TreeRangeMap}
+import com.vividsolutions.jts.geom._
 import geotrellis.vector.io._
-import geotrellis.vector.{Geometry, Line, MultiPolygon, Polygon}
+import geotrellis.vector.{Line, MultiPolygon, Polygon}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
@@ -182,9 +181,199 @@ package object osm {
     }
   }
 
+  class ReversedCoordinateSequence(sequence: CoordinateSequence) extends CoordinateSequence {
+    private def getIndex(i: Int): Int = size - 1 - i
+
+    override def getDimension: Int = sequence.getDimension
+
+    override def getCoordinate(i: Int): Coordinate = sequence.getCoordinate(getIndex(i))
+
+    override def getCoordinateCopy(i: Int): Coordinate = sequence.getCoordinateCopy(getIndex(i))
+
+    override def getCoordinate(index: Int, coord: Coordinate): Unit = sequence.getCoordinate(getIndex(index), coord)
+
+    override def getX(index: Int): Double = sequence.getX(getIndex(index))
+
+    override def getY(index: Int): Double = sequence.getY(getIndex(index))
+
+    override def getOrdinate(index: Int, ordinateIndex: Int): Double =
+      sequence.getOrdinate(getIndex(index), ordinateIndex)
+
+    override def size(): Int = sequence.size
+
+    override def setOrdinate(index: Int, ordinateIndex: Int, value: Double): Unit =
+      sequence.setOrdinate(getIndex(index), ordinateIndex, value)
+
+    private lazy val coordinates: Array[Coordinate] = {
+      val coords = new Array[Coordinate](size())
+
+      for (i <- size - 1 to 0) {
+        coords(i) = getCoordinate(i)
+      }
+
+      coords
+    }
+
+    override def toCoordinateArray: Array[Coordinate] = coordinates
+
+    override def expandEnvelope(env: Envelope): Envelope = sequence.expandEnvelope(env)
+
+    override def clone(): AnyRef = new ReversedCoordinateSequence(sequence)
+  }
+
+  class PartialCoordinateSequence(sequence: CoordinateSequence, offset: Int) extends CoordinateSequence {
+    private lazy val _size: Int = sequence.size() - offset
+
+    private lazy val coordinates: Array[Coordinate] = {
+      val coords = new Array[Coordinate](size())
+
+      for (i <- 0 until size) {
+        coords(i) = getCoordinate(i)
+      }
+
+      coords
+    }
+
+    override def getDimension: Int = sequence.getDimension
+
+    override def getCoordinate(i: Int): Coordinate = sequence.getCoordinate(offset + i)
+
+    override def getCoordinateCopy(i: Int): Coordinate = sequence.getCoordinateCopy(offset + i)
+
+    override def getCoordinate(index: Int, coord: Coordinate): Unit = sequence.getCoordinate(offset + index, coord)
+
+    override def getX(index: Int): Double = sequence.getX(offset + index)
+
+    override def getY(index: Int): Double = sequence.getY(offset + index)
+
+    override def getOrdinate(index: Int, ordinateIndex: Int): Double =
+      sequence.getOrdinate(offset + index, ordinateIndex)
+
+    override def size(): Int = _size
+
+    override def setOrdinate(index: Int, ordinateIndex: Int, value: Double): Unit =
+      sequence.setOrdinate(offset + index, ordinateIndex, value)
+
+    override def toCoordinateArray: Array[Coordinate] = coordinates
+
+    override def expandEnvelope(env: Envelope): Envelope = {
+      for (i <- 0 until size) {
+        env.expandToInclude(getX(i), getY(i))
+      }
+
+      env
+    }
+
+    override def clone(): AnyRef = new PartialCoordinateSequence(sequence, offset)
+  }
+
+  // rather than being a nested set of CoordinateSequences, this is a mutable wrapper to avoid deep call stacks
+  class VirtualCoordinateSequence(sequences: Seq[CoordinateSequence]) extends CoordinateSequence {
+    private val rangeMap: RangeMap[Integer, CoordinateSequence] = TreeRangeMap.create[Integer, CoordinateSequence]
+
+    sequences.zip(sequences.map(_.size).scanLeft(0)(_ + _).dropRight(1))
+      .map { case (seq, offset) => (seq, Range.closed(offset: Integer, offset + seq.size - 1: Integer)) }
+      .foreach { case (seq, range) => rangeMap.put(range, seq)}
+
+    private var dimension: Int = sequences.map(_.getDimension).min
+
+    private var _size: Int = sequences.map(_.size).sum
+
+    private def getSequence(i: Int): (CoordinateSequence, Int) = {
+      val entry = rangeMap.getEntry(i: Integer)
+
+      (entry.getValue, i - entry.getKey.lowerEndpoint)
+    }
+
+    def append(sequence: CoordinateSequence): VirtualCoordinateSequence = {
+      val upperEndpoint = rangeMap.span.upperEndpoint
+      val range = Range.closed(upperEndpoint + 1: Integer, upperEndpoint + sequence.size: Integer)
+      rangeMap.put(range, sequence)
+
+      dimension = Math.min(dimension, sequence.getDimension)
+      _size += sequence.size
+
+      this
+    }
+
+    override def getDimension: Int = dimension
+
+    override def getCoordinate(i: Int): Coordinate = {
+      val (sequence, index) = getSequence(i)
+
+      // bypass PackedCoordinateSequence.getCoordinate to prevent caching and associated allocation
+      new Coordinate(sequence.getX(index), sequence.getY(index))
+    }
+
+    override def getCoordinateCopy(i: Int): Coordinate = {
+      val (sequence, index) = getSequence(i)
+
+      sequence.getCoordinateCopy(index)
+    }
+
+    override def getCoordinate(i: Int, coord: Coordinate): Unit = {
+      val (sequence, index) = getSequence(i)
+
+      sequence.getCoordinate(index, coord)
+    }
+
+    override def getX(i: Int): Double = {
+      val (sequence, index) = getSequence(i)
+
+      sequence.getX(index)
+    }
+
+    override def getY(i: Int): Double = {
+      val (sequence, index) = getSequence(i)
+
+      sequence.getY(index)
+    }
+
+    override def getOrdinate(i: Int, ordinateIndex: Int): Double = {
+      val (sequence, index) = getSequence(i)
+
+      sequence.getOrdinate(index, ordinateIndex)
+    }
+
+    override def size(): Int = _size
+
+    override def setOrdinate(i: Int, ordinateIndex: Int, value: Double): Unit = {
+      val (sequence, index) = getSequence(i)
+
+      sequence.setOrdinate(index, ordinateIndex, value)
+    }
+
+    // TODO this should be invalidated after append (but it doesn't actually matter because all of the appending will
+    // occur ahead of time)
+    private lazy val coordinates: Array[Coordinate] = {
+      val coords = new Array[Coordinate](size())
+
+      for (i <- 0 until size) {
+        coords(i) = getCoordinate(i)
+      }
+
+      coords
+    }
+
+    override def toCoordinateArray: Array[Coordinate] = coordinates
+
+    override def expandEnvelope(env: Envelope): Envelope = {
+      for (i <- 0 until size) {
+        env.expandToInclude(getX(i), getY(i))
+      }
+
+      env
+    }
+
+    override def clone(): AnyRef = {
+      // we're already playing fast and loose
+      this
+    }
+  }
+
   // create fully-formed rings from line segments
   @tailrec
-  private def connectSegments(segments: GenTraversable[CoordinateSequence], rings: Seq[CoordinateSequence] = Vector.empty[CoordinateSequence])(implicit coordinateSequenceFactory: CoordinateSequenceFactory): GenTraversable[CoordinateSequence] = {
+  private def connectSegments(segments: GenTraversable[VirtualCoordinateSequence], rings: Seq[CoordinateSequence] = Vector.empty[CoordinateSequence]): GenTraversable[CoordinateSequence] = {
     segments match {
       case Nil => rings
       case Seq(h, t @ _ *) if h.getX(0) == h.getX(h.size - 1) && h.getY(0) == h.getY(h.size - 1) =>
@@ -195,29 +384,21 @@ package object osm {
 
         connectSegments(t.find(line => x == line.getX(0) && y == line.getY(0)) match {
           case Some(next) =>
-            // TODO this creates lots of large new arrays
-            val coords = CoordinateSequences.extend(coordinateSequenceFactory, h, h.size + next.size - 1)
-            CoordinateSequences.copy(next, 1, coords, h.size, next.size - 1)
-
-            coords +: t.filterNot(line => isEqual(line, next))
+            h.append(new PartialCoordinateSequence(next, 1)) +: t.filterNot(line => isEqual(line, next))
           case None =>
             t.find(line => x == line.getX(line.size - 1) && y == line.getY(line.size - 1)) match {
               case Some(next) =>
-                val coords = CoordinateSequences.extend(coordinateSequenceFactory, h, h.size + next.size - 1)
-                CoordinateSequences.reverse(next)
-                CoordinateSequences.copy(next, 1, coords, h.size, next.size - 1)
-
-                coords +: t.filterNot(line => isEqual(line, next))
+                h.append(new PartialCoordinateSequence(new ReversedCoordinateSequence(next), 1)) +: t.filterNot(line => isEqual(line, next))
               case None => throw new AssemblyException("Unable to connect segments.")
             }
         }, rings)
     }
   }
 
-  private def connectSegments(segments: GenTraversable[Line])(implicit coordinateSequenceFactory: CoordinateSequenceFactory): GenTraversable[Polygon] = {
+  private def connectSegments(segments: GenTraversable[Line]): GenTraversable[Polygon] = {
 //    connectSegments(segments.map(_.jtsGeom.getCoordinateSequence): List[CoordinateSequence]).map(geometryFactory.createPolygon).map(Polygon(_))
     // requires patched geotrellis
-    connectSegments(segments.map(_.jtsGeom.getCoordinateSequence)).map(Polygon(_))
+    connectSegments(segments.map(_.jtsGeom.getCoordinateSequence).map(s => new VirtualCoordinateSequence(Seq(s)))).map(Polygon(_))
   }
 
   @tailrec
@@ -250,107 +431,113 @@ package object osm {
     }
   }
 
-  private implicit val coordinateSequenceFactory: CoordinateSequenceFactory = new impl.PackedCoordinateSequenceFactory()
-
   def buildMultiPolygon(id: Long, version: Long, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
     if (types.zip(wkbs).exists { case (t, g) => t == ProcessOSM.WAY_TYPE && Option(g).isEmpty }) {
       // bail early if null values are present where they should exist (members w/ type=way)
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
       None
     } else {
-      // use PackedCoordinateSequenceFactory w/ a new GeometryFactory (using PackedCoordinateSequences) to parse WKB
-      // this will reduce the number of Coordinate objects initially created
-      val geoms = wkbs.map(Option(_).map(_.readWKB) match {
-        case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
-        case Some(geom) => geom.as[Line]
-        case None => None
-      })
+      val bytes = wkbs.map(Option(_)).filter(_.isDefined).map(_.get).map(_.length).sum
 
-      val vertexCount = geoms.filter(_.isDefined).map(_.get).map(_.vertexCount).sum
+      if (bytes > 500000) {
+        // bail early to avoid additional allocations associated with parsing the WKB
+        logger.warn(s"Dropping $id @ $version ($timestamp) due to size (${bytes.formatted("%,d")} bytes).")
+        None
+      } else {
+        val geoms = wkbs.map(Option(_).map(_.readWKB) match {
+          case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
+          case Some(geom) => geom.as[Line]
+          case None => None
+        })
 
-      logger.warn(s"${vertexCount.formatted("%,d")} vertices from ${types.size} members in $id @ $version ($timestamp)")
+        val vertexCount = geoms.filter(_.isDefined).map(_.get).map(_.vertexCount).sum
 
-      val members: Seq[(String, Line)] = roles.zip(geoms)
-        .filter(_._2.isDefined)
-        .map(x => (x._1, x._2.get))
+        logger.warn(s"${vertexCount.formatted("%,d")} vertices (${bytes.formatted("%,d")} bytes) from ${types.size} members in $id @ $version ($timestamp)")
 
-      val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = members.foldLeft((Vector.empty[Polygon], Vector.empty[Polygon], Vector.empty[Polygon], Vector.empty[Line], Vector.empty[Line], Vector.empty[Line])) {
-        case ((co, ci, cu, po, pi, pu), (role, line: Line)) =>
-          role match {
-            case "outer" if line.isClosed && line.vertexCount >= 4 => (co :+ Polygon(line), ci, cu, po, pi, pu)
-            case "outer" => (co, ci, cu, po :+ line, pi, pu)
-            case "inner" if line.isClosed && line.vertexCount >= 4 => (co, ci :+ Polygon(line), cu, po, pi, pu)
-            case "inner" => (co, ci, cu, po, pi :+ line, pu)
-            case "" if line.isClosed && line.vertexCount >= 4 => (co, ci, cu :+ Polygon(line), po, pi, pu)
-            case "" => (co, ci, cu, po, pi, pu :+ line)
-            case _ => (co, ci, cu, po, pi, pu)
-          }
-      }
+        val members: Seq[(String, Line)] = roles.zip(geoms)
+          .filter(_._2.isDefined)
+          .map(x => (x._1, x._2.get))
 
-      val future = Future {
-        try {
-          val unknowns: Seq[Polygon] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
+        val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = members.foldLeft((Vector.empty[Polygon], Vector.empty[Polygon], Vector.empty[Polygon], Vector.empty[Line], Vector.empty[Line], Vector.empty[Line])) {
 
-          val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters.sortWith(_.length > _.length)), completeInners ++ connectSegments(partialInners.sortWith(_.length > _.length)))) {
-            case ((o: Seq[Polygon], i: Seq[Polygon]), u) =>
-              if (o.exists(_.contains(u))) {
-                (o, i :+ u)
-              } else {
-                (o :+ u, i)
-              }
-          }
+          case ((co, ci, cu, po, pi, pu), (role, line: Line)) =>
+            role match {
+              case "outer" if line.isClosed && line.vertexCount >= 4 => (co :+ Polygon(line), ci, cu, po, pi, pu)
+              case "outer" => (co, ci, cu, po :+ line, pi, pu)
+              case "inner" if line.isClosed && line.vertexCount >= 4 => (co, ci :+ Polygon(line), cu, po, pi, pu)
+              case "inner" => (co, ci, cu, po, pi :+ line, pu)
+              case "" if line.isClosed && line.vertexCount >= 4 => (co, ci, cu :+ Polygon(line), po, pi, pu)
+              case "" => (co, ci, cu, po, pi, pu :+ line)
+              case _ => (co, ci, cu, po, pi, pu)
+            }
+        }
 
-          val rings = outers ++ inners
-          val preparedRings = rings.map(_.prepare)
+        val future = Future {
+          try {
+            val unknowns: Seq[Polygon] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _
+              .length))
 
-          // reclassify rings according to their topology (ignoring roles)
-          val (classifiedOuters, classifiedInners) = rings.sortWith(_.area > _.area) match {
-            case Seq(h, t @ _ *) => t.foldLeft((Vector(h), Vector.empty[Polygon])) {
-              case ((os, is), ring) =>
-                // check the number of containing elements
-                preparedRings.count(r => r.geom != ring && r.contains(ring)) % 2 match {
-                  // if even, it's an outer ring
-                  case 0 => (os :+ ring, is)
-                  // if odd, it's an inner ring
-                  case 1 => (os, is :+ ring)
+            val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters.sortWith(_.length > _.length)), completeInners ++ connectSegments(partialInners.sortWith(_.length > _.length)))) {
+              case ((o: Seq[Polygon], i: Seq[Polygon]), u) =>
+                if (o.exists(_.contains(u))) {
+                  (o, i :+ u)
+                } else {
+                  (o :+ u, i)
                 }
             }
-            case rs if rs.isEmpty => (Vector.empty[Polygon], Vector.empty[Polygon])
+
+            val rings = outers ++ inners
+            val preparedRings = rings.map(_.prepare)
+
+            // reclassify rings according to their topology (ignoring roles)
+            val (classifiedOuters, classifiedInners) = rings.sortWith(_.area > _.area) match {
+              case Seq(h, t@_ *) => t.foldLeft((Vector(h), Vector.empty[Polygon])) {
+                case ((os, is), ring) =>
+                  // check the number of containing elements
+                  preparedRings.count(r => r.geom != ring && r.contains(ring)) % 2 match {
+                    // if even, it's an outer ring
+                    case 0 => (os :+ ring, is)
+                    // if odd, it's an inner ring
+                    case 1 => (os, is :+ ring)
+                  }
+              }
+              case rs if rs.isEmpty => (Vector.empty[Polygon], Vector.empty[Polygon])
+            }
+
+            val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
+            val (dissolvedInners, addlOuters) = dissolveRings(classifiedInners.map(_.exterior).map(Polygon(_)) ++ addlInners)
+
+            val (polygons, _) = (dissolvedOuters ++ addlOuters)
+              // sort by size (descending) to use rings as part of the largest available polygon
+              .sortWith(_.area > _.area)
+              // only use inners once if they're contained by multiple outer rings
+              .foldLeft((Vector.empty[Polygon], dissolvedInners)) {
+              case ((ps, is), (outer)) =>
+                val preparedOuter = outer.prepare
+                (ps :+ Polygon(outer.exterior, is.filter(inner => preparedOuter.contains(inner)).map(_.exterior)), is.filterNot(inner => preparedOuter.contains(inner)))
+            }
+
+            Some(polygons match {
+              case Vector(p: Polygon) => p.toWKB(4326)
+              case ps => MultiPolygon(ps).toWKB(4326)
+            })
+          } catch {
+            case e@(_: AssemblyException | _: IllegalArgumentException | _: TopologyException) =>
+              logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
+              None
+            case e: Throwable =>
+              logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): $e")
+              e.getStackTrace.foreach(logger.warn)
+              None
           }
+        }
 
-          val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
-          val (dissolvedInners, addlOuters) = dissolveRings(classifiedInners.map(_.exterior).map(Polygon(_)) ++ addlInners)
-
-          val (polygons, _) = (dissolvedOuters ++ addlOuters)
-            // sort by size (descending) to use rings as part of the largest available polygon
-            .sortWith(_.area > _.area)
-            // only use inners once if they're contained by multiple outer rings
-            .foldLeft((Vector.empty[Polygon], dissolvedInners)) {
-            case ((ps, is), (outer)) =>
-              val preparedOuter = outer.prepare
-              (ps :+ Polygon(outer.exterior, is.filter(inner => preparedOuter.contains(inner)).map(_.exterior)), is.filterNot(inner => preparedOuter.contains(inner)))
-          }
-
-          Some(polygons match {
-            case Vector(p: Polygon) => p.toWKB(4326)
-            case ps => MultiPolygon(ps).toWKB(4326)
-          })
-        } catch {
-          case e @ (_: AssemblyException | _: IllegalArgumentException | _: TopologyException) =>
-            logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
-            None
-          case e: Throwable =>
-            logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): $e")
-            e.getStackTrace.foreach(logger.warn)
+        Try(Await.result(future, 1 second)) match {
+          case Success(res) => res
+          case Failure(_) =>
+            logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): Assembly timed out.")
             None
         }
-      }
-
-      Try(Await.result(future, 1 second)) match {
-        case Success(res) => res
-        case Failure(_) =>
-          logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): Assembly timed out.")
-          None
       }
     }
   }
