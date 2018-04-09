@@ -2,15 +2,18 @@ package osmesa.functions
 
 import java.sql.Timestamp
 
-import com.vividsolutions.jts.geom.Coordinate
+import com.vividsolutions.jts.geom.impl.CoordinateArraySequenceFactory
+import com.vividsolutions.jts.geom.{impl, _}
+import com.vividsolutions.jts.io.WKBReader
 import geotrellis.vector.io._
-import geotrellis.vector.{Line, MultiPolygon, Point, Polygon}
+import geotrellis.vector.{Geometry, Line, MultiPolygon, Polygon}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
 import osmesa.ProcessOSM
 
 import scala.annotation.tailrec
+import scala.collection.GenTraversable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
@@ -149,55 +152,105 @@ package object osm {
 
   class AssemblyException(msg: String) extends Exception(msg)
 
+  /**
+    * Tests whether two {@link CoordinateSequence}s are equal.
+    * To be equal, the sequences must be the same length.
+    * They do not need to be of the same dimension,
+    * but the ordinate values for the smallest dimension of the two
+    * must be equal.
+    * Two <code>NaN</code> ordinates values are considered to be equal.
+    *
+    * Ported to Scala from JTS 1.15.0
+    *
+    * @param cs1 a CoordinateSequence
+    * @param cs2 a CoordinateSequence
+    * @return true if the sequences are equal in the common dimensions
+    */
+  private def isEqual(cs1: CoordinateSequence, cs2: CoordinateSequence): Boolean = {
+    if (cs1.size != cs2.size) {
+      false
+    } else {
+      val dim = Math.min(cs1.getDimension, cs2.getDimension)
+      (0 until cs1.size).forall(i => {
+        (0 until dim).forall(d => {
+          val v1 = cs1.getOrdinate(i, d)
+          val v2 = cs2.getOrdinate(i, d)
+
+          v1 == v2 || (v1 == Double.NaN && v2 == Double.NaN)
+        })
+      })
+    }
+  }
+
   // create fully-formed rings from line segments
   @tailrec
-  private def connectSegments(segments: List[Array[Coordinate]], rings: List[Array[Coordinate]] = List.empty[Array[Coordinate]]): List[Array[Coordinate]] = {
+  private def connectSegments(segments: GenTraversable[CoordinateSequence], rings: Seq[CoordinateSequence] = Vector.empty[CoordinateSequence])(implicit coordinateSequenceFactory: CoordinateSequenceFactory): GenTraversable[CoordinateSequence] = {
     segments match {
       case Nil => rings
-      case h :: t if h.head equals2D h.last => connectSegments(t, rings :+ h)
-      case h :: t =>
-        connectSegments(t.find(line => h.last equals2D line.head) match {
-          case Some(next) => h ++ next.tail :: t.filterNot(line => line sameElements next)
+      case Seq(h, t @ _ *) if h.getX(0) == h.getX(h.size - 1) && h.getY(0) == h.getY(h.size - 1) =>
+        connectSegments(t, rings :+ h)
+      case Seq(h, t @ _ *) =>
+        val x = h.getX(h.size - 1)
+        val y = h.getY(h.size - 1)
+
+        connectSegments(t.find(line => x == line.getX(0) && y == line.getY(0)) match {
+          case Some(next) =>
+            // TODO this creates lots of large new arrays
+            val coords = CoordinateSequences.extend(coordinateSequenceFactory, h, h.size + next.size - 1)
+            CoordinateSequences.copy(next, 1, coords, h.size, next.size - 1)
+
+            coords +: t.filterNot(line => isEqual(line, next))
           case None =>
-            t.find(line => h.last == line.last) match {
-              case Some(next) => h ++ next.reverse.tail :: t.filterNot(line => line sameElements next)
+            t.find(line => x == line.getX(line.size - 1) && y == line.getY(line.size - 1)) match {
+              case Some(next) =>
+                val coords = CoordinateSequences.extend(coordinateSequenceFactory, h, h.size + next.size - 1)
+                CoordinateSequences.reverse(next)
+                CoordinateSequences.copy(next, 1, coords, h.size, next.size - 1)
+
+                coords +: t.filterNot(line => isEqual(line, next))
               case None => throw new AssemblyException("Unable to connect segments.")
             }
         }, rings)
     }
   }
 
-  private def connectSegments(segments: List[Line]): List[Polygon] = {
-    connectSegments(segments.map(_.jtsGeom.getCoordinates): List[Array[Coordinate]]).map(_.map(Point.jtsCoord2Point)).map(Polygon(_))
+  private def connectSegments(segments: GenTraversable[Line])(implicit coordinateSequenceFactory: CoordinateSequenceFactory): GenTraversable[Polygon] = {
+//    connectSegments(segments.map(_.jtsGeom.getCoordinateSequence): List[CoordinateSequence]).map(geometryFactory.createPolygon).map(Polygon(_))
+    // requires patched geotrellis
+    connectSegments(segments.map(_.jtsGeom.getCoordinateSequence)).map(Polygon(_))
   }
 
   @tailrec
-  private def dissolveRings(rings: List[Polygon], dissolvedOuters: List[Polygon] = List.empty[Polygon], dissolvedInners: List[Polygon] = List.empty[Polygon]): (List[Polygon], List[Polygon]) = {
+  private def dissolveRings(rings: GenTraversable[Polygon], dissolvedOuters: Seq[Polygon] = Vector.empty[Polygon], dissolvedInners: Seq[Polygon] = Vector.empty[Polygon]): (Seq[Polygon], Seq[Polygon]) = {
     rings match {
       case Nil => (dissolvedOuters, dissolvedInners)
-      case h :: t =>
-        t.filter(r => h.touches(r)) match {
-          case touching if touching.isEmpty => dissolveRings(t.filterNot(r => h.touches(r)), dissolvedOuters :+ Polygon(h.exterior), dissolvedInners ++ h.holes.map(Polygon(_)))
+      case Seq(h, t @ _ *) =>
+        val prepared = h.prepare
+        t.filter(r => prepared.touches(r)) match {
+          case touching if touching.isEmpty => dissolveRings(t.filterNot(r => prepared.touches(r)), dissolvedOuters :+ Polygon(h.exterior), dissolvedInners ++ h.holes.map(Polygon(_)))
           case touching =>
-            val dissolved = touching.foldLeft(List(h)) {
+            val dissolved = touching.foldLeft(Vector(h)) {
               case (rs, r2) =>
                 rs.flatMap { r =>
                   r.union(r2).toGeometry match {
-                    case Some(p: Polygon) => List(p)
+                    case Some(p: Polygon) => Vector(p)
                     case Some(mp: MultiPolygon) => mp.polygons
                     case _ => throw new AssemblyException("Union failed.")
                   }
                 }
             }
 
-            val remaining = t.filterNot(r => h.touches(r))
-            val retryRings = dissolved.filter(d => remaining.exists(r => r.touches(d)))
-            val newRings = dissolved.filter(d => !remaining.exists(r => r.touches(d)))
+            val remaining = t.filterNot(r => prepared.touches(r))
+            val preparedRemaining = remaining.map(_.prepare)
+            val retryRings = dissolved.filter(d => preparedRemaining.exists(r => r.touches(d)))
+            val newRings = dissolved.filter(d => !preparedRemaining.exists(r => r.touches(d)))
 
             dissolveRings(retryRings ++ remaining, dissolvedOuters ++ newRings.map(_.exterior).map(Polygon(_)), dissolvedInners ++ newRings.flatMap(_.holes).map(Polygon(_)))
         }
     }
   }
+
+  private implicit val coordinateSequenceFactory: CoordinateSequenceFactory = new impl.PackedCoordinateSequenceFactory()
 
   def buildMultiPolygon(id: Long, version: Long, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
     if (types.zip(wkbs).exists { case (t, g) => t == ProcessOSM.WAY_TYPE && Option(g).isEmpty }) {
@@ -205,17 +258,23 @@ package object osm {
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
       None
     } else {
+      // use PackedCoordinateSequenceFactory w/ a new GeometryFactory (using PackedCoordinateSequences) to parse WKB
+      // this will reduce the number of Coordinate objects initially created
       val geoms = wkbs.map(Option(_).map(_.readWKB) match {
         case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
         case Some(geom) => geom.as[Line]
         case None => None
       })
 
+      val vertexCount = geoms.filter(_.isDefined).map(_.get).map(_.vertexCount).sum
+
+      logger.warn(s"${vertexCount.formatted("%,d")} vertices from ${types.size} members in $id @ $version ($timestamp)")
+
       val members: Seq[(String, Line)] = roles.zip(geoms)
         .filter(_._2.isDefined)
         .map(x => (x._1, x._2.get))
 
-      val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = members.foldLeft((List.empty[Polygon], List.empty[Polygon], List.empty[Polygon], List.empty[Line], List.empty[Line], List.empty[Line])) {
+      val (completeOuters, completeInners, completeUnknowns, partialOuters, partialInners, partialUnknowns) = members.foldLeft((Vector.empty[Polygon], Vector.empty[Polygon], Vector.empty[Polygon], Vector.empty[Line], Vector.empty[Line], Vector.empty[Line])) {
         case ((co, ci, cu, po, pi, pu), (role, line: Line)) =>
           role match {
             case "outer" if line.isClosed && line.vertexCount >= 4 => (co :+ Polygon(line), ci, cu, po, pi, pu)
@@ -230,10 +289,10 @@ package object osm {
 
       val future = Future {
         try {
-          val unknowns: List[Polygon] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
+          val unknowns: Seq[Polygon] = completeUnknowns ++ connectSegments(partialUnknowns.sortWith(_.length > _.length))
 
           val (outers, inners) = unknowns.foldLeft((completeOuters ++ connectSegments(partialOuters.sortWith(_.length > _.length)), completeInners ++ connectSegments(partialInners.sortWith(_.length > _.length)))) {
-            case ((o: List[Polygon], i: List[Polygon]), u) =>
+            case ((o: Seq[Polygon], i: Seq[Polygon]), u) =>
               if (o.exists(_.contains(u))) {
                 (o, i :+ u)
               } else {
@@ -241,19 +300,22 @@ package object osm {
               }
           }
 
+          val rings = outers ++ inners
+          val preparedRings = rings.map(_.prepare)
+
           // reclassify rings according to their topology (ignoring roles)
-          val (classifiedOuters, classifiedInners) = (outers ++ inners).sortWith(_.area > _.area) match {
-            case h :: t => t.foldLeft((List(h), List.empty[Polygon])) {
+          val (classifiedOuters, classifiedInners) = rings.sortWith(_.area > _.area) match {
+            case Seq(h, t @ _ *) => t.foldLeft((Vector(h), Vector.empty[Polygon])) {
               case ((os, is), ring) =>
                 // check the number of containing elements
-                (outers ++ inners).count(r => r != ring && r.contains(ring)) % 2 match {
+                preparedRings.count(r => r.geom != ring && r.contains(ring)) % 2 match {
                   // if even, it's an outer ring
                   case 0 => (os :+ ring, is)
                   // if odd, it's an inner ring
                   case 1 => (os, is :+ ring)
                 }
             }
-            case Nil => (List.empty[Polygon], List.empty[Polygon])
+            case rs if rs.isEmpty => (Vector.empty[Polygon], Vector.empty[Polygon])
           }
 
           val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
@@ -263,18 +325,23 @@ package object osm {
             // sort by size (descending) to use rings as part of the largest available polygon
             .sortWith(_.area > _.area)
             // only use inners once if they're contained by multiple outer rings
-            .foldLeft((List.empty[Polygon], dissolvedInners)) {
+            .foldLeft((Vector.empty[Polygon], dissolvedInners)) {
             case ((ps, is), (outer)) =>
-              (ps :+ Polygon(outer.exterior, is.filter(inner => outer.contains(inner)).map(_.exterior)), is.filterNot(inner => outer.contains(inner)))
+              val preparedOuter = outer.prepare
+              (ps :+ Polygon(outer.exterior, is.filter(inner => preparedOuter.contains(inner)).map(_.exterior)), is.filterNot(inner => preparedOuter.contains(inner)))
           }
 
           Some(polygons match {
-            case p :: Nil => p.toWKB(4326)
+            case Vector(p: Polygon) => p.toWKB(4326)
             case ps => MultiPolygon(ps).toWKB(4326)
           })
         } catch {
-          case e: Throwable =>
+          case e @ (_: AssemblyException | _: IllegalArgumentException | _: TopologyException) =>
             logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
+            None
+          case e: Throwable =>
+            logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): $e")
+            e.getStackTrace.foreach(logger.warn)
             None
         }
       }
