@@ -1,5 +1,5 @@
 resource "aws_emr_cluster" "emr-spark-cluster" {
-  name          = "${var.user} - ${var.cluster-name}"
+  name          = "${var.user} - ${var.cluster_name}"
   applications  = ["Hadoop", "Spark", "Ganglia", "Zeppelin"]
   release_label = "emr-5.8.0"
   service_role  = "${var.emr_service_role}"

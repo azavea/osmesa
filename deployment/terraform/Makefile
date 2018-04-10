@@ -4,6 +4,7 @@ $(error AWS_PROFILE is not set)
 endif
 
 CLUSTER_ID ?= $(shell cd cluster && terraform output | grep emr-id | awk '{print $$NF}')
+MASTER_IP ?= $(shell cd cluster && terraform output | grep emr-master | awk '{print $$NF}')
 KEY_NAME ?= $(shell cd cluster && terraform output | grep key-name | awk '{print $$NF}')
 KEY_PATH ?= "~/.ssh/${KEY_NAME}.pem"
 
@@ -43,6 +44,9 @@ ssh: auth.json
 		--cluster-id ${CLUSTER_ID} \
 		--key-pair-file ${KEY_PATH}
 
+proxy:
+	ssh -i ${KEY_PATH} -ND 8157 hadoop@${MASTER_IP}
+
 destroy-cluster: auth.json
 	cd cluster; $(AWS_ENV_VARS) terraform destroy \
 		-var-file="../tfvars" \
@@ -64,7 +68,6 @@ print-vars:
 	echo cluster_id: ${CLUSTER_ID}
 	echo key_name: ${KEY_NAME}
 	echo key_path: ${KEY_PATH}
+	echo master_ip: ${MASTER_IP}
 	echo env_vars: ${AWS_ENV_VARS}
 
-clean:
-	rm -rf osmesa.jar
