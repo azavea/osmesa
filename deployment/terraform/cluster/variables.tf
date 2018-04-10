@@ -42,6 +42,6 @@ variable "user" {
   default = "EMR"
 }
 
-variable "cluster-name" {
+variable "cluster_name" {
   default = "Testing"
 }
