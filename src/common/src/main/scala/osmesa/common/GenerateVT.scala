@@ -1,20 +1,21 @@
 package osmesa
 
+import java.io.ByteArrayOutputStream
+import java.util.zip.{ZipEntry, ZipOutputStream}
+
 import com.amazonaws.services.s3.model.CannedAccessControlList._
-import geotrellis.raster._
-import geotrellis.raster.rasterize._
-import geotrellis.raster.rasterize.polygon._
 import geotrellis.spark._
-import geotrellis.spark.io.s3._
 import geotrellis.spark.io.hadoop._
+import geotrellis.spark.io.index.zcurve.Z2
+import geotrellis.spark.io.s3._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vectortile._
-import org.apache.log4j.{Level, Logger}
+import org.apache.log4j.Logger
 import org.apache.spark.rdd.RDD
 
-import scala.concurrent._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent._
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 
@@ -37,6 +38,38 @@ object GenerateVT {
       .saveToHadoop({ sk: SpatialKey => s"${uri}/${zoom}/${sk.col}/${sk.row}.mvt" })
   }
 
+  def saveInZips(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) = {
+    val offset = zoom % 8
+
+    val s3PathFromKey: SpatialKey => String =
+    { sk =>
+      s"s3://${bucket}/${prefix}/${zoom - offset}/${sk.col}/${sk.row}.zip"
+    }
+
+    vectorTiles
+      .mapValues(_.toBytes)
+      .map { case (sk, data) => (SpatialKey(sk._1 / Math.pow(2, offset).intValue, sk._2 / Math.pow(2, offset).intValue), (sk, data)) }
+      .groupByKey
+      .mapValues { data =>
+        val out = new ByteArrayOutputStream
+        val zip = new ZipOutputStream(out)
+
+        data
+          .toSeq
+          .sortBy { case (sk, _) => Z2(sk.col, sk.row).z }
+          .foreach { case (sk, entry)  =>
+            zip.putNextEntry(new ZipEntry(s"${zoom}/${sk.col}/${sk.row}.mvt"))
+            zip.write(entry)
+            zip.closeEntry()
+          }
+
+        zip.close()
+
+        out.toByteArray
+      }
+      .saveToS3(s3PathFromKey, putObjectModifier = { o => o.withCannedAcl(PublicRead) })
+  }
+
   def keyToLayout[G <: Geometry](features: RDD[VTF[G]], layout: LayoutDefinition): RDD[(SpatialKey, (SpatialKey, VTF[G]))] = {
     features.flatMap{ feat =>
       val g = feat.geom
@@ -56,7 +89,7 @@ object GenerateVT {
   def makeVectorTiles[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, VTF[G]))], layout: LayoutDefinition, layerName: String): RDD[(SpatialKey, VectorTile)] = {
     type FeatureTup = (Seq[VTF[Point]], Seq[VTF[MultiPoint]], Seq[VTF[Line]], Seq[VTF[MultiLine]], Seq[VTF[Polygon]], Seq[VTF[MultiPolygon]])
 
-    def timedIntersect[G <: Geometry](geom: G, ex: Extent, id: Long) = {
+    def timedIntersect[G <: Geometry](geom: G, ex: Extent, id: Any) = {
       val future = Future { geom.intersection(ex) }
       Try(Await.result(future, 500 milliseconds)) match {
         case Success(res) => res
@@ -68,9 +101,11 @@ object GenerateVT {
 
     def create(arg: (SpatialKey, VTF[Geometry])): FeatureTup = {
       val (sk, feat) = arg
-      val fid = feat.data("__id").asInstanceOf[VInt64].value
+      val fid = feat.data("__id").asInstanceOf[VString].value
       val baseEx = layout.mapTransform(sk)
-      val ex = Extent(baseEx.xmin - baseEx.width, baseEx.ymin - baseEx.height, baseEx.xmax + baseEx.width, baseEx.ymax + baseEx.height)
+      // TODO this is where buffer gets configured; allow it to be provided per-layer as a %
+      // val ex = Extent(baseEx.xmin - baseEx.width, baseEx.ymin - baseEx.height, baseEx.xmax + baseEx.width, baseEx.ymax + baseEx.height)
+      val ex = baseEx
       feat.geom match {
         case pt: Point => (Seq(PointFeature(pt, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
         case l: Line =>
@@ -171,8 +206,8 @@ object GenerateVT {
           multiPoints=mpts,
           lines=ls,
           multiLines=mls,
-          polygons=ps,
-          multiPolygons=mps
+          polygons=ps.sortWith(_.area > _.area),
+          multiPolygons=mps.sortWith(_.area > _.area)
         )
 
         (sk, VectorTile(Map(layerName -> layer), extent))
