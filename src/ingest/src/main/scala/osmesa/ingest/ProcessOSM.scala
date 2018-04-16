@@ -19,7 +19,7 @@ object ProcessOSM {
   val WAY_TYPE: Byte = 2
   val RELATION_TYPE: Byte = 3
 
-  lazy val logger: Logger = Logger.getRootLogger
+  lazy val logger: Logger = Logger.getLogger(getClass)
 
   /**
     * Snapshot pre-processed elements.
@@ -33,7 +33,7 @@ object ProcessOSM {
 
     df
       .where(
-        'timestamp <= coalesce(lit(timestamp), current_timestamp)
+        'updated <= coalesce(lit(timestamp), current_timestamp)
           and coalesce(lit(timestamp), current_timestamp) < coalesce('validUntil, date_add(current_timestamp, 1)))
   }
 
@@ -242,7 +242,7 @@ object ProcessOSM {
     // probably be one, grouped by the changeset).
     val allWayVersions = ways.select('id, 'version, 'nds, 'isArea)
       .join(waysByChangeset, Seq("id", "version"))
-      .union(ways.select('id, 'version, 'nds, 'isArea, 'changeset, 'timestamp as 'update))
+      .union(ways.select('id, 'version, 'nds, 'isArea, 'changeset, 'timestamp as 'updated))
       .distinct
 
     val explodedWays = allWayVersions
