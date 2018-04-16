@@ -141,21 +141,24 @@ object Ingest extends CommandApp(
 
       val nodeGeoms = cache.orc("node_geoms.orc") {
         ProcessOSM.constructPointGeometries(ppnodes)
-      }.withColumn("minorVersion", lit(0))
+          .withColumn("minorVersion", lit(0))
+          .join(changesets.select('id as 'changeset, 'user), Seq("changeset"))
+      }
 
       val wayGeoms = cache.orc("way_geoms.orc") {
         ProcessOSM.reconstructWayGeometries(ppways, ppnodes)
+          .join(changesets.select('id as 'changeset, 'user), Seq("changeset"))
       }
 
       val nodeAugmentations = nodeGeoms
-        .join(changesets.select('id.as('changeset), 'uid, 'user), Seq("changeset"))
+        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Seq("changeset"))
         .groupBy('id)
-        .agg(min('timestamp).as('created), collect_set('user).as('authors))
+        .agg(min('updated) as 'creation, collect_set('author) as 'authors)
 
       val wayAugmentations = wayGeoms
-        .join(changesets.select('id.as('changeset), 'uid, 'user), Seq("changeset"))
+        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Seq("changeset"))
         .groupBy('id)
-        .agg(min('timestamp).as('created), collect_set('user).as('authors))
+        .agg(min('updated) as 'creation, collect_set('author) as 'authors)
 
       val latestNodeGeoms = ProcessOSM.snapshot(nodeGeoms)
         .join(nodeAugmentations, Seq("id"))
@@ -184,7 +187,6 @@ object Ingest extends CommandApp(
           val updated = row.getAs[java.sql.Timestamp]("updated")
           val creation = row.getAs[java.sql.Timestamp]("creation")
           val authors = row.getAs[Set[String]]("authors").toList.mkString(",")
-          val validUntil = row.getAs[java.sql.Timestamp]("validUntil")
           val user = row.getAs[String]("user")
           val _type = row.getAs[Byte]("_type")
 
@@ -208,7 +210,6 @@ object Ingest extends CommandApp(
                   "__version" -> VInt64(version),
                   "__minorVersion" -> VInt64(minorVersion),
                   "__updated" -> VInt64(updated.getTime),
-                  "__validUntil" -> VInt64(Option(validUntil).map(_.getTime).getOrElse(0)),
                   "__vtileGen" -> VInt64(new java.sql.Timestamp(System.currentTimeMillis()).getTime),
                   "__creation" -> VInt64(creation.getTime),
                   "__authors" -> VString(authors),
