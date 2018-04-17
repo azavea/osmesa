@@ -13,6 +13,9 @@ import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 
+import scala.collection.mutable.ArrayBuffer
+
+
 /*
  * Usage example:
  *
@@ -86,7 +89,7 @@ object MakeTiles extends CommandApp(
           // check validity of reprojected geometry
           Option(geom).map(_.readWKB.reproject(LatLng, WebMercator)) match {
             case Some(g) if g.isValid =>
-              Seq(Feature(
+              ArrayBuffer(Feature(
                 g,
                 tags.map {
                   case (k, v) => (k, VString(v))
@@ -101,7 +104,7 @@ object MakeTiles extends CommandApp(
                   "__user" -> VString(user)
                 )
               ))
-            case _ => Seq()
+            case _ => ArrayBuffer()
           }
         }
 
