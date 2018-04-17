@@ -45,3 +45,11 @@ variable "user" {
 variable "cluster_name" {
   default = "Testing"
 }
+
+variable "master_instance_type" {
+  default = "m3.2xlarge"
+}
+
+variable "worker_instance_type" {
+  default = "m3.xlarge"
+}
