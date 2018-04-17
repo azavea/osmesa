@@ -18,6 +18,8 @@ import org.apache.spark.sql.functions._
 import osmesa.ingest.util.Caching
 import vectorpipe._
 
+import scala.collection.mutable.ArrayBuffer
+
 object Util {
   import java.io.ByteArrayInputStream
 
@@ -97,6 +99,7 @@ object Ingest extends CommandApp(
     val maxzoomO = Opts.option[Int]("zoom", help = "Maximum zoom level for ingest (default=14)").withDefault(14)
     val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
     val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
+    val filter = Opts.flag("filter", help = "GeoJSON multipolygon which contains all points for geoms to be processed")
 
     (orcO, changesetsO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO).mapN { (orc, changesetsSrc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir) =>
 
@@ -142,28 +145,28 @@ object Ingest extends CommandApp(
       val nodeGeoms = cache.orc("node_geoms.orc") {
         ProcessOSM.constructPointGeometries(ppnodes)
           .withColumn("minorVersion", lit(0))
-          .join(changesets.select('id as 'changeset, 'user), Seq("changeset"))
+          .join(changesets.select('id as 'changeset, 'user), Array("changeset"))
       }
 
       val wayGeoms = cache.orc("way_geoms.orc") {
         ProcessOSM.reconstructWayGeometries(ppways, ppnodes)
-          .join(changesets.select('id as 'changeset, 'user), Seq("changeset"))
+          .join(changesets.select('id as 'changeset, 'user), Array("changeset"))
       }
 
       val nodeAugmentations = nodeGeoms
-        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Seq("changeset"))
+        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Array("changeset"))
         .groupBy('id)
         .agg(min('updated) as 'creation, collect_set('author) as 'authors)
 
       val wayAugmentations = wayGeoms
-        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Seq("changeset"))
+        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Array("changeset"))
         .groupBy('id)
         .agg(min('updated) as 'creation, collect_set('author) as 'authors)
 
       val latestNodeGeoms = ProcessOSM.snapshot(nodeGeoms)
-        .join(nodeAugmentations, Seq("id"))
+        .join(nodeAugmentations, Array("id"))
       val latestWayGeoms = ProcessOSM.snapshot(wayGeoms)
-        .join(wayAugmentations, Seq("id"))
+        .join(wayAugmentations, Array("id"))
 
       println("PRIOR TO WAY/NODE UNION")
       latestNodeGeoms.printSchema
@@ -186,7 +189,7 @@ object Ingest extends CommandApp(
           val geom = row.getAs[scala.Array[Byte]]("geom")
           val updated = row.getAs[java.sql.Timestamp]("updated")
           val creation = row.getAs[java.sql.Timestamp]("creation")
-          val authors = row.getAs[Set[String]]("authors").toList.mkString(",")
+          val authors = row.getAs[Set[String]]("authors").toArray.mkString(",")
           val user = row.getAs[String]("user")
           val _type = row.getAs[Byte]("_type")
 
@@ -200,7 +203,7 @@ object Ingest extends CommandApp(
           // check validity of reprojected geometry
           geom.readWKB.reproject(LatLng, WebMercator) match {
             case g if g.isValid =>
-              Seq(Feature(
+              ArrayBuffer(Feature(
                 g,
                 tags.map {
                   case (k, v) => (k, VString(v))
@@ -216,7 +219,7 @@ object Ingest extends CommandApp(
                   "__lastAuthor" -> VString(user)
                 )
               ))
-            case _ => Seq()
+            case _ => ArrayBuffer()
           }
         }
 
