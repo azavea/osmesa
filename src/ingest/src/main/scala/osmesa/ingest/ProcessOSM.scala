@@ -230,7 +230,7 @@ object ProcessOSM {
     // If you need authorship, join on changesets
     val waysByChangeset = nodes
       .select('changeset, 'id, 'timestamp as 'updated)
-      .join(nodesToWays, Seq("id"))
+      .join(nodesToWays, Array("id"))
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
       .select('changeset, 'wayId as 'id, 'version, 'updated)
       .groupBy('changeset, 'id)
@@ -241,22 +241,22 @@ object ProcessOSM {
     // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where there should
     // probably be one, grouped by the changeset).
     val allWayVersions = ways.select('id, 'version, 'nds, 'isArea)
-      .join(waysByChangeset, Seq("id", "version"))
+      .join(waysByChangeset, Array("id", "version"))
       .union(ways.select('id, 'version, 'nds, 'isArea, 'changeset, 'timestamp as 'updated))
       .distinct
 
     val explodedWays = allWayVersions
-      .select('changeset, 'id, 'version, 'updated, 'isArea, posexplode_outer('nds) as Seq("idx", "ref"))
+      .select('changeset, 'id, 'version, 'updated, 'isArea, posexplode_outer('nds) as Array("idx", "ref"))
       // repartition including updated timestamp to avoid skew (version is insufficient, as
       // multiple instances may exist with the same version)
       .repartition('id, 'updated)
 
     val waysAndNodes = explodedWays
-      .join(nodes.select('id as 'ref, 'version as 'ref_version, 'timestamp, 'validUntil), Seq("ref"), "left_outer")
+      .join(nodes.select('id as 'ref, 'version as 'ref_version, 'timestamp, 'validUntil), Array("ref"), "left_outer")
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
 
     val wayGeoms = waysAndNodes
-      .join(nodes.select('id as 'ref, 'version as 'ref_version, 'lat, 'lon), Seq("ref", "ref_version"), "left_outer")
+      .join(nodes.select('id as 'ref, 'version as 'ref_version, 'lat, 'lon), Array("ref", "ref_version"), "left_outer")
       .select('changeset, 'id, 'version, 'updated, 'isArea, 'idx, 'lat, 'lon)
       .groupBy('changeset, 'id, 'version, 'updated)
       // Create WKB geometries (LineStrings and Polygons)
@@ -267,7 +267,7 @@ object ProcessOSM {
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
     wayGeoms
-      .join(ways.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
+      .join(ways.select('id, 'version, 'tags, 'visible), Array("id", "version"))
       .select(
         lit(WAY_TYPE) as '_type,
         'id,
@@ -314,7 +314,7 @@ object ProcessOSM {
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
       .withColumn("type", lit("way"))
       .select('type, 'changeset, 'id, 'updated)
-      .join(waysToRelations, Seq("id", "type"))
+      .join(waysToRelations, Array("id", "type"))
       .where(waysToRelations("timestamp") <= geoms("updated") and geoms("updated") < coalesce(waysToRelations("validUntil"), current_timestamp))
       .select('changeset, 'relationId as 'id, 'version, 'updated)
       .groupBy('changeset, 'id)
@@ -324,7 +324,7 @@ object ProcessOSM {
     // there should probably be one, grouped by the changeset).
     val allRelationVersions = relations.select('id, 'version, 'members, 'visible)
       // join w/ relationsByChangeset (on changeset, relation id) later to pick up relation versions
-      .join(relationsByChangeset, Seq("id", "version"))
+      .join(relationsByChangeset, Array("id", "version"))
       // Union with raw relations to include those in the time line (if they weren't already triggered by geometry
       // modifications at the same time)
       .union(relations.select('id, 'version, 'members, 'visible, 'changeset, 'timestamp as 'updated))
@@ -343,7 +343,7 @@ object ProcessOSM {
       )
       .repartition('changeset, 'id, 'version, 'updated)
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
-      .join(geoms.select(lit("way") as 'type, 'id as "ref", 'updated, 'validUntil, 'geom), Seq("type", "ref"), "left_outer")
+      .join(geoms.select(lit("way") as 'type, 'id as "ref", 'updated, 'validUntil, 'geom), Array("type", "ref"), "left_outer")
       .where(
         'geom.isNull or // allow null geoms through so we can check data validity later
           (geoms("updated") <= allRelationVersions("updated") and allRelationVersions("updated") < coalesce(geoms("validUntil"), current_timestamp)))
@@ -360,7 +360,7 @@ object ProcessOSM {
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
-      .join(relations.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
+      .join(relations.select('id, 'version, 'tags, 'visible), Array("id", "version"))
       .select(
         lit(RELATION_TYPE) as '_type,
         'id,
@@ -385,7 +385,7 @@ object ProcessOSM {
     import geoms.sparkSession.implicits._
 
     geoms
-      .join(changesets.select('id as 'changeset, 'uid, 'user), Seq("changeset"))
+      .join(changesets.select('id as 'changeset, 'uid, 'user), Array("changeset"))
   }
 
   def geometriesByRegion(nodeGeoms: DataFrame, wayGeoms: DataFrame): DataFrame = {
@@ -419,8 +419,8 @@ object ProcessOSM {
 
       implicit object CountryIdJsonFormat extends RootJsonFormat[CountryId] {
         def read(value: JsValue): CountryId =
-          value.asJsObject.getFields("ADM0_A3") match {
-            case Seq(JsString(code)) =>
+          value.asJsObject.fields.get("ADM0_A3") match {
+            case Some(JsString(code)) =>
               CountryId(code)
             case v =>
               throw DeserializationException(s"CountryId expected, got $v")
