@@ -7,7 +7,7 @@ import geotrellis.spark.SpatialKey
 import geotrellis.spark.tiling.{LayoutLevel, ZoomedLayoutScheme}
 import geotrellis.vector.io._
 import geotrellis.vector.{Feature, Geometry}
-import geotrellis.vectortile.{VInt64, VString}
+import geotrellis.vectortile._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
@@ -111,7 +111,9 @@ object MakeTiles extends CommandApp(
       val save = if (tapalcatl) {
         GenerateVT.saveInZips _
       } else {
-        GenerateVT.save _
+        { (vtiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) =>
+          GenerateVT.save(vtiles, zoom, bucket, prefix, 3600)
+        }
       }
 
       val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)

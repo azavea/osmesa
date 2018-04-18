@@ -18,6 +18,7 @@ import scala.concurrent._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
+import scala.collection.JavaConverters._
 import java.io.ByteArrayOutputStream
 import java.util.zip.{ZipEntry, ZipOutputStream}
 
@@ -47,11 +48,16 @@ object GenerateVT {
     def empty() = VTContents(Array.empty, Array.empty, Array.empty, Array.empty, Array.empty, Array.empty)
   }
 
-  def save(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) = {
+  def save(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String, maxAge: Int) = {
     vectorTiles
       .mapValues(_.toBytes)
       .saveToS3({ sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.mvt" },
-                putObjectModifier = { o => o.withCannedAcl(PublicRead) })
+                putObjectModifier = { o =>
+                  val md = o.getMetadata()
+                  md.setUserMetadata(Map("Cache-Control" -> s"max-age=${maxAge}").asJava)
+                  o.withMetadata(md)
+                   .withCannedAcl(PublicRead)
+                })
   }
 
   def saveHadoop(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, uri: String) = {

@@ -100,8 +100,9 @@ object Ingest extends CommandApp(
     val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
     val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
     val filter = Opts.flag("filter", help = "GeoJSON multipolygon which contains all points for geoms to be processed")
+    val maxAgeO = Opts.option[Int]("maxage", help = "The maximum age, in seconds, to cache these tiles on the client (default=3600)").withDefault(3600)
 
-    (orcO, changesetsO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO).mapN { (orc, changesetsSrc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir) =>
+    (orcO, changesetsO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO, maxAgeO).mapN { (orc, changesetsSrc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir, maxAge) =>
 
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
@@ -228,7 +229,7 @@ object Ingest extends CommandApp(
       def build[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, GenerateVT.VTF[G]))], layoutLevel: LayoutLevel): Unit = {
         val LayoutLevel(zoom, layout) = layoutLevel
 
-        GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, layer), zoom, bucket, prefix)
+        GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, layer), zoom, bucket, prefix, maxAge)
 
         if (pyramid && zoom > 0)
           build(GenerateVT.upLevel(keyedGeoms), layoutScheme.zoomOut(layoutLevel))
