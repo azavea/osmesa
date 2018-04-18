@@ -1,9 +1,9 @@
 package osmesa
 
-import java.io.ByteArrayOutputStream
-import java.util.zip.{ZipEntry, ZipOutputStream}
-
 import com.amazonaws.services.s3.model.CannedAccessControlList._
+import geotrellis.raster._
+import geotrellis.raster.rasterize._
+import geotrellis.raster.rasterize.polygon._
 import geotrellis.spark._
 import geotrellis.spark.io.hadoop._
 import geotrellis.spark.io.index.zcurve.Z2
@@ -11,19 +11,41 @@ import geotrellis.spark.io.s3._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vectortile._
-import org.apache.log4j.Logger
+import org.apache.log4j.{Level, Logger}
 import org.apache.spark.rdd.RDD
 
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent._
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
+import java.io.ByteArrayOutputStream
+import java.util.zip.{ZipEntry, ZipOutputStream}
+
 
 object GenerateVT {
 
   lazy val logger = Logger.getRootLogger()
 
   type VTF[G <: Geometry] = Feature[G, Map[String, Value]]
+  // type VTContents = (Seq[VTF[Point]], Seq[VTF[MultiPoint]], Seq[VTF[Line]], Seq[VTF[MultiLine]], Seq[VTF[Polygon]], Seq[VTF[MultiPolygon]])
+
+  case class VTContents(points: Array[VTF[Point]] = Array.empty,
+                                multipoints: Array[VTF[MultiPoint]] = Array.empty,
+                                lines: Array[VTF[Line]] = Array.empty,
+                                multilines: Array[VTF[MultiLine]] = Array.empty,
+                                polygons: Array[VTF[Polygon]] = Array.empty,
+                                multipolygons: Array[VTF[MultiPolygon]] = Array.empty) {
+    def +(other: VTContents) = VTContents(points ++ other.points,
+                                          multipoints ++ other.multipoints,
+                                          lines ++ other.lines,
+                                          multilines ++ other.multilines,
+                                          polygons ++ other.polygons,
+                                          multipolygons ++ other.multipolygons)
+  }
+
+  object VTContents {
+    def empty() = VTContents(Array.empty, Array.empty, Array.empty, Array.empty, Array.empty, Array.empty)
+  }
 
   def save(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) = {
     vectorTiles
@@ -74,7 +96,15 @@ object GenerateVT {
     features.flatMap{ feat =>
       val g = feat.geom
       val keys = layout.mapTransform.keysForGeometry(g)
-      keys.map{ k => (k, (k, feat)) }
+      keys.flatMap{ k =>
+        val SpatialKey(x, y) = k
+        if (x < 0 || x >= layout.layoutCols || y < 0 || y >= layout.layoutRows) {
+          println(s"Geometry $g exceeds layout bounds in $k (${Try(layout.mapTransform(k))})")
+          None
+        } else {
+          Some(k -> (k, feat))
+        }
+      }
     }
   }
 
@@ -87,114 +117,108 @@ object GenerateVT {
   }
 
   def makeVectorTiles[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, VTF[G]))], layout: LayoutDefinition, layerName: String): RDD[(SpatialKey, VectorTile)] = {
-    type FeatureTup = (Seq[VTF[Point]], Seq[VTF[MultiPoint]], Seq[VTF[Line]], Seq[VTF[MultiLine]], Seq[VTF[Polygon]], Seq[VTF[MultiPolygon]])
 
-    def timedIntersect[G <: Geometry](geom: G, ex: Extent, id: Any) = {
+    def timedIntersect[G <: Geometry](geom: G, ex: Extent, id: String) = {
       val future = Future { geom.intersection(ex) }
-      Try(Await.result(future, 500 milliseconds)) match {
+      Try(Await.result(future, 5000 milliseconds)) match {
         case Success(res) => res
         case Failure(_) =>
-          logger.warn(s"Could not intersect $geom with $ex [feature id=$id]")
+          logger.warn(s"Could not intersect $geom with $ex [feature id=$id] in 5000 milliseconds")
           NoResult
       }
     }
 
-    def create(arg: (SpatialKey, VTF[Geometry])): FeatureTup = {
+    def create(arg: (SpatialKey, VTF[Geometry])): VTContents = {
       val (sk, feat) = arg
       val fid = feat.data("__id").asInstanceOf[VString].value
       val baseEx = layout.mapTransform(sk)
-      // TODO this is where buffer gets configured; allow it to be provided per-layer as a %
-      // val ex = Extent(baseEx.xmin - baseEx.width, baseEx.ymin - baseEx.height, baseEx.xmax + baseEx.width, baseEx.ymax + baseEx.height)
-      val ex = baseEx
+      val ex = Extent(baseEx.xmin - baseEx.width, baseEx.ymin - baseEx.height, baseEx.xmax + baseEx.width, baseEx.ymax + baseEx.height)
       feat.geom match {
-        case pt: Point => (Seq(PointFeature(pt, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
+        case pt: Point => VTContents(points = Array(PointFeature(pt, feat.data)))
         case l: Line =>
           timedIntersect(l, ex, fid) match {
-            // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
-            case MultiLineResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(res, feat.data)), Seq.empty, Seq.empty)
-            // case PointResult(res) => (Seq(PointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            // case MultiPointResult(res) => (Seq.empty, Seq(MultiPointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty)
+            case LineResult(res) => VTContents(lines=Array(LineFeature(res, feat.data)))
+            case MultiLineResult(res) => VTContents(multilines=Array(MultiLineFeature(res, feat.data)))
             case GeometryCollectionResult(res) =>
-              val gc = res.geometryCollections(0)
-              gc.lines.size match {
-                case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
-                case 1 => (Seq.empty, Seq.empty, Seq(LineFeature(gc.lines(0), feat.data)), Seq.empty, Seq.empty, Seq.empty)
-                case _ => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(MultiLine(gc.lines), feat.data)), Seq.empty, Seq.empty)
+              Try(res.geometryCollections(0)).toOption match {
+                case Some(gc) =>
+                  gc.lines.size match {
+                    case 0 => VTContents.empty // should never happen
+                    case 1 => VTContents(lines=Array(LineFeature(gc.lines(0), feat.data)))
+                    case _ => VTContents(multilines=Array(MultiLineFeature(MultiLine(gc.lines), feat.data)))
+                  }
+                case None =>
+                  logger.warn(s"Unexpected result intersecting $l with $ex")
+                  VTContents.empty
               }
-            case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
+            case _ => VTContents.empty
           }
         case ml: MultiLine =>
           timedIntersect(ml, ex, fid) match {
-            // non results and point results should not happen due to buffering
-            // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            // case PointResult(res) => (Seq(PointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            // case MultiPointResult(res) => (Seq.empty, Seq(MultiPointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
-            case MultiLineResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(res, feat.data)), Seq.empty, Seq.empty)
+            case LineResult(res) => VTContents(lines=Array(LineFeature(res, feat.data)))
+            case MultiLineResult(res) => VTContents(multilines=Array(MultiLineFeature(res, feat.data)))
             case GeometryCollectionResult(res) =>
-              val gc = res.geometryCollections(0)
-              gc.lines.size match {
-                case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
-                case 1 => (Seq.empty, Seq.empty, Seq(LineFeature(gc.lines(0), feat.data)), Seq.empty, Seq.empty, Seq.empty)
-                case _ => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(MultiLine(gc.lines), feat.data)), Seq.empty, Seq.empty)
+              Try(res.geometryCollections(0)).toOption match {
+                case Some(gc) =>
+                  gc.lines.size match {
+                    case 0 => VTContents.empty // should never happen
+                    case 1 => VTContents(lines=Array(LineFeature(gc.lines(0), feat.data)))
+                    case _ => VTContents(multilines=Array(MultiLineFeature(MultiLine(gc.lines), feat.data)))
+                  }
+                case None =>
+                  logger.warn(s"Unexpected result intersecting $ml with $ex")
+                  VTContents.empty
               }
-            case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
+            case _ => VTContents.empty
           }
         case p: Polygon =>
           timedIntersect(p, ex, fid) match {
             // should only see (or care about) polygon intersection results
-            // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            // case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
-            // case MultiLineResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(res, feat.data)), Seq.empty, Seq.empty)
-            // case PointResult(res) => (Seq(PointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            // case MultiPointResult(res) => (Seq.empty, Seq(MultiPointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            case PolygonResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(res, feat.data)), Seq.empty)
-            case MultiPolygonResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(res, feat.data)))
+            case PolygonResult(res) => VTContents(polygons=Array(PolygonFeature(res, feat.data)))
+            case MultiPolygonResult(res) => VTContents(multipolygons=Array(MultiPolygonFeature(res, feat.data)))
             case GeometryCollectionResult(res) =>
-              val gc = res.geometryCollections(0)
-              gc.polygons.size match {
-                case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
-                case 1 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(gc.polygons(0), feat.data)), Seq.empty)
-                case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(MultiPolygon(gc.polygons), feat.data)))
+              Try(res.geometryCollections(0)).toOption match {
+                case Some(gc) =>
+                  gc.polygons.size match {
+                    case 0 => VTContents.empty // should never happen
+                    case 1 => VTContents(polygons=Array(PolygonFeature(gc.polygons(0), feat.data)))
+                    case _ => VTContents(multipolygons=Array(MultiPolygonFeature(MultiPolygon(gc.polygons), feat.data)))
+                  }
+                case None =>
+                  logger.warn(s"Unexpected result intersecting $p with $ex")
+                  VTContents.empty
               }
-            case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
+            case _ => VTContents.empty
           }
-        case mp: MultiPolygon => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(mp, feat.data)))
+        case mp: MultiPolygon =>
           timedIntersect(mp, ex, fid) match {
             // should only see (or care about) polygon intersection results
-            // case NoResult => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            // case LineResult(res) => (Seq.empty, Seq.empty, Seq(LineFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty)
-            // case MultiLineResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq(MultiLineFeature(res, feat.data)), Seq.empty, Seq.empty)
-            // case PointResult(res) => (Seq(PointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            // case MultiPointResult(res) => (Seq.empty, Seq(MultiPointFeature(res, feat.data)), Seq.empty, Seq.empty, Seq.empty, Seq.empty)
-            case PolygonResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(res, feat.data)), Seq.empty)
-            case MultiPolygonResult(res) => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(res, feat.data)))
+            case PolygonResult(res) => VTContents(polygons=Array(PolygonFeature(res, feat.data)))
+            case MultiPolygonResult(res) => VTContents(multipolygons=Array(MultiPolygonFeature(res, feat.data)))
             case GeometryCollectionResult(res) =>
-              val gc = res.geometryCollections(0)
-              gc.polygons.size match {
-                case 0 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty) // should never happen
-                case 1 => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(PolygonFeature(gc.polygons(0), feat.data)), Seq.empty)
-                case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq(MultiPolygonFeature(MultiPolygon(gc.polygons), feat.data)))
+              Try(res.geometryCollections(0)).toOption match {
+                case Some(gc) =>
+                  gc.polygons.size match {
+                    case 0 => VTContents.empty // should never happen
+                    case 1 => VTContents(polygons=Array(PolygonFeature(gc.polygons(0), feat.data)))
+                    case _ => VTContents(multipolygons=Array(MultiPolygonFeature(MultiPolygon(gc.polygons), feat.data)))
+                  }
+                case None =>
+                  logger.warn(s"Unexpected result intersecting $mp with $ex")
+                  VTContents.empty
               }
-            case _ => (Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty, Seq.empty)
+            case _ => VTContents.empty
           }
       }
     }
 
-    def merge(tup: FeatureTup, feat: (SpatialKey, VTF[Geometry])): FeatureTup =
-      combine(tup, create(feat))
-
-    def combine(tup1: FeatureTup, tup2: FeatureTup): FeatureTup = {
-      val (pt1, mpt1, l1, ml1, p1, mp1) = tup1
-      val (pt2, mpt2, l2, ml2, p2, mp2) = tup2
-      (pt1 ++ pt2, mpt1 ++ mpt2, l1 ++ l2, ml1 ++ ml2, p1 ++ p2, mp1 ++ mp2)
-    }
+    def merge(accum: VTContents, feat: (SpatialKey, VTF[Geometry])): VTContents =
+      accum + create(feat)
 
     keyedGeoms
-      .combineByKey(create, merge, combine)
+      .combineByKey(create, merge, (_: VTContents) + (_: VTContents))
       .map { case (sk, tup) => {
-        val (pts, mpts, ls, mls, ps, mps) = tup
+        val VTContents(pts, mpts, ls, mls, ps, mps) = tup
         val extent = layout.mapTransform(sk)
 
         val layer = StrictLayer(
@@ -213,5 +237,5 @@ object GenerateVT {
         (sk, VectorTile(Map(layerName -> layer), extent))
       }}
   }
-
 }
+
