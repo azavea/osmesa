@@ -44,33 +44,43 @@ object ProcessOSM {
     * @param history DataFrame containing nodes.
     * @return processed nodes.
     */
-  def preprocessNodes(history: DataFrame): DataFrame = {
+  def preprocessNodes(history: DataFrame, extent: Option[Extent] = None): DataFrame = {
     import history.sparkSession.implicits._
 
-    if (history.columns.contains("validUntil")) {
-      history
-    } else {
-      @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
+    val filteredHistory =
+      if (history.columns.contains("validUntil")) {
+        history
+      } else {
+        @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
-      // this is suitable for appending to directly (since none of the values need to change ever)
+        // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
+        // this is suitable for appending to directly (since none of the values need to change ever)
 
-      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
-      // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
-      history
-        .where('type === "node")
-        .select(
-          'id,
-          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags) as 'tags,
-          when(!'visible, null).otherwise(asDouble('lat)) as 'lat,
-          when(!'visible, null).otherwise(asDouble('lon)) as 'lon,
-          'changeset,
-          'timestamp,
-          (lead('timestamp, 1) over idByUpdated) as 'validUntil,
-          'uid,
-          'user,
-          'version,
-          'visible)
+        // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
+        // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
+        history
+          .where('type === "node")
+          .select(
+            'id,
+            when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags) as 'tags,
+            when(!'visible, null).otherwise(asDouble('lat)) as 'lat,
+            when(!'visible, null).otherwise(asDouble('lon)) as 'lon,
+            'changeset,
+            'timestamp,
+            (lead('timestamp, 1) over idByUpdated) as 'validUntil,
+            'uid,
+            'user,
+            'version,
+            'visible)
+      }
+
+    extent match {
+      case Some(e) =>
+        filteredHistory
+          .where('lat > e.ymin and 'lat < e.ymax)
+          .where('lon > e.xmin and 'lon < e.xmax)
+      case None =>
+        filteredHistory
     }
   }
 
