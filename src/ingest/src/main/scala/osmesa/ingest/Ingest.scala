@@ -17,6 +17,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.ingest.util.Caching
+import org.apache.hadoop.fs._
 import vectorpipe._
 
 import scala.collection.mutable.ArrayBuffer
@@ -109,7 +110,7 @@ object Ingest extends CommandApp(
     val maxzoomO = Opts.option[Int]("zoom", help = "Maximum zoom level for ingest (default=14)").withDefault(14)
     val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
     val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
-    val extentO = Opts.option[Extent]("extent", help = "Geographic extent for this layer").orNone
+    val extentO = Opts.option[Extent]("extent", help = "Geographic extent for this layer (format: <xmin>,<ymin>,<xmax>,<ymax>").orNone
 
     (orcO, changesetsO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO, extentO).mapN { (orc, changesetsSrc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir, extent) =>
 
@@ -237,6 +238,14 @@ object Ingest extends CommandApp(
 
       def build[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, GenerateVT.VTF[G]))], layoutLevel: LayoutLevel): Unit = {
         val LayoutLevel(zoom, layout) = layoutLevel
+        val fs = FileSystem.get(new URI(s"s3://${bucket}"), ss.sparkContext.hadoopConfiguration)
+        val keys = if (fs.exists(new Path(s"s3://${bucket}/${prefix}/${zoom}/keys"))) {
+          val existingKeys = ss.read.textFile(s"${bucket}/${prefix}/${zoom}/keys")
+          (existingKeys.rdd ++ keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"}))
+        } else {
+          keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"})
+        }
+        keys.saveAsTextFile(s"${bucket}/${prefix}/${zoom}/keys")
 
         GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, layer), zoom, bucket, prefix)
 
