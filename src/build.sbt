@@ -31,6 +31,7 @@ lazy val commonSettings = Seq(
     "osgeo" at "http://download.osgeo.org/webdav/geotools/",
     "apache.commons.io" at "https://mvnrepository.com/artifact/commons-io/commons-io"
   ),
+  updateOptions := updateOptions.value.withGigahorse(false),
   shellPrompt := { s => Project.extract(s).currentProject.id + " > " }
 )
 

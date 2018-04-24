@@ -39,3 +39,4 @@ object Main extends App {
 
   Http().bindAndHandle(Router.routes(bucket, prefix), host, port)
 }
+

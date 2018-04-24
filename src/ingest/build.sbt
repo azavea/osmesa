@@ -1,6 +1,6 @@
 import Dependencies._
 
-name := "osmesa-ingest"
+name := "ingest"
 
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
