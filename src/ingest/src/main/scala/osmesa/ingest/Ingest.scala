@@ -243,7 +243,7 @@ object Ingest extends CommandApp(
 
         // Write out populated spatial keys (use DF for append abilities)
         import ss.implicits._
-        keys.distinct.toDF.repartition(1)
+        keys.distinct.toDF
           .write.format("text").mode(SaveMode.Append).save(s"s3://${bucket}/${prefix}/keys")
 
         GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, layer), zoom, bucket, prefix)
