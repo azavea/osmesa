@@ -13,3 +13,4 @@ object TileLayouts extends LazyLogging {
 
   def apply(i: Int) = layouts(i)
 }
+

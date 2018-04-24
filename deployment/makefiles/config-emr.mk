@@ -2,8 +2,8 @@ export NAME := OSM Vector Tile Ingest - ${USER}
 export MASTER_INSTANCE:=m3.xlarge
 export MASTER_PRICE := 0.10
 export WORKER_INSTANCE:=m3.xlarge
-export WORKER_PRICE := 0.10
-export WORKER_COUNT := 128
+export WORKER_PRICE := 0.07
+export WORKER_COUNT := 50
 export USE_SPOT := true
 
 export DRIVER_MEMORY := 10000M
