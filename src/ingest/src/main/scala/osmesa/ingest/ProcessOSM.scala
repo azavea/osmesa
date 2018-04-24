@@ -44,11 +44,21 @@ object ProcessOSM {
     * @param history DataFrame containing nodes.
     * @return processed nodes.
     */
-  def preprocessNodes(history: DataFrame): DataFrame = {
+  def preprocessNodes(history: DataFrame, extent: Option[Extent] = None): DataFrame = {
     import history.sparkSession.implicits._
 
-    if (history.columns.contains("validUntil")) {
-      history
+    val filteredHistory =
+      extent match {
+        case Some(e) =>
+          history
+            .where('lat > e.ymin and 'lat < e.ymax)
+            .where('lon > e.xmin and 'lon < e.xmax)
+        case None =>
+          history
+      }
+
+    if (filteredHistory.columns.contains("validUntil")) {
+      filteredHistory
     } else {
       @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
@@ -57,7 +67,7 @@ object ProcessOSM {
 
       // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
       // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
-      history
+      filteredHistory
         .where('type === "node")
         .select(
           'id,
