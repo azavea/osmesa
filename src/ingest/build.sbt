@@ -7,6 +7,7 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
 libraryDependencies ++= Seq(
+  "org.apache.commons" % "commons-compress" % "1.16.1",
   decline,
   sparkHive % "provided",
   //gtGeomesa exclude("com.google.protobuf", "protobuf-java"),
