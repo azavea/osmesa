@@ -3,6 +3,7 @@ package osmesa
 import java.net.URI
 
 import cats.implicits._
+import cats.data._
 import com.monovore.decline._
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.spark._
@@ -16,6 +17,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.ingest.util.Caching
+import org.apache.hadoop.fs._
 import vectorpipe._
 
 import scala.collection.mutable.ArrayBuffer
@@ -90,6 +92,15 @@ object Ingest extends CommandApp(
   header = "Ingest OSM ORC into GeoMesa instance",
   main = {
 
+    // Used for producing an extent from the provided string
+    implicit val readExtent: Argument[Extent] = new Argument[Extent] {
+
+      override def read(string: String): ValidatedNel[String, Extent] =
+        try { Validated.valid(Extent.fromString(string)) }
+        catch { case _: Exception => Validated.invalidNel(s"Invalid Extent: unable to parse $string") }
+
+      override def defaultMetavar: String = "extent"
+    }
     /* CLI option handling */
     val orcO = Opts.option[String]("orc", help = "Location of the ORC file to process")
     val changesetsO = Opts.option[String]("changesets", help = "Location of the ORC file containing changesets")
@@ -97,11 +108,11 @@ object Ingest extends CommandApp(
     val prefixO = Opts.option[String]("key", help = "S3 directory (in bucket) to write to")
     val layerO = Opts.option[String]("layer", help = "Name of the output Layer")
     val maxzoomO = Opts.option[Int]("zoom", help = "Maximum zoom level for ingest (default=14)").withDefault(14)
-    val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
     val pyramidF = Opts.flag("pyramid", help = "Pyramid this layer").orFalse
-    val filter = Opts.flag("filter", help = "GeoJSON multipolygon which contains all points for geoms to be processed")
+    val cacheDirO = Opts.option[String]("cache", help = "Location to cache ORC files").withDefault("")
+    val extentO = Opts.option[Extent]("extent", help = "Geographic extent for this layer (format: <xmin>,<ymin>,<xmax>,<ymax>").orNone
 
-    (orcO, changesetsO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO).mapN { (orc, changesetsSrc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir) =>
+    (orcO, changesetsO, bucketO, prefixO, layerO, maxzoomO, pyramidF, cacheDirO, extentO).mapN { (orc, changesetsSrc, bucket, prefix, layer, maxZoomLevel, pyramid, cacheDir, extent) =>
 
       println(s"ORC: ${orc}")
       println(s"OUTPUT: ${bucket}/${prefix}")
@@ -135,7 +146,7 @@ object Ingest extends CommandApp(
       }
 
       val ppnodes = cache.orc("prepared_nodes.orc") {
-        ProcessOSM.preprocessNodes(df)
+        ProcessOSM.preprocessNodes(df, extent)
       }
 
       val ppways = cache.orc("prepared_ways.orc") {
@@ -227,6 +238,14 @@ object Ingest extends CommandApp(
 
       def build[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, GenerateVT.VTF[G]))], layoutLevel: LayoutLevel): Unit = {
         val LayoutLevel(zoom, layout) = layoutLevel
+        val fs = FileSystem.get(new URI(s"s3://${bucket}"), ss.sparkContext.hadoopConfiguration)
+        val keys = if (fs.exists(new Path(s"s3://${bucket}/${prefix}/${zoom}/keys"))) {
+          val existingKeys = ss.read.textFile(s"${bucket}/${prefix}/${zoom}/keys")
+          (existingKeys.rdd ++ keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"}))
+        } else {
+          keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"})
+        }
+        keys.saveAsTextFile(s"${bucket}/${prefix}/${zoom}/keys")
 
         GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, layer), zoom, bucket, prefix)
 
