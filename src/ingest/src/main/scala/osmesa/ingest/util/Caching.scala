@@ -28,7 +28,7 @@ class S3Caching(cacheDir: String) extends Caching {
     if (s3exists(filename)) {
       ss.read.orc(fileUri(filename))
     } else {
-      sparkjob.repartition(1).write.format("orc").save(fileUri(filename))
+      sparkjob.repartition(500).write.format("orc").save(fileUri(filename))
       sparkjob
     }
   }

@@ -17,6 +17,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.ingest.util.Caching
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import org.apache.hadoop.fs._
 import vectorpipe._
 
@@ -236,16 +237,18 @@ object Ingest extends CommandApp(
 
       val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
 
+
+      val s3client = AmazonS3ClientBuilder.defaultClient()
+
       def build[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, GenerateVT.VTF[G]))], layoutLevel: LayoutLevel): Unit = {
         val LayoutLevel(zoom, layout) = layoutLevel
-        val fs = FileSystem.get(new URI(s"s3://${bucket}"), ss.sparkContext.hadoopConfiguration)
-        val keys = if (fs.exists(new Path(s"s3://${bucket}/${prefix}/${zoom}/keys"))) {
-          val existingKeys = ss.read.textFile(s"${bucket}/${prefix}/${zoom}/keys")
-          (existingKeys.rdd ++ keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"}))
-        } else {
-          keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"})
-        }
-        keys.saveAsTextFile(s"${bucket}/${prefix}/${zoom}/keys")
+        val objects = s3client.listObjects(bucket, prefix).getObjectSummaries
+        val keys = keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"})
+
+        // Write out populated spatial keys (use DF for append abilities)
+        import ss.implicits._
+        keys.distinct.toDF.repartition(1)
+          .write.format("text").mode(SaveMode.Append).save(s"s3://${bucket}/${prefix}/keys")
 
         GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, layer), zoom, bucket, prefix)
 
