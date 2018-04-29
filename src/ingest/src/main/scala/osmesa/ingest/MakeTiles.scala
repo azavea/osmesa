@@ -5,13 +5,13 @@ import com.monovore.decline._
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.spark.SpatialKey
 import geotrellis.spark.tiling.{LayoutLevel, ZoomedLayoutScheme}
-import geotrellis.vector.io._
 import geotrellis.vector.{Feature, Geometry}
 import geotrellis.vectortile.{VInt64, VString}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
+import geotrellis.vector.io._
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -80,9 +80,9 @@ object MakeTiles extends CommandApp(
 
           // e.g. n123, w456, r789
           val elementId = _type match {
-            case ProcessOSM.NODE_TYPE => s"n${id}"
-            case ProcessOSM.WAY_TYPE => s"w${id}"
-            case ProcessOSM.RELATION_TYPE => s"r${id}"
+            case ProcessOSM.NodeType => s"n${id}"
+            case ProcessOSM.WayType => s"w${id}"
+            case ProcessOSM.RelationType => s"r${id}"
             case _ => id.toString
           }
 
