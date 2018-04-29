@@ -68,10 +68,10 @@ object DebugRelations extends CommandApp(
             .map {
               case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
                 val types = rows.map(_.getAs[String]("type") match {
-                  case "node" => Some(NodeType)
-                  case "way" => Some(WayType)
-                  case "relation" => Some(RelationType)
-                  case _ => None
+                  case "node" => NodeType
+                  case "way" => WayType
+                  case "relation" => RelationType
+                  case _ => null.asInstanceOf[Byte]
                 })
                 val roles = rows.map(_.getAs[String]("role"))
                 val geoms = rows.map(_.getAs[Array[Byte]]("geom"))

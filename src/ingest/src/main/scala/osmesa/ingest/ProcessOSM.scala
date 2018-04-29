@@ -170,9 +170,10 @@ object ProcessOSM {
         .repartition('id)
         .select(
           'id,
-          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise
-          ('tags) as 'tags,
-          'members,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull,
+            lag('tags, 1) over idByUpdated)
+          .otherwise('tags) as 'tags,
+          compressMemberTypes('members) as 'members,
           'changeset,
           'timestamp,
           (lead('timestamp, 1) over idByUpdated) as 'validUntil,
@@ -406,7 +407,7 @@ object ProcessOSM {
     // If you need authorship, join on changesets
     val relationsByChangeset = geoms
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
-      .withColumn("type", lit("way"))
+      .withColumn("type", lit(WayType))
       .select('type, 'changeset, 'id, 'updated)
       .join(waysToRelations, Seq("id", "type"))
       .where(waysToRelations("timestamp") <= geoms("updated") and geoms("updated") < coalesce(waysToRelations
@@ -460,7 +461,7 @@ object ProcessOSM {
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
       .join(
         geoms.select(
-          lit("way") as 'type,
+          lit(WayType) as 'type,
           'id as "ref",
           'updated as 'memberUpdated,
           'validUntil as 'memberValidUntil,
@@ -485,12 +486,7 @@ object ProcessOSM {
           )
           .map {
             case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
-              val types = rows.map(_.getAs[String]("type") match {
-                case "node" => Some(NodeType)
-                case "way" => Some(WayType)
-                case "relation" => Some(RelationType)
-                case _ => None
-              })
+              val types = rows.map(_.getAs[Byte]("type"))
               val roles = rows.map(_.getAs[String]("role"))
               val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
 

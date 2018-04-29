@@ -8,9 +8,11 @@ import com.vividsolutions.jts.geom._
 import geotrellis.vector.io._
 import geotrellis.vector.{Line, MultiPolygon, Polygon}
 import org.apache.log4j.Logger
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
-import osmesa.ProcessOSM
+import org.apache.spark.sql.types._
+import osmesa.ProcessOSM._
 
 import scala.annotation.tailrec
 import scala.collection.GenTraversable
@@ -141,6 +143,28 @@ package object osm {
     tags.contains("type") && MultiPolygonTypes.contains(tags("type").toLowerCase)
 
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
+
+  private val MemberSchema = ArrayType(
+    StructType(
+      StructField("type", ByteType, nullable = false) ::
+        StructField("ref", LongType, nullable = false) ::
+        StructField("role", StringType, nullable = false) ::
+        Nil), containsNull = false)
+
+  private val _compressMemberTypes = (members: Seq[Row]) =>
+    members.map { row =>
+      val t = row.getAs[String]("type") match {
+        case "node" => NodeType
+        case "way" => WayType
+        case "relation" => RelationType
+      }
+      val ref = row.getAs[Long]("ref")
+      val role = row.getAs[String]("role")
+
+      Row(t, ref, role)
+    }
+
+  val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
 
   class AssemblyException(msg: String) extends Exception(msg)
 
@@ -406,8 +430,8 @@ package object osm {
   }
 
   // TODO this (and accompanying functions) doesn't belong here
-  def buildMultiPolygon(id: Long, version: Int, timestamp: Timestamp, types: Seq[Option[Byte]], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
-    if (types.zip(wkbs).exists { case (t, g) => t.contains(ProcessOSM.WayType) && Option(g).isEmpty }) {
+  def buildMultiPolygon(id: Long, version: Int, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
+    if (types.zip(wkbs).exists { case (t, g) => t == WayType && Option(g).isEmpty }) {
       // bail early if null values are present where they should exist (members w/ type=way)
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
       None
