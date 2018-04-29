@@ -278,8 +278,6 @@ object ProcessOSM {
       .join(nodesToWays, Array("id"))
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
       .select('changeset, 'wayId as 'id, 'version, 'updated)
-      .groupBy('changeset, 'id)
-      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
 
     // If a node and a way were modified within the same changeset at different times, there will be multiple entries
     // per changeset (with different timestamps). There should probably be one, grouped by the changeset.
@@ -413,8 +411,6 @@ object ProcessOSM {
       .where(waysToRelations("timestamp") <= geoms("updated") and geoms("updated") < coalesce(waysToRelations
       ("validUntil"), current_timestamp))
       .select('changeset, 'relationId as 'id, 'version, 'updated)
-      .groupBy('changeset, 'id)
-      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
 
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
