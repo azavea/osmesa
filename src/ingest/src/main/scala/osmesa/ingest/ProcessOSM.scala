@@ -163,7 +163,7 @@ object ProcessOSM {
     } else {
       @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
+      // when an element has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
       // present and use those
       history
         .where('type === "relation")
