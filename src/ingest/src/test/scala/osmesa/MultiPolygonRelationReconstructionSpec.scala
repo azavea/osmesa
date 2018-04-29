@@ -90,7 +90,7 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
 
         // TODO rewrite fixtures with additional columns added below
         val actual = asWKT(fixture.members
-          .withColumn("version", lit(1L))
+          .withColumn("version", lit(1))
           .withColumn("minorVersion", lit(0))
           .withColumn("updated", lit(Timestamp.valueOf("2001-01-01 00:00:00")))
           .withColumn("validUntil", lit(Timestamp.valueOf("2002-01-01 00:00:00")))
@@ -99,7 +99,7 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
             rows
               .toVector
               .groupBy(row =>
-                (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Long]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+                (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
               )
               .map {
                 case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>

@@ -7,6 +7,7 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
+import org.apache.spark.sql.types.IntegerType
 import osmesa.ProcessOSM._
 import osmesa.functions._
 import osmesa.functions.osm._
@@ -55,13 +56,14 @@ object DebugRelations extends CommandApp(
       ss.read.orc(orc)
         .where('id === 8650)
         .where('role.isin(MultiPolygonRoles: _*))
+        .withColumn("version", 'version.cast(IntegerType))
         .distinct
         .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
         .mapPartitions(rows => {
           rows
             .toVector
             .groupBy(row =>
-              (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Long]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+              (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
             )
             .map {
               case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
