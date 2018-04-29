@@ -5,10 +5,12 @@ import java.sql.Timestamp
 import geotrellis.spark.io.kryo.KryoRegistrator
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
+import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql._
 import org.scalatest.prop.{TableDrivenPropertyChecks, Tables}
 import org.scalatest.{Matchers, PropSpec}
+import osmesa.ProcessOSM._
 import osmesa.functions._
 import osmesa.functions.osm._
 
@@ -84,9 +86,39 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
       forAll(examples) { fixture =>
         import fixture.members.sparkSession.implicits._
 
-        val actual = asWKT(fixture.members.withColumn("version", lit(1L)).withColumn("timestamp", lit(Timestamp.valueOf("2001-01-01 00:00:00")))
-          .groupBy('changeset, 'id, 'version, 'timestamp)
-          .agg(collectRelation('id, 'version, 'timestamp, 'type, 'role, 'geom) as 'geom))
+        implicit val encoder: Encoder[Row] = VersionedElementEncoder
+
+        // TODO rewrite fixtures with additional columns added below
+        val actual = asWKT(fixture.members
+          .withColumn("version", lit(1L))
+          .withColumn("minorVersion", lit(0))
+          .withColumn("updated", lit(Timestamp.valueOf("2001-01-01 00:00:00")))
+          .withColumn("validUntil", lit(Timestamp.valueOf("2002-01-01 00:00:00")))
+          .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
+          .mapPartitions(rows => {
+            rows
+              .toVector
+              .groupBy(row =>
+                (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Long]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+              )
+              .map {
+                case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
+                  val types = rows.map(_.getAs[String]("type") match {
+                    case "node" => Some(NodeType)
+                    case "way" => Some(WayType)
+                    case "relation" => Some(RelationType)
+                    case _ => None
+                  })
+                  val roles = rows.map(_.getAs[String]("role"))
+                  val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
+
+                  val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
+
+                  new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row
+              }
+              .toIterator
+          })
+        )
 
         val expected = fixture.wkt
 
