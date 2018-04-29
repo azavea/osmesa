@@ -29,8 +29,7 @@ object ProcessOSM {
   val BareElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
-      // TODO treat this as an Int everywhere
-      StructField("version", LongType, nullable = false) ::
+      StructField("version", IntegerType, nullable = false) ::
       StructField("updated", TimestampType, nullable = false) ::
       StructField("geom", BinaryType) ::
       Nil)
@@ -40,7 +39,7 @@ object ProcessOSM {
   val VersionedElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
-      StructField("version", LongType, nullable = false) ::
+      StructField("version", IntegerType, nullable = false) ::
       StructField("minorVersion", IntegerType, nullable = false) ::
       StructField("updated", TimestampType, nullable = false) ::
       StructField("validUntil", TimestampType) ::
@@ -100,14 +99,14 @@ object ProcessOSM {
           when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull,
             lag('tags, 1) over idByUpdated)
           .otherwise('tags) as 'tags,
-          when(!'visible, null).otherwise(asDouble('lat)) as 'lat,
-          when(!'visible, null).otherwise(asDouble('lon)) as 'lon,
+          when(!'visible, null).otherwise(asFloat('lat)) as 'lat,
+          when(!'visible, null).otherwise(asFloat('lon)) as 'lon,
           'changeset,
           'timestamp,
           (lead('timestamp, 1) over idByUpdated) as 'validUntil,
           'uid,
           'user,
-          'version,
+          'version.cast(IntegerType) as 'version,
           'visible)
     }
   }
@@ -143,7 +142,7 @@ object ProcessOSM {
           (lead('timestamp, 1) over idByUpdated) as 'validUntil,
           'uid,
           'user,
-          'version,
+          'version.cast(IntegerType) as 'version,
           'visible)
     }
   }
@@ -179,7 +178,7 @@ object ProcessOSM {
           (lead('timestamp, 1) over idByUpdated) as 'validUntil,
           'uid,
           'user,
-          'version,
+          'version.cast(IntegerType) as 'version,
           'visible)
     }
   }
@@ -224,7 +223,7 @@ object ProcessOSM {
       // fetch the last version of a node within a single changeset
       .select('changeset, 'id, 'version, 'timestamp)
       .groupBy('changeset, 'id)
-      .agg(max('version) as 'version, max('timestamp) as 'updated)
+      .agg(max('version).cast(IntegerType) as 'version, max('timestamp) as 'updated)
       .join(ns.drop('changeset), Seq("id", "version"))
       .select(
         lit(NodeType) as '_type,
@@ -279,7 +278,7 @@ object ProcessOSM {
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
       .select('changeset, 'wayId as 'id, 'version, 'updated)
       .groupBy('changeset, 'id)
-      .agg(max('version) as 'version, max('updated) as 'updated)
+      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
 
     // If a node and a way were modified within the same changeset at different times, there will be multiple entries
     // per changeset (with different timestamps). There should probably be one, grouped by the changeset.
@@ -290,7 +289,7 @@ object ProcessOSM {
       // If a node and a way were modified within the same changeset at different times, there will be multiple entries
       // per changeset (with different timestamps). There should only be one per changeset.
       .groupBy('changeset, 'id)
-      .agg(max('version) as 'version, max('updated) as 'updated)
+      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
       .join(ways.select('id, 'version, 'nds, 'isArea), Seq("id", "version"))
 
     val explodedWays = allWayVersions
@@ -316,14 +315,14 @@ object ProcessOSM {
         rows
           .toVector
           .groupBy(row =>
-            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Long]("version"), row.getAs[Timestamp]("updated"))
+            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Timestamp]("updated"))
           )
           .map {
             case ((changeset, id, version, updated), rows: Seq[Row]) =>
               val isArea = rows.head.getAs[Boolean]("isArea")
               val geom = rows.map(row =>
-                Seq(Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN),
-                  Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN))) match {
+                Seq(Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN),
+                  Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN))) match {
                     // no coordinates provided
                     case coords if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
                     // some of the coordinates are empty; this is invalid
@@ -334,7 +333,7 @@ object ProcessOSM {
                     case coords if coords.length == 1 =>
                       Some(Point(coords.head.head, coords.head.last))
                     case coords => {
-                      coords.map(xy => (xy.head, xy.last)) match {
+                      coords.map(xy => (xy.head.toDouble, xy.last.toDouble)) match {
                         case pairs => Line(pairs)
                       }
                     } match {
@@ -414,7 +413,7 @@ object ProcessOSM {
       ("validUntil"), current_timestamp))
       .select('changeset, 'relationId as 'id, 'version, 'updated)
       .groupBy('changeset, 'id)
-      .agg(max('version) as 'version, max('updated) as 'updated)
+      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
 
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
@@ -482,7 +481,7 @@ object ProcessOSM {
         rows
           .toVector
           .groupBy(row =>
-            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Long]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
           )
           .map {
             case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>

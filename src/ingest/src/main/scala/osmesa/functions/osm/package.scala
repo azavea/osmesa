@@ -406,7 +406,7 @@ package object osm {
   }
 
   // TODO this (and accompanying functions) doesn't belong here
-  def buildMultiPolygon(id: Long, version: Long, timestamp: Timestamp, types: Seq[Option[Byte]], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
+  def buildMultiPolygon(id: Long, version: Int, timestamp: Timestamp, types: Seq[Option[Byte]], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
     if (types.zip(wkbs).exists { case (t, g) => t.contains(ProcessOSM.WayType) && Option(g).isEmpty }) {
       // bail early if null values are present where they should exist (members w/ type=way)
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
