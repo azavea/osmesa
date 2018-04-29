@@ -14,10 +14,6 @@ import osmesa.ProcessOSM
 
 import scala.annotation.tailrec
 import scala.collection.GenTraversable
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
-import scala.util.{Failure, Success, Try}
 
 package object osm {
   // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys).
@@ -145,10 +141,6 @@ package object osm {
     tags.contains("type") && MultiPolygonTypes.contains(tags("type").toLowerCase)
 
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
-
-  val collectWay = new WayAssembler
-
-  val collectRelation = new RelationAssembler
 
   class AssemblyException(msg: String) extends Exception(msg)
 
@@ -411,47 +403,11 @@ package object osm {
       case None =>
         (Vector.empty[Polygon], Vector.empty[Polygon])
     }
-    // TODO ensure that rings are sorted small -> large
-    // TODO @tailrec
-//    rings match {
-//      case Nil => (dissolvedOuters, dissolvedInners)
-//      case Seq(h, t @ _ *) =>
-//        t.filter(r => h.touches(r)) match {
-//          case touching if touching.isEmpty =>
-//            dissolveRings(t.filterNot(r => h.touches(r)), dissolvedOuters :+ Polygon(h.exterior), dissolvedInners ++ h.holes.map(Polygon(_)))
-//          case touching =>
-//            val dissolved = touching.sortWith(_.area < _.area).foldLeft(Vector(h)) {
-//              case (rs, r2) =>
-//                rs.flatMap { r =>
-//                  r.union(r2).toGeometry match {
-//                    case Some(p: Polygon) => Vector(p)
-//                    case Some(mp: MultiPolygon) => mp.polygons
-//                    case _ => throw new AssemblyException("Union failed.")
-//                  }
-//                }
-//            }
-//
-//            val remaining = t.filterNot(r => h.touches(r))
-//
-//            if (touching.length < dissolved.length) {
-//              // polygons were touching but couldn't be dissolved
-//              val rings = h +: touching
-//
-//              dissolveRings(remaining, dissolvedOuters ++ rings.map(_.exterior).map(Polygon(_)), dissolvedInners ++ rings.flatMap(_.holes).map(Polygon(_)))
-//            } else {
-//              // not touching
-//              // get components of the dissolved geometry that touch remaining geometries (to dissolve if necessary)
-//              val retryRings = dissolved.filter(d => remaining.exists(r => r.touches(d)))
-//              val newRings = dissolved.filterNot(d => remaining.exists(r => r.touches(d)))
-//
-//              dissolveRings(retryRings ++ remaining, dissolvedOuters ++ newRings.map(_.exterior).map(Polygon(_)), dissolvedInners ++ newRings.flatMap(_.holes).map(Polygon(_)))
-//            }
-//        }
-//    }
   }
 
-  def buildMultiPolygon(id: Long, version: Long, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
-    if (types.zip(wkbs).exists { case (t, g) => t == ProcessOSM.WayType && Option(g).isEmpty }) {
+  // TODO this (and accompanying functions) doesn't belong here
+  def buildMultiPolygon(id: Long, version: Long, timestamp: Timestamp, types: Seq[Option[Byte]], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
+    if (types.zip(wkbs).exists { case (t, g) => t.contains(ProcessOSM.WayType) && Option(g).isEmpty }) {
       // bail early if null values are present where they should exist (members w/ type=way)
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
       None
@@ -530,7 +486,6 @@ package object osm {
           logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): $e")
           e.getStackTrace.foreach(logger.warn)
           None
-        }
       }
     }
   }

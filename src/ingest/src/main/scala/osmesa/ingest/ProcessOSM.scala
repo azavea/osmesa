@@ -29,6 +29,7 @@ object ProcessOSM {
   val BareElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
+      // TODO treat this as an Int everywhere
       StructField("version", LongType, nullable = false) ::
       StructField("updated", TimestampType, nullable = false) ::
       StructField("geom", BinaryType) ::
@@ -66,7 +67,8 @@ object ProcessOSM {
 
   /**
     * Pre-process nodes. Copies coordinates + tags from versions prior to being deleted (!'visible), as they're cleared
-    * out otherwise, and adds 'validUntil.
+    * out otherwise, and adds 'validUntil based on the creation timestamp of the next version. Nodes with null
+    * 'validUntil values are currently valid.
     *
     * @param history DataFrame containing nodes.
     * @return processed nodes.
@@ -91,17 +93,13 @@ object ProcessOSM {
 
       // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
       // present and use those
-      // this is suitable for appending to directly (since none of the values need to change ever)
-
-      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were
-      // valid between `timestamp`
-      // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
       filteredHistory
         .where('type === "node")
         .select(
           'id,
-          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise
-          ('tags) as 'tags,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull,
+            lag('tags, 1) over idByUpdated)
+          .otherwise('tags) as 'tags,
           when(!'visible, null).otherwise(asDouble('lat)) as 'lat,
           when(!'visible, null).otherwise(asDouble('lon)) as 'lon,
           'changeset,
@@ -116,7 +114,8 @@ object ProcessOSM {
 
   /**
     * Pre-process ways. Copies tags from versions prior to being deleted (!'visible), as they're cleared out
-    * otherwise, dereferences 'nds.ref, and adds 'validUntil.
+    * otherwise, dereferences 'nds.ref, and adds 'validUntil based on the creation timestamp of the next version. Ways
+    * with null 'validUntil values are currently valid.
     *
     * @param history DataFrame containing ways.
     * @return processed ways.
@@ -131,17 +130,13 @@ object ProcessOSM {
 
       // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
       // present and use those
-      // this is suitable for appending to directly (since none of the values need to change ever)
-
-      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were
-      // valid between `timestamp`
-      // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
       history
         .where('type === "way")
         .select(
           'id,
-          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise
-          ('tags) as 'tags,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull,
+            lag('tags, 1) over idByUpdated)
+          .otherwise('tags) as 'tags,
           $"nds.ref" as 'nds,
           'changeset,
           'timestamp,
@@ -155,7 +150,8 @@ object ProcessOSM {
 
   /**
     * Pre-process relations. Copies tags from versions prior to being deleted (!'visible), as they're cleared out
-    * otherwise, and adds 'validUntil.
+    * otherwise, and adds 'validUntil based on the creation timestamp of the next version. Relations with null
+    * 'validUntil values are currently valid.
     *
     * @param history DataFrame containing relations.
     * @return processed relations.
@@ -170,11 +166,6 @@ object ProcessOSM {
 
       // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
       // present and use those
-      // this is suitable for appending to directly (since none of the values need to change ever)
-
-      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were
-      // valid between `timestamp`
-      // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
       history
         .where('type === "relation")
         .repartition('id)
@@ -280,9 +271,8 @@ object ProcessOSM {
     }
 
     // Create a way entry for each changeset in which a node was modified, containing the timestamp of the node that
-    // triggered
-    // the association. This will later be used to assemble ways at each of those points in time.
-    // If you need authorship, join on changesets
+    // triggered the association. This will later be used to assemble ways at each of those points in time. If you need
+    // authorship, join on changesets
     val waysByChangeset = nodes
       .select('changeset, 'id, 'timestamp as 'updated)
       .join(nodesToWays, Array("id"))
@@ -291,16 +281,17 @@ object ProcessOSM {
       .groupBy('changeset, 'id)
       .agg(max('version) as 'version, max('updated) as 'updated)
 
-    // join w/ waysByChangeset (on changeset, way id) later to pick up way versions
-    // Union with raw ways to include those in the time line (if they weren't already triggered by node modifications
-    // at the same time)
-    // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where
-    // there should
-    // probably be one, grouped by the changeset).
-    val allWayVersions = ways.select('id, 'version, 'nds, 'isArea)
-      .join(waysByChangeset, Seq("id", "version"))
-      .union(ways.select('id, 'version, 'nds, 'isArea, 'changeset, 'timestamp as 'updated))
-      .distinct
+    // If a node and a way were modified within the same changeset at different times, there will be multiple entries
+    // per changeset (with different timestamps). There should probably be one, grouped by the changeset.
+    val allWayVersions = waysByChangeset
+      // Union with raw ways to include those in the time line (if they weren't already triggered by node modifications
+      // at the same time)
+      .union(ways.select('id, 'version, 'changeset, 'timestamp as 'updated))
+      // If a node and a way were modified within the same changeset at different times, there will be multiple entries
+      // per changeset (with different timestamps). There should only be one per changeset.
+      .groupBy('changeset, 'id)
+      .agg(max('version) as 'version, max('updated) as 'updated)
+      .join(ways.select('id, 'version, 'nds, 'isArea), Seq("id", "version"))
 
     val explodedWays = allWayVersions
       .select('changeset, 'id, 'version, 'updated, 'isArea, posexplode_outer('nds) as Array("idx", "ref"))
@@ -312,23 +303,15 @@ object ProcessOSM {
       .join(nodes.select('id as 'ref, 'version as 'ref_version, 'timestamp, 'validUntil), Array("ref"), "left_outer")
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
 
-    // UDAF method
-    // val wayGeoms: DataFrame = waysAndNodes
-    //   .join(nodes.select('id as 'ref, 'version as 'ref_version, 'lat, 'lon), Seq("ref", "ref_version"), "left_outer")
-    //   .select('changeset, 'id, 'version, 'updated, 'isArea, 'idx, 'lat, 'lon)
-    //   .groupBy('changeset, 'id, 'version, 'updated)
-    //   // Create WKB geometries (LineStrings and Polygons)
-    //   .agg(collectWay('isArea, 'idx, 'lon, 'lat) as 'geom)
-
     implicit val encoder: Encoder[Row] = BareElementEncoder
 
-    // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
     val wayGeoms = waysAndNodes
       .join(nodes.select('id as 'ref, 'version as 'ref_version, 'lat, 'lon), Array("ref", "ref_version"), "left_outer")
       .select('changeset, 'id, 'version, 'updated, 'isArea, 'idx, 'lat, 'lon)
       .repartition('id, 'updated)
       .sortWithinPartitions('id, 'version, 'updated, 'idx)
       .drop('idx)
+      // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays) instead of using a UDAF
       .mapPartitions(rows => {
         rows
           .toVector
@@ -371,11 +354,11 @@ object ProcessOSM {
           .toIterator
       })
 
-    // Assign `minorVersion` and rewrite `validUntil` to match
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
     wayGeoms
+      // Assign `minorVersion` and rewrite `validUntil` to match
       .withColumn("validUntil", lead('updated, 1) over idByUpdated)
       .withColumn("minorVersion", (row_number over idAndVersionByUpdated) - 1)
       .join(ways.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
@@ -411,12 +394,11 @@ object ProcessOSM {
     val relations = preprocessRelations(_relations)
       .where(isMultiPolygon('tags))
 
+    // way to relation lookup table (missing 'role, since it's not needed here)
     val waysToRelations = relations
       .select(explode('members) as 'member, 'id as 'relationId, 'version, 'timestamp, 'validUntil)
       .withColumn("type", $"member.type")
       .withColumn("id", $"member.ref")
-      // role isn't needed for any lookups (here)
-      // .withColumn("role", $"member.role")
       .drop('member)
 
     // Create a relation entry for each changeset in which a geometry was modified, containing the timestamp and
@@ -437,19 +419,27 @@ object ProcessOSM {
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
+<<<<<<< HEAD
     // If a node, a way, and/or a relation were modified within the same changeset at different times, there will be
     // multiple entries (where there should probably be one, grouped by the changeset).
     val allRelationVersions = relations
       .select('id, 'version, 'members, 'visible)
       // join w/ relationsByChangeset (on changeset, relation id) later to pick up relation versions
       .join(relationsByChangeset, Array("id", "version"))
+=======
+    val allRelationVersions = relationsByChangeset
+>>>>>>> Cleanup
       // Union with raw relations to include those in the time line (if they weren't already triggered by geometry
       // modifications at the same time)
-      .union(relations.select('id, 'version, 'members, 'visible, 'changeset, 'timestamp as 'updated))
-      .distinct
+      .union(relations.select('id, 'version, 'changeset, 'timestamp as 'updated))
+      // If a node, a way, and/or a relation were modified within the same changeset at different times, there will be
+      // multiple entries with different timestamps; this reduces them down to a single update per changeset.
+      .groupBy('changeset, 'id)
+      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
+      .join(relations.select('id, 'version, 'members), Seq("id", "version"))
       // assign `minorVersion` and rewrite `validUntil` to match
       // this is done early (at the expense of passing through the shuffle w/ exploded 'members) to avoid extremely
-      // large partitions after geometries have been constructed
+      // large partitions (see: Germany w/ 7k+ geometry versions) after geometries have been constructed
       .withColumn("validUntil", lead('updated, 1) over idByUpdated)
       .withColumn("minorVersion", (row_number over idAndVersionByUpdated) - 1)
 
@@ -483,11 +473,6 @@ object ProcessOSM {
       .drop('memberValidUntil)
       .drop('ref)
 
-    // UDAF approach
-//     val relationGeoms = members
-//       .groupBy('changeset, 'id, 'version, 'updated)
-//       .agg(collectRelation('id, 'version, 'updated, 'type, 'role, 'geom) as 'geom)
-
     implicit val encoder: Encoder[Row] = VersionedElementEncoder
 
     // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
@@ -502,9 +487,10 @@ object ProcessOSM {
           .map {
             case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
               val types = rows.map(_.getAs[String]("type") match {
-                case "node" => NodeType
-                case "way" => WayType
-                case "relation" => RelationType
+                case "node" => Some(NodeType)
+                case "way" => Some(WayType)
+                case "relation" => Some(RelationType)
+                case _ => None
               })
               val roles = rows.map(_.getAs[String]("role"))
               val geoms = rows.map(_.getAs[Array[Byte]]("geom"))

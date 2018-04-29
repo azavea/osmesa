@@ -1,12 +1,15 @@
 package osmesa
 
+import java.sql.Timestamp
+
 import com.monovore.decline._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
-import osmesa.ProcessOSM.MultiPolygonRoles
+import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
+import osmesa.ProcessOSM._
 import osmesa.functions._
-import osmesa.functions.osm.collectRelation
+import osmesa.functions.osm._
 
 /*
  * Usage example:
@@ -47,14 +50,38 @@ object DebugRelations extends CommandApp(
       /* Silence the damn INFO logger */
       Logger.getRootLogger.setLevel(Level.WARN)
 
+      implicit val encoder: Encoder[Row] = VersionedElementEncoder
+
       ss.read.orc(orc)
         .where('id === 8650)
         .where('role.isin(MultiPolygonRoles: _*))
         .distinct
-        .repartition(1)
-        .groupBy('changeset, 'id, 'version, 'updated)
-        .agg(collectRelation('id, 'version, 'updated, 'type, 'role, 'geom) as 'geom)
+        .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
+        .mapPartitions(rows => {
+          rows
+            .toVector
+            .groupBy(row =>
+              (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Long]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+            )
+            .map {
+              case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
+                val types = rows.map(_.getAs[String]("type") match {
+                  case "node" => Some(NodeType)
+                  case "way" => Some(WayType)
+                  case "relation" => Some(RelationType)
+                  case _ => None
+                })
+                val roles = rows.map(_.getAs[String]("role"))
+                val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
+
+                val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
+
+                new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row
+            }
+            .toIterator
+        })
         .select('changeset, 'id, 'version, 'updated, ST_AsText('geom) as 'wkt)
+        .repartition(1)
         .write
         .mode("overwrite")
         .format("csv")
