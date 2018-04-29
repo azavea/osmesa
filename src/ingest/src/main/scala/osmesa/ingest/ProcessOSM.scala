@@ -8,18 +8,45 @@ import geotrellis.vector.io._
 import geotrellis.vector.io.json._
 import org.apache.log4j.Logger
 import org.apache.spark.sql._
+import org.apache.spark.sql.catalyst.encoders.RowEncoder
+import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
 import osmesa.functions._
 import osmesa.functions.osm._
+import osmesa.ingest.util.Caching
 import spray.json._
 
 object ProcessOSM {
-  val NODE_TYPE: Byte = 1
-  val WAY_TYPE: Byte = 2
-  val RELATION_TYPE: Byte = 3
+  val NodeType: Byte = 1
+  val WayType: Byte = 2
+  val RelationType: Byte = 3
+  val MultiPolygonRoles: Seq[String] = Set("", "outer", "inner").toSeq
 
   lazy val logger: Logger = Logger.getLogger(getClass)
+
+  val BareElementSchema = StructType(
+    StructField("changeset", LongType, nullable = false) ::
+      StructField("id", LongType, nullable = false) ::
+      StructField("version", LongType, nullable = false) ::
+      StructField("updated", TimestampType, nullable = false) ::
+      StructField("geom", BinaryType) ::
+      Nil)
+
+  val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
+
+  val VersionedElementSchema = StructType(
+    StructField("changeset", LongType, nullable = false) ::
+      StructField("id", LongType, nullable = false) ::
+      StructField("version", LongType, nullable = false) ::
+      StructField("minorVersion", IntegerType, nullable = false) ::
+      StructField("updated", TimestampType, nullable = false) ::
+      StructField("validUntil", TimestampType) ::
+      StructField("geom", BinaryType) ::
+      Nil)
+
+  val VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
 
   /**
     * Snapshot pre-processed elements.
@@ -62,16 +89,19 @@ object ProcessOSM {
     } else {
       @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
+      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
+      // present and use those
       // this is suitable for appending to directly (since none of the values need to change ever)
 
-      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
+      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were
+      // valid between `timestamp`
       // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
       filteredHistory
         .where('type === "node")
         .select(
           'id,
-          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags) as 'tags,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise
+          ('tags) as 'tags,
           when(!'visible, null).otherwise(asDouble('lat)) as 'lat,
           when(!'visible, null).otherwise(asDouble('lon)) as 'lon,
           'changeset,
@@ -99,16 +129,19 @@ object ProcessOSM {
     } else {
       @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
+      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
+      // present and use those
       // this is suitable for appending to directly (since none of the values need to change ever)
 
-      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
+      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were
+      // valid between `timestamp`
       // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
       history
         .where('type === "way")
         .select(
           'id,
-          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags) as 'tags,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise
+          ('tags) as 'tags,
           $"nds.ref" as 'nds,
           'changeset,
           'timestamp,
@@ -135,17 +168,20 @@ object ProcessOSM {
     } else {
       @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags present and use those
+      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
+      // present and use those
       // this is suitable for appending to directly (since none of the values need to change ever)
 
-      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were valid between `timestamp`
+      // Add `validUntil`.  This allows time slices to be made more effectively by filtering for nodes that were
+      // valid between `timestamp`
       // and `validUntil`.  Nodes with `null` `validUntil` are currently valid.
       history
         .where('type === "relation")
         .repartition('id)
         .select(
           'id,
-          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise('tags) as 'tags,
+          when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull, lag('tags, 1) over idByUpdated).otherwise
+          ('tags) as 'tags,
           'members,
           'changeset,
           'timestamp,
@@ -175,15 +211,14 @@ object ProcessOSM {
 
     val relationGeoms = ProcessOSM.reconstructRelationGeometries(elements, wayGeoms)
 
-    // TODO remove way geoms that contribute to relations but have no inherent value (unclear how to identify these)
     nodeGeoms
       .union(wayGeoms.where(size('tags) > 0))
       .union(relationGeoms)
   }
 
   /**
-    * Construct point geometries. "Uninteresting" nodes are not included (although they may be necessary for way +
-    * relation assembly).
+    * Construct point geometries. "Uninteresting" nodes are not included, so this is not suitable for way/relation
+    * assembly.
     *
     * @param nodes DataFrame containing nodes
     * @return Nodes as Point geometries
@@ -191,15 +226,22 @@ object ProcessOSM {
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
     import nodes.sparkSession.implicits._
 
-    preprocessNodes(nodes)
+    val ns = preprocessNodes(nodes)
       .where(size('tags) > 0)
+
+    ns
+      // fetch the last version of a node within a single changeset
+      .select('changeset, 'id, 'version, 'timestamp)
+      .groupBy('changeset, 'id)
+      .agg(max('version) as 'version, max('timestamp) as 'updated)
+      .join(ns.drop('changeset), Seq("id", "version"))
       .select(
-        lit(NODE_TYPE) as '_type,
+        lit(NodeType) as '_type,
         'id,
         ST_Point('lon, 'lat) as 'geom,
         'tags,
         'changeset,
-        'timestamp as 'updated,
+        'updated,
         'validUntil,
         'visible,
         'version)
@@ -216,14 +258,16 @@ object ProcessOSM {
     * @param _nodesToWays Optional lookup table.
     * @return Way geometries.
     */
-  def reconstructWayGeometries(_ways: DataFrame, _nodes: DataFrame, _nodesToWays: Option[DataFrame] = None): DataFrame = {
-    import _nodes.sparkSession.implicits._
+  def reconstructWayGeometries(_ways: DataFrame, _nodes: DataFrame, _nodesToWays: Option[DataFrame] = None)(implicit
+                                                                                                            cache: Caching = Caching.none): DataFrame = {
+    implicit val ss: SparkSession = _ways.sparkSession
+    import ss.implicits._
 
     val nodes = preprocessNodes(_nodes)
-      // some nodes at (0, 0) are valid, but most are not (and some are redacted, which causes problems when clipping the
-      // resulting geometries to a grid)
-      // TODO this probably needs to be fixed in osm2orc by writing out Double.NaN instead of null (which requires
-      // osm4j-core to not use primitive types for node coordinates)
+      // some nodes at (0, 0) are valid, but most are not (and some are redacted, which causes problems when clipping
+      // the resulting geometries to a grid)
+      // TODO this has been fixed (but not merged) in osm2orc (https://github.com/mojodna/osm2orc/pull/11), so missing
+      // coordinates should be null
       .where('lat =!= 0 and 'lon =!= 0)
 
     val ways = preprocessWays(_ways)
@@ -235,7 +279,8 @@ object ProcessOSM {
         .select(explode('nds) as 'id, 'id as 'wayId, 'version, 'timestamp, 'validUntil)
     }
 
-    // Create a way entry for each changeset in which a node was modified, containing the timestamp of the node that triggered
+    // Create a way entry for each changeset in which a node was modified, containing the timestamp of the node that
+    // triggered
     // the association. This will later be used to assemble ways at each of those points in time.
     // If you need authorship, join on changesets
     val waysByChangeset = nodes
@@ -247,11 +292,13 @@ object ProcessOSM {
       .agg(max('version) as 'version, max('updated) as 'updated)
 
     // join w/ waysByChangeset (on changeset, way id) later to pick up way versions
-    // Union with raw ways to include those in the time line (if they weren't already triggered by node modifications at the same time)
-    // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where there should
+    // Union with raw ways to include those in the time line (if they weren't already triggered by node modifications
+    // at the same time)
+    // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where
+    // there should
     // probably be one, grouped by the changeset).
     val allWayVersions = ways.select('id, 'version, 'nds, 'isArea)
-      .join(waysByChangeset, Array("id", "version"))
+      .join(waysByChangeset, Seq("id", "version"))
       .union(ways.select('id, 'version, 'nds, 'isArea, 'changeset, 'timestamp as 'updated))
       .distinct
 
@@ -265,30 +312,84 @@ object ProcessOSM {
       .join(nodes.select('id as 'ref, 'version as 'ref_version, 'timestamp, 'validUntil), Array("ref"), "left_outer")
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
 
+    // UDAF method
+    // val wayGeoms: DataFrame = waysAndNodes
+    //   .join(nodes.select('id as 'ref, 'version as 'ref_version, 'lat, 'lon), Seq("ref", "ref_version"), "left_outer")
+    //   .select('changeset, 'id, 'version, 'updated, 'isArea, 'idx, 'lat, 'lon)
+    //   .groupBy('changeset, 'id, 'version, 'updated)
+    //   // Create WKB geometries (LineStrings and Polygons)
+    //   .agg(collectWay('isArea, 'idx, 'lon, 'lat) as 'geom)
+
+    implicit val encoder: Encoder[Row] = BareElementEncoder
+
+    // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
     val wayGeoms = waysAndNodes
       .join(nodes.select('id as 'ref, 'version as 'ref_version, 'lat, 'lon), Array("ref", "ref_version"), "left_outer")
       .select('changeset, 'id, 'version, 'updated, 'isArea, 'idx, 'lat, 'lon)
-      .groupBy('changeset, 'id, 'version, 'updated)
-      // Create WKB geometries (LineStrings and Polygons)
-      .agg(collectWay('isArea, 'idx, 'lon, 'lat) as 'geom)
+      .repartition('id, 'updated)
+      .sortWithinPartitions('id, 'version, 'updated, 'idx)
+      .drop('idx)
+      .mapPartitions(rows => {
+        rows
+          .toVector
+          .groupBy(row =>
+            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Long]("version"), row.getAs[Timestamp]("updated"))
+          )
+          .map {
+            case ((changeset, id, version, updated), rows: Seq[Row]) =>
+              val isArea = rows.head.getAs[Boolean]("isArea")
+              val geom = rows.map(row =>
+                Seq(Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN),
+                  Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN))) match {
+                    // no coordinates provided
+                    case coords if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
+                    // some of the coordinates are empty; this is invalid
+                    case coords if coords.exists(Option(_).isEmpty) => None
+                    // some of the coordinates are invalid
+                    case coords if coords.exists(_.exists(_.isNaN)) => None
+                    // 1 pair of coordinates provided
+                    case coords if coords.length == 1 =>
+                      Some(Point(coords.head.head, coords.head.last))
+                    case coords => {
+                      coords.map(xy => (xy.head, xy.last)) match {
+                        case pairs => Line(pairs)
+                      }
+                    } match {
+                      case ring if isArea && ring.vertexCount >= 4 && ring.isClosed =>
+                        Some(Polygon(ring))
+                      case line => Some(line)
+                    }
+                  }
+
+              val wkb = geom match {
+                case Some(g) if g.isValid => g.toWKB(4326)
+                case _ => null
+              }
+
+              new GenericRowWithSchema(Array(changeset, id, version, updated, wkb), BareElementSchema): Row
+          }
+          .toIterator
+      })
 
     // Assign `minorVersion` and rewrite `validUntil` to match
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
     wayGeoms
-      .join(ways.select('id, 'version, 'tags, 'visible), Array("id", "version"))
+      .withColumn("validUntil", lead('updated, 1) over idByUpdated)
+      .withColumn("minorVersion", (row_number over idAndVersionByUpdated) - 1)
+      .join(ways.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
       .select(
-        lit(WAY_TYPE) as '_type,
+        lit(WayType) as '_type,
         'id,
         'geom,
         'tags,
         'changeset,
         'updated,
-        (lead('updated, 1) over idByUpdated) as 'validUntil,
+        'validUntil,
         'visible,
         'version,
-        ((row_number over idAndVersionByUpdated) - 1) as 'minorVersion)
+        'minorVersion)
   }
 
   /**
@@ -298,15 +399,17 @@ object ProcessOSM {
     * associated with (each entry that exists within a changeset).
     *
     * @param _relations DataFrame containing relations to reconstruct.
-    * @param geoms     DataFrame containing way geometries to use in reconstruction.
+    * @param geoms      DataFrame containing way geometries to use in reconstruction.
     * @return Relations geometries.
     */
-  def reconstructRelationGeometries(_relations: DataFrame, geoms: DataFrame): DataFrame = {
-    import _relations.sparkSession.implicits._
+  def reconstructRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching = Caching.none,
+                                                                             cachePartitions: Option[Int] = None)
+  : DataFrame = {
+    implicit val ss: SparkSession = _relations.sparkSession
+    import ss.implicits._
 
-    // TODO 1280388@v1 for an old-style multipolygon (tags on ways)
-
-    val relations = preprocessRelations(_relations).where(isMultiPolygon('tags))
+    val relations = preprocessRelations(_relations)
+      .where(isMultiPolygon('tags))
 
     val waysToRelations = relations
       .select(explode('members) as 'member, 'id as 'relationId, 'version, 'timestamp, 'validUntil)
@@ -324,70 +427,115 @@ object ProcessOSM {
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
       .withColumn("type", lit("way"))
       .select('type, 'changeset, 'id, 'updated)
-      .join(waysToRelations, Array("id", "type"))
-      .where(waysToRelations("timestamp") <= geoms("updated") and geoms("updated") < coalesce(waysToRelations("validUntil"), current_timestamp))
+      .join(waysToRelations, Seq("id", "type"))
+      .where(waysToRelations("timestamp") <= geoms("updated") and geoms("updated") < coalesce(waysToRelations
+      ("validUntil"), current_timestamp))
       .select('changeset, 'relationId as 'id, 'version, 'updated)
       .groupBy('changeset, 'id)
       .agg(max('version) as 'version, max('updated) as 'updated)
 
-    // If a node and a way were modified within the same changeset at different times, there will be 2 entries (where
-    // there should probably be one, grouped by the changeset).
-    val allRelationVersions = relations.select('id, 'version, 'members, 'visible)
+    @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
+    @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
+
+    // If a node, a way, and/or a relation were modified within the same changeset at different times, there will be
+    // multiple entries (where there should probably be one, grouped by the changeset).
+    val allRelationVersions = relations
+      .select('id, 'version, 'members, 'visible)
       // join w/ relationsByChangeset (on changeset, relation id) later to pick up relation versions
       .join(relationsByChangeset, Array("id", "version"))
       // Union with raw relations to include those in the time line (if they weren't already triggered by geometry
       // modifications at the same time)
       .union(relations.select('id, 'version, 'members, 'visible, 'changeset, 'timestamp as 'updated))
       .distinct
+      // assign `minorVersion` and rewrite `validUntil` to match
+      // this is done early (at the expense of passing through the shuffle w/ exploded 'members) to avoid extremely
+      // large partitions after geometries have been constructed
+      .withColumn("validUntil", lead('updated, 1) over idByUpdated)
+      .withColumn("minorVersion", (row_number over idAndVersionByUpdated) - 1)
 
     val members = allRelationVersions
-      .select('changeset, 'id, 'version, 'updated, explode_outer('members) as "member")
+      .select('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil, explode_outer('members) as "member")
       .select(
         'changeset,
         'id,
         'version,
+        'minorVersion,
         'updated,
+        'validUntil,
         'member.getField("type") as 'type,
         'member.getField("ref") as 'ref,
         'member.getField("role") as 'role
       )
-      .repartition('changeset, 'id, 'version, 'updated)
+      .distinct
+      .where('role.isin(MultiPolygonRoles: _*))
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
-      .join(geoms.select(lit("way") as 'type, 'id as "ref", 'updated, 'validUntil, 'geom), Array("type", "ref"), "left_outer")
+      .join(
+        geoms.select(
+          lit("way") as 'type,
+          'id as "ref",
+          'updated as 'memberUpdated,
+          'validUntil as 'memberValidUntil,
+          'geom), Seq("type", "ref"), "left_outer")
       .where(
-        'geom.isNull or // allow null geoms through so we can check data validity later
-          (geoms("updated") <= allRelationVersions("updated") and allRelationVersions("updated") < coalesce(geoms("validUntil"), current_timestamp)))
-      .drop(geoms("updated"))
-      .drop(geoms("validUntil"))
+        ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts through
+          ('memberUpdated <= 'updated and 'updated < coalesce('memberValidUntil, current_timestamp)))
+      .drop('memberUpdated)
+      .drop('memberValidUntil)
+      .drop('ref)
 
+    // UDAF approach
+//     val relationGeoms = members
+//       .groupBy('changeset, 'id, 'version, 'updated)
+//       .agg(collectRelation('id, 'version, 'updated, 'type, 'role, 'geom) as 'geom)
+
+    implicit val encoder: Encoder[Row] = VersionedElementEncoder
+
+    // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
     val relationGeoms = members
-      .groupBy('changeset, 'id, 'version, 'updated)
-      .agg(collectRelation('id, 'version, 'updated, 'type, 'role, 'geom) as 'geom)
+      .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
+      .mapPartitions(rows => {
+        rows
+          .toVector
+          .groupBy(row =>
+            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Long]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+          )
+          .map {
+            case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
+              val types = rows.map(_.getAs[String]("type") match {
+                case "node" => NodeType
+                case "way" => WayType
+                case "relation" => RelationType
+              })
+              val roles = rows.map(_.getAs[String]("role"))
+              val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
 
-    // Assign `minorVersion` and rewrite `validUntil` to match
-    @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
-    @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
+              val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
+
+              new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row
+          }
+          .toIterator
+      })
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
       .join(relations.select('id, 'version, 'tags, 'visible), Array("id", "version"))
       .select(
-        lit(RELATION_TYPE) as '_type,
+        lit(RelationType) as '_type,
         'id,
         'geom,
         'tags,
         'changeset,
         'updated,
-        (lead('updated, 1) over idByUpdated) as 'validUntil,
+        'validUntil,
         'visible,
         'version,
-        ((row_number over idAndVersionByUpdated) - 1) as 'minorVersion)
+        'minorVersion)
   }
 
   /**
     * Augment geometries with user metadata.
     *
-    * @param geoms Geometries to augment.
+    * @param geoms      Geometries to augment.
     * @param changesets Changesets DataFrame with user metadata.
     * @return Geometries augmented with user metadata.
     */
@@ -481,9 +629,11 @@ object ProcessOSM {
       def lookup(geom: geotrellis.vector.Geometry): Traversable[CountryId] = {
         val t =
           new Traversable[(geotrellis.vector.prepared.PreparedGeometry[geotrellis.vector.MultiPolygon], CountryId)] {
-            override def foreach[U](f: ((geotrellis.vector.prepared.PreparedGeometry[geotrellis.vector.MultiPolygon], CountryId)) => U): Unit = {
+            override def foreach[U](f: ((geotrellis.vector.prepared.PreparedGeometry[geotrellis.vector.MultiPolygon],
+              CountryId)) => U): Unit = {
               val visitor = new com.vividsolutions.jts.index.ItemVisitor {
-                override def visitItem(obj: AnyRef): Unit = f(obj.asInstanceOf[(geotrellis.vector.prepared.PreparedGeometry[geotrellis.vector.MultiPolygon], CountryId)])
+                override def visitItem(obj: AnyRef): Unit = f(obj.asInstanceOf[(geotrellis.vector.prepared
+                .PreparedGeometry[geotrellis.vector.MultiPolygon], CountryId)])
               }
               index.rtree.query(geom.jtsGeom.getEnvelopeInternal, visitor)
             }

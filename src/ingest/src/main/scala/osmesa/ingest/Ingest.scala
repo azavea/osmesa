@@ -156,21 +156,21 @@ object Ingest extends CommandApp(
       val nodeGeoms = cache.orc("node_geoms.orc") {
         ProcessOSM.constructPointGeometries(ppnodes)
           .withColumn("minorVersion", lit(0))
-          .join(changesets.select('id as 'changeset, 'user), Array("changeset"))
+          .join(changesets.select('id as 'changeset, 'user), Seq("changeset"))
       }
 
       val wayGeoms = cache.orc("way_geoms.orc") {
         ProcessOSM.reconstructWayGeometries(ppways, ppnodes)
-          .join(changesets.select('id as 'changeset, 'user), Array("changeset"))
+          .join(changesets.select('id as 'changeset, 'user), Seq("changeset"))
       }
 
       val nodeAugmentations = nodeGeoms
-        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Array("changeset"))
+        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Seq("changeset"))
         .groupBy('id)
         .agg(min('updated) as 'creation, collect_set('author) as 'authors)
 
       val wayAugmentations = wayGeoms
-        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Array("changeset"))
+        .join(changesets.select('id as 'changeset, 'uid, 'user as 'author), Seq("changeset"))
         .groupBy('id)
         .agg(min('updated) as 'creation, collect_set('author) as 'authors)
 
@@ -206,9 +206,9 @@ object Ingest extends CommandApp(
 
           // e.g. n123, w456, r789
           val elementId = _type match {
-            case ProcessOSM.NODE_TYPE => s"n${id}"
-            case ProcessOSM.WAY_TYPE => s"w${id}"
-            case ProcessOSM.RELATION_TYPE => s"r${id}"
+            case ProcessOSM.NodeType => s"n${id}"
+            case ProcessOSM.WayType => s"w${id}"
+            case ProcessOSM.RelationType => s"r${id}"
           }
 
           // check validity of reprojected geometry
@@ -224,7 +224,7 @@ object Ingest extends CommandApp(
                   "__version" -> VInt64(version),
                   "__minorVersion" -> VInt64(minorVersion),
                   "__updated" -> VInt64(updated.getTime),
-                  "__vtileGen" -> VInt64(new java.sql.Timestamp(System.currentTimeMillis()).getTime),
+                  "__vtileGen" -> VInt64(System.currentTimeMillis),
                   "__creation" -> VInt64(creation.getTime),
                   "__authors" -> VString(authors),
                   "__lastAuthor" -> VString(user)
