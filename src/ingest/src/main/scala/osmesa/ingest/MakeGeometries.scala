@@ -69,9 +69,7 @@ object MakeGeometries extends CommandApp(
       // Construct geometries
       // this can also be done (sans caching) w/ ProcessOSM.constructGeometries
 
-      val nodes = cache.orc("prepared_nodes") {
-        ProcessOSM.preprocessNodes(df)
-      }
+      val nodes = ProcessOSM.preprocessNodes(df)
 
       val nodeGeoms = cache.orc("node_geoms") {
         ProcessOSM.constructPointGeometries(nodes)
