@@ -103,13 +103,6 @@ object ExtractMultiPolygons extends CommandApp(
         ProcessOSM.reconstructWayGeometries(referencedWays, referencedNodes, Some(nodesToWays))
       }.withColumn("type", lit("way"))
 
-//      wayGeoms
-//        .withColumn("wkt", ST_AsText('geom))
-//        .drop('geom)
-//        .write
-//        .mode(SaveMode.Overwrite)
-//        .orc(outGeoms)
-
       val relationGeoms = ProcessOSM.reconstructRelationGeometries(relations, wayGeoms)
 
       relationGeoms
