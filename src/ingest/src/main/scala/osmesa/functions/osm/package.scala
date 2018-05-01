@@ -18,9 +18,12 @@ import scala.annotation.tailrec
 import scala.collection.GenTraversable
 
 package object osm {
-  // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys).
+  // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys) @ v2.8.0.
   private val AreaKeys: Map[String, Map[String, Boolean]] = Map(
     "addr:*" -> Map(),
+    "advertising" -> Map(
+      "billboard" -> true
+    ),
     "aerialway" -> Map(
       "cable_car" -> true,
       "chair_lift" -> true,
@@ -37,6 +40,7 @@ package object osm {
       "runway" -> true,
       "taxiway" -> true
     ),
+    "allotments" -> Map(),
     "amenity" -> Map(
       "bench" -> true
     ),
@@ -68,6 +72,7 @@ package object osm {
     "historic" -> Map(),
     "industrial" -> Map(),
     "junction" -> Map(
+      "circular" -> true,
       "roundabout" -> true
     ),
     "landuse" -> Map(),
