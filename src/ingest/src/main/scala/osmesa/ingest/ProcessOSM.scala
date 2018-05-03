@@ -36,6 +36,19 @@ object ProcessOSM {
 
   val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
 
+  val TaggedVersionedElementSchema = StructType(
+    StructField("changeset", LongType, nullable = false) ::
+      StructField("id", LongType, nullable = false) ::
+      StructField("tags", MapType(StringType, StringType, valueContainsNull = false), nullable = false) ::
+      StructField("version", IntegerType, nullable = false) ::
+      StructField("minorVersion", IntegerType, nullable = false) ::
+      StructField("updated", TimestampType, nullable = false) ::
+      StructField("validUntil", TimestampType) ::
+      StructField("geom", BinaryType) ::
+      Nil)
+
+  val TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
+
   val VersionedElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
@@ -454,6 +467,7 @@ object ProcessOSM {
         'member.getField("role") as 'role
       )
       .distinct
+      // TODO this (and the initial isMultiPolygon check) is where things diverge between routes + multipolygons
       .where('role.isin(MultiPolygonRoles: _*))
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
       .join(
@@ -502,6 +516,136 @@ object ProcessOSM {
         'id,
         'geom,
         'tags,
+        'changeset,
+        'updated,
+        'validUntil,
+        'visible,
+        'version,
+        'minorVersion)
+  }
+
+  def reconstructRouteRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching = Caching.none,
+                                                                             cachePartitions: Option[Int] = None)
+  : DataFrame = {
+    implicit val ss: SparkSession = _relations.sparkSession
+    import ss.implicits._
+
+    val relations = preprocessRelations(_relations)
+      .where(isRoute('tags))
+
+    // way to relation lookup table (missing 'role, since it's not needed here)
+    val waysToRelations = relations
+      .select(explode('members) as 'member, 'id as 'relationId, 'version, 'timestamp, 'validUntil)
+      .withColumn("type", $"member.type")
+      .withColumn("id", $"member.ref")
+      .drop('member)
+
+    @transient val idByVersion = Window.partitionBy('id).orderBy('version)
+
+    // Create a relation entry for each changeset in which a geometry was modified, containing the timestamp and
+    // changeset of the geometry that triggered the association. This will later be used to assemble relations at each
+    // of those points in time.
+    // If you need authorship, join on changesets
+    val relationsByChangeset = geoms
+      .where('geometryChanged)
+      .drop('validUntil)
+      // re-calculate validUntil windows
+      .withColumn("validUntil", lead('updated, 1) over idByVersion)
+      // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
+      .withColumn("type", lit(WayType))
+      .select('type, 'changeset, 'id, 'updated)
+      .join(waysToRelations, Seq("id", "type"))
+      .where(waysToRelations("timestamp") <= geoms("updated") and
+        geoms("updated") < coalesce(waysToRelations("validUntil"), current_timestamp))
+      .select('changeset, 'relationId as 'id, 'version, 'updated)
+
+    @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
+    @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
+
+    val allRelationVersions = relationsByChangeset
+      // Union with raw relations to include those in the time line (if they weren't already triggered by geometry
+      // modifications at the same time)
+      .union(relations.select('changeset, 'id, 'version, 'timestamp as 'updated))
+      // If a node, a way, and/or a relation were modified within the same changeset at different times, there will be
+      // multiple entries with different timestamps; this reduces them down to a single update per changeset.
+      .groupBy('changeset, 'id)
+      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
+      .join(relations.select('id, 'version, 'members), Seq("id", "version"))
+      // assign `minorVersion` and rewrite `validUntil` to match
+      // this is done early (at the expense of passing through the shuffle w/ exploded 'members) to avoid extremely
+      // large partitions (see: Germany w/ 7k+ geometry versions) after geometries have been constructed
+      .withColumn("validUntil", lead('updated, 1) over idByUpdated)
+      .withColumn("minorVersion", (row_number over idAndVersionByUpdated) - 1)
+
+    val members = cache.orc("members") {
+      allRelationVersions
+        .select('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil, explode_outer('members) as "member")
+        .select(
+          'changeset,
+          'id,
+          'version,
+          'minorVersion,
+          'updated,
+          'validUntil,
+          'member.getField("type") as 'type,
+          'member.getField("ref") as 'ref,
+          'member.getField("role") as 'role
+        )
+        .distinct
+        // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
+        .join(
+        geoms.select(
+          lit(WayType) as 'type,
+          'id as "ref",
+          'updated as 'memberUpdated,
+          'validUntil as 'memberValidUntil,
+          'geom), Seq("type", "ref"), "left_outer")
+        .where(
+          ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts through
+            ('memberUpdated <= 'updated and 'updated < coalesce('memberValidUntil, current_timestamp)))
+        .drop('memberUpdated)
+        .drop('memberValidUntil)
+        .drop('ref)
+    }
+
+    implicit val encoder: Encoder[Row] = TaggedVersionedElementEncoder
+
+    // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
+    val relationGeoms = members
+      .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
+      .mapPartitions(rows => {
+        // TODO use scanLeft to avoid materializing the iterator and using groupBy
+        rows
+          .toVector
+          .groupBy(row =>
+            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+          )
+          .flatMap {
+            case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
+              val types = rows.map(_.getAs[Byte]("type"))
+              val roles = rows.map(_.getAs[String]("role"))
+              val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
+
+              buildRoute(id, version, updated, types, roles, geoms) match {
+                case Some(components) =>
+                  components.map { case (role, wkb) =>
+                    new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion, updated, validUntil, wkb), TaggedVersionedElementSchema): Row
+                  }
+                case None =>
+                  Seq(new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated, validUntil, null), TaggedVersionedElementSchema): Row)
+              }
+          }
+          .toIterator
+      })
+
+    // Join metadata to avoid passing it through exploded shuffles
+    relationGeoms
+      .join(relations.select('id, 'version, 'tags as 'originalTags, 'visible), Seq("id", "version"))
+      .select(
+        lit(RelationType) as '_type,
+        'id,
+        'geom,
+        mergeTags('originalTags, 'tags) as 'tags,
         'changeset,
         'updated,
         'validUntil,

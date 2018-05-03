@@ -6,7 +6,7 @@ import com.google.common.collect.{Range, RangeMap, TreeRangeMap}
 import com.vividsolutions.jts.geom
 import com.vividsolutions.jts.geom._
 import geotrellis.vector.io._
-import geotrellis.vector.{Line, MultiPolygon, Polygon}
+import geotrellis.vector.{Line, MultiLine, MultiPolygon, Polygon}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.expressions.UserDefinedFunction
@@ -143,6 +143,10 @@ package object osm {
     tags.contains("type") && MultiPolygonTypes.contains(tags("type").toLowerCase)
 
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
+
+  val isRoute: UserDefinedFunction = udf { (tags: Map[String, String]) =>
+    tags.contains("type") && tags("type") == "route"
+  }
 
   private val MemberSchema = ArrayType(
     StructType(
@@ -388,19 +392,19 @@ package object osm {
     }
   }
 
-  // create fully-formed rings from line segments
+  // join segments together into rings
   @tailrec
-  private def connectSegments(segments: GenTraversable[VirtualCoordinateSequence], rings: Seq[CoordinateSequence] = Vector.empty[CoordinateSequence]): GenTraversable[CoordinateSequence] = {
+  private def formRings(segments: GenTraversable[VirtualCoordinateSequence], rings: Seq[CoordinateSequence] = Vector.empty[CoordinateSequence]): GenTraversable[CoordinateSequence] = {
     segments match {
       case Nil =>
         rings
       case Seq(h, t @ _ *) if h.getX(0) == h.getX(h.size - 1) && h.getY(0) == h.getY(h.size - 1) =>
-        connectSegments(t, rings :+ h)
+        formRings(t, rings :+ h)
       case Seq(h, t @ _ *) =>
         val x = h.getX(h.size - 1)
         val y = h.getY(h.size - 1)
 
-        connectSegments(t.find(line => x == line.getX(0) && y == line.getY(0)) match {
+        formRings(t.find(line => x == line.getX(0) && y == line.getY(0)) match {
           case Some(next) =>
             h.append(new PartialCoordinateSequence(next, 1)) +: t.filterNot(line => isEqual(line, next))
           case None =>
@@ -416,9 +420,38 @@ package object osm {
   // since GeoTrellis's GeometryFactory is unavailable
   implicit val geometryFactory: GeometryFactory = new geom.GeometryFactory()
 
-  private def connectSegments(segments: GenTraversable[Line])(implicit geometryFactory: GeometryFactory): GenTraversable[Polygon] = {
-    connectSegments(segments.map(_.jtsGeom.getCoordinateSequence).map(s => new VirtualCoordinateSequence(Seq(s)))).map(geometryFactory.createPolygon).map(Polygon(_))
+  private def formRings(segments: GenTraversable[Line])(implicit geometryFactory: GeometryFactory): GenTraversable[Polygon] =
+    formRings(segments.map(_.jtsGeom.getCoordinateSequence).map(s => new VirtualCoordinateSequence(Seq(s))))
+      .map(geometryFactory.createPolygon)
+      .map(Polygon(_))
+
+  // join segments together
+  @tailrec
+  private def connectSegments(segments: GenTraversable[VirtualCoordinateSequence], lines: Seq[CoordinateSequence] = Vector.empty[CoordinateSequence]): GenTraversable[CoordinateSequence] = {
+    segments match {
+      case Nil =>
+        lines
+      case Seq(h, t @ _ *) =>
+        val x = h.getX(h.size - 1)
+        val y = h.getY(h.size - 1)
+
+        t.find(line => x == line.getX(0) && y == line.getY(0)) match {
+          case Some(next) =>
+            connectSegments(h.append(new PartialCoordinateSequence(next, 1)) +: t.filterNot(line => isEqual(line, next)), lines)
+          case None =>
+            t.find(line => x == line.getX(line.size - 1) && y == line.getY(line.size - 1)) match {
+              case Some(next) =>
+                connectSegments(h.append(new PartialCoordinateSequence(new ReversedCoordinateSequence(next), 1)) +: t.filterNot(line => isEqual(line, next)), lines)
+              case None => connectSegments(t, lines :+ h)
+            }
+        }
+    }
   }
+
+  private def connectSegments(segments: GenTraversable[Line])(implicit geometryFactory: GeometryFactory): GenTraversable[Line] =
+    connectSegments(segments.map(_.jtsGeom.getCoordinateSequence).map(s => new VirtualCoordinateSequence(Seq(s))))
+      .map(geometryFactory.createLineString)
+      .map(Line(_))
 
   private def dissolveRings(rings: GenTraversable[Polygon]): (Seq[Polygon], Seq[Polygon]) = {
     MultiPolygon(rings.toArray).union.asMultiPolygon match {
@@ -467,7 +500,7 @@ package object osm {
       }
 
       try {
-        val rings = complete ++ connectSegments(partial.sortWith(_.vertexCount > _.vertexCount))
+        val rings = complete ++ formRings(partial.sortWith(_.vertexCount > _.vertexCount))
         val preparedRings = rings.map(_.prepare)
 
         // reclassify rings according to their topology (ignoring roles)
@@ -493,7 +526,7 @@ package object osm {
           .sortWith(_.area > _.area)
           // only use inners once if they're contained by multiple outer rings
           .foldLeft((Vector.empty[Polygon], dissolvedInners)) {
-          case ((ps, is), (outer)) =>
+          case ((ps, is), outer) =>
             val preparedOuter = outer.prepare
             (ps :+ Polygon(outer.exterior, is.filter(inner => preparedOuter.contains(inner)).map(_.exterior)), is.filterNot(inner => preparedOuter.contains(inner)))
         }
@@ -508,6 +541,52 @@ package object osm {
           None
         case e: Throwable =>
           logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): $e")
+          e.getStackTrace.foreach(logger.warn)
+          None
+      }
+    }
+  }
+
+  def mergeTags: UserDefinedFunction = udf {
+    (_: Map[String, String]) ++ (_: Map[String, String])
+  }
+
+
+  // TODO this (and accompanying functions) doesn't belong here
+  def buildRoute(id: Long, version: Int, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Seq[(String, Array[Byte])]] = {
+    if (types.zip(wkbs).exists { case (t, g) => t == WayType && Option(g).isEmpty }) {
+      // bail early if null values are present where they should exist (members w/ type=way)
+      logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
+      None
+    } else {
+      val geoms = wkbs.map(Option(_).map(_.readWKB) match {
+        // polygons are not part of routes (unless they're platforms)
+        case Some(geom: Line) => geom.as[Line]
+        case _ => None
+      })
+
+      try {
+        Some(roles.zip(geoms)
+          .filter(_._2.isDefined)
+          .map(x => (x._1, x._2.get))
+          .groupBy {
+            case (role, _) => role
+          }
+          .mapValues(_.map(_._2))
+          .mapValues(connectSegments(_))
+          .map { case (role, lines) =>
+            lines match {
+              case Seq(line) => (role, line.toWKB(4326))
+              case _ => (role, MultiLine(lines.toArray).toWKB(4326))
+            }
+          }
+          .toSeq)
+      } catch {
+        case e@(_: AssemblyException | _: IllegalArgumentException | _: TopologyException) =>
+          logger.warn(s"Could not reconstruct route relation $id @ $version ($timestamp): ${e.getMessage}")
+          None
+        case e: Throwable =>
+          logger.warn(s"Could not reconstruct route relation $id @ $version ($timestamp): $e")
           e.getStackTrace.foreach(logger.warn)
           None
       }
