@@ -628,10 +628,15 @@ object ProcessOSM {
 
               buildRoute(id, version, updated, types, roles, geoms) match {
                 case Some(components) =>
-                  components.map { case (role, wkb) =>
-                    new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion, updated, validUntil, wkb), TaggedVersionedElementSchema): Row
+                  components.map {
+                    case ("", wkb) =>
+                      // no role
+                      new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated, validUntil, wkb), TaggedVersionedElementSchema): Row
+                    case (role, wkb) =>
+                      new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion, updated, validUntil, wkb), TaggedVersionedElementSchema): Row
                   }
                 case None =>
+                  // no geometry
                   Seq(new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated, validUntil, null), TaggedVersionedElementSchema): Row)
               }
           }
