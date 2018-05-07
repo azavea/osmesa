@@ -107,6 +107,7 @@ object ProcessOSM {
       // present and use those
       filteredHistory
         .where('type === "node")
+        .repartition('id)
         .select(
           'id,
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
@@ -146,6 +147,7 @@ object ProcessOSM {
       // present and use those
       history
         .where('type === "way")
+        .repartition('id)
         .select(
           'id,
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
@@ -184,6 +186,7 @@ object ProcessOSM {
       // present and use those
       history
         .where('type === "relation")
+        .repartition('id)
         .select(
           'id,
           when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull,
