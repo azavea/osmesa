@@ -5,9 +5,9 @@ import java.sql.Timestamp
 import geotrellis.spark.io.kryo.KryoRegistrator
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
+import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql._
 import org.scalatest.prop.{TableDrivenPropertyChecks, Tables}
 import org.scalatest.{Matchers, PropSpec}
 import osmesa.ProcessOSM._
@@ -96,6 +96,63 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
           .withColumn("validUntil", lit(Timestamp.valueOf("2002-01-01 00:00:00")))
           .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
           .mapPartitions(rows => {
+//            var changeset: Long = -1
+//            var id: Long = -1
+//            var version: Int = -1
+//            var minorVersion: Int = -1
+//            var updated: Timestamp = null
+//            var validUntil: Timestamp = null
+//
+//            val types = ArrayBuffer[Byte]()
+//            val roles = ArrayBuffer[String]()
+//            val geoms = ArrayBuffer[Array[Byte]]()
+//
+//            rows.flatMap { row =>
+//              val _changeset = row.getAs[Long]("changeset")
+//              val _id = row.getAs[Long]("id")
+//              val _version = row.getAs[Integer]("version")
+//              val _minorVersion = row.getAs[Integer]("minorVersion")
+//              val _updated = row.getAs[Timestamp]("updated")
+//              val _validUntil = row.getAs[Timestamp]("validUntil")
+//              val out = ArrayBuffer[Row]()
+//
+//              if (changeset != _changeset && id != _id && version != _version && minorVersion != _minorVersion && updated != _updated && validUntil != _validUntil) {
+//                if (types.nonEmpty) {
+//                  val wkb = buildMultiPolygon(_id, _version, _updated, types, roles, geoms).orNull
+//
+//                  out.append(new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row)
+//                }
+//
+//                changeset = _changeset
+//                id = _id
+//                version = _version
+//                minorVersion = _minorVersion
+//                updated = _updated
+//                validUntil = _validUntil
+//
+//                types.clear()
+//                roles.clear()
+//                geoms.clear()
+//              }
+//
+//              types.append(row.getAs[String]("type") match {
+//                case "node" => NodeType
+//                case "way" => WayType
+//                case "relation" => RelationType
+//                case _ => null.asInstanceOf[Byte]
+//              })
+//              roles.append(row.getAs[String]("role"))
+//              geoms.append(row.getAs[Array[Byte]]("geom"))
+//
+//              if (!rows.hasNext) {
+//                val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
+//
+//                out.append(new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row)
+//              }
+//
+//              out
+//            }
+
             rows
               .toVector
               .groupBy(row =>
