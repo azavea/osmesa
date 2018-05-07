@@ -88,7 +88,7 @@ object MakeGeometries extends CommandApp(
         .union(relationGeoms)
         .repartition(numPartitions)
         .write
-        .mode("overwrite")
+        .mode(SaveMode.Overwrite)
         .orc(out)
 
       ss.stop()
