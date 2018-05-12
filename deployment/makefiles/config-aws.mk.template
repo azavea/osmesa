@@ -1,0 +1,5 @@
+export AWS_DEFAULT_REGION:=us-east-1
+
+export PEM_FILE:=[PEM FILE]
+export EC2_KEY:=[EC2 KEY]
+export SUBNET_ID:=[EMR SUBNET]
