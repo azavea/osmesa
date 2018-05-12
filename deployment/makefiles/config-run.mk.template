@@ -1,0 +1,7 @@
+export S3_BUCKET:=[TARGET BUCKET]
+export S3_URI:=s3://${S3_BUCKET}
+export S3_CATALOG := ${S3_URI}/[TARGET_CATALOG]
+
+export PLANET_ORC := s3://osm-pds/planet-history/history-latest.orc
+export ORC_CACHE_LOCATION := ${S3_URI}/cache
+export VECTORTILE_CATALOG_LOCATION = ${S3_URI}/vectortiles
