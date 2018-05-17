@@ -1,7 +1,7 @@
 package osmesa
 
 import java.io.ByteArrayOutputStream
-import java.util.zip.{ZipEntry, ZipOutputStream}
+import java.util.zip.{GZIPOutputStream, ZipEntry, ZipOutputStream}
 
 import com.amazonaws.services.s3.model.CannedAccessControlList._
 import geotrellis.spark._
@@ -47,9 +47,33 @@ object GenerateVT {
 
   def save(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) = {
     vectorTiles
-      .mapValues(_.toBytes)
-      .saveToS3({ sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.mvt" },
-                putObjectModifier = { o => o.withCannedAcl(PublicRead) })
+      .mapValues { tile =>
+        val byteStream = new ByteArrayOutputStream()
+
+        try {
+          val gzipStream = new GZIPOutputStream(byteStream)
+          try {
+            gzipStream.write(tile.toBytes)
+          } finally {
+            gzipStream.close()
+          }
+        } finally {
+          byteStream.close()
+        }
+
+        byteStream.toByteArray
+      }
+      .saveToS3(
+        { sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.mvt" },
+        putObjectModifier = { o =>
+          val md = o.getMetadata
+
+          md.setContentEncoding("gzip")
+
+          o
+            .withMetadata(md)
+            .withCannedAcl(PublicRead)
+        })
   }
 
   def saveHadoop(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, uri: String) = {
