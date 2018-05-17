@@ -1,4 +1,4 @@
-package osmesa.functions
+package osmesa.common.functions
 
 import java.sql.Timestamp
 
@@ -8,11 +8,11 @@ import com.vividsolutions.jts.geom._
 import geotrellis.vector.io._
 import geotrellis.vector.{Line, MultiLine, MultiPolygon, Polygon}
 import org.apache.log4j.Logger
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.{Column, Row, TypedColumn}
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
 import org.apache.spark.sql.types._
-import osmesa.ProcessOSM._
+import osmesa.common.ProcessOSM._
 
 import scala.annotation.tailrec
 import scala.collection.GenTraversable
@@ -130,6 +130,15 @@ package object osm {
 
   private val TruthyValues = Set("yes", "true", "1")
 
+  private val WaterwayValues =
+    Set(
+      "river", "canal", "stream", "brook", "drain", "ditch"
+    )
+
+  private val POITags = Set("amenity", "shop", "craft", "office", "leisure", "aeroway")
+
+  private val HashtagMatcher = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!"#$%()*,.\/:;<=>?@\[\]^{|}~]+)""".r
+
   private lazy val logger = Logger.getLogger(getClass)
 
   private val _isArea = (tags: Map[String, String]) =>
@@ -148,6 +157,10 @@ package object osm {
     tags.contains("type") && MultiPolygonTypes.contains(tags("type").toLowerCase)
 
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
+
+  val isNew: UserDefinedFunction = udf { (version: Int, minorVersion: Int) =>
+    version == 1 && minorVersion == 0
+  }
 
   val isRoute: UserDefinedFunction = udf { (tags: Map[String, String]) =>
     tags.contains("type") && tags("type") == "route"
@@ -174,6 +187,33 @@ package object osm {
     }
 
   val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
+
+  private val _hashtags = (comment: String) =>
+    HashtagMatcher.findAllMatchIn(comment).map(_.group(1).toLowerCase).toSeq
+
+  val hashtags: UserDefinedFunction = udf { (tags: Map[String, String]) =>
+    tags.get("comment") match {
+      case Some(comment) => _hashtags(comment)
+      case None => Seq.empty[String]
+    }
+  }
+
+  val isBuilding: UserDefinedFunction = udf {
+    (_: Map[String, String]).getOrElse("building", "no").toLowerCase != "no"
+  }
+
+  val isPOI: UserDefinedFunction = udf {
+    (tags: Map[String, String]) => POITags.intersect(tags.keySet).nonEmpty
+  }
+
+  val isRoad: UserDefinedFunction = udf {
+    (_: Map[String, String]).contains("highway")
+  }
+
+  val isWaterway: UserDefinedFunction = udf {
+    (tags: Map[String, String]) => WaterwayValues.contains(tags.getOrElse("waterway", null))
+  }
+
 
   class AssemblyException(msg: String) extends Exception(msg)
 
