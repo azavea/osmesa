@@ -1,9 +1,9 @@
 package osmesa
 
+import java.io.ByteArrayOutputStream
+import java.util.zip.{ZipEntry, ZipOutputStream}
+
 import com.amazonaws.services.s3.model.CannedAccessControlList._
-import geotrellis.raster._
-import geotrellis.raster.rasterize._
-import geotrellis.raster.rasterize.polygon._
 import geotrellis.spark._
 import geotrellis.spark.io.hadoop._
 import geotrellis.spark.io.index.zcurve.Z2
@@ -11,17 +11,13 @@ import geotrellis.spark.io.s3._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vectortile._
-import org.apache.log4j.{Level, Logger}
+import org.apache.log4j.Logger
 import org.apache.spark.rdd.RDD
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 
-import scala.concurrent._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent._
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
-import scala.collection.JavaConverters._
-import java.io.ByteArrayOutputStream
-import java.util.zip.{ZipEntry, ZipOutputStream}
 
 
 object GenerateVT {
@@ -53,15 +49,7 @@ object GenerateVT {
     vectorTiles
       .mapValues(_.toBytes)
       .saveToS3({ sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.mvt" },
-                putObjectModifier = { o =>
-                  val uncompressedInStream = o.getInputStream()
-                  val md = o.getMetadata()
-                  md.setUserMetadata(Map("Content-Encoding" -> "gzip").asJava)
-
-                  o.withInputStream(new GzipCompressorInputStream(uncompressedInStream))
-                   .withMetadata(md)
-                   .withCannedAcl(PublicRead)
-                })
+                putObjectModifier = { o => o.withCannedAcl(PublicRead) })
   }
 
   def saveHadoop(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, uri: String) = {
