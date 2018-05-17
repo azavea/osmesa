@@ -104,6 +104,8 @@ object StreamDiffs extends CommandApp(
           StructField("changeset", LongType, nullable = false) ::
           StructField("prevUid", LongType, nullable = true) ::
           StructField("uid", LongType, nullable = false) ::
+          StructField("prevUser", StringType, nullable = true) ::
+          StructField("user", StringType, nullable = false) ::
           StructField("prevUpdated", TimestampType, nullable = true) ::
           StructField("updated", TimestampType, nullable = false) ::
           StructField("prevVisible", BooleanType, nullable = true) ::
@@ -147,10 +149,12 @@ object StreamDiffs extends CommandApp(
               curr.geom.toWKB(4326),
               prev.data.tags,
               curr.data.tags,
-              prev.data.uid,
-              curr.data.uid,
               prev.data.changeset,
               curr.data.changeset,
+              prev.data.uid,
+              curr.data.uid,
+              prev.data.user,
+              curr.data.user,
               prev.data.timestamp,
               curr.data.timestamp,
               prev.data.visible.getOrElse(true),
@@ -175,9 +179,11 @@ object StreamDiffs extends CommandApp(
               null,
               curr.data.tags,
               null,
+              curr.data.changeset,
+              null,
               curr.data.uid,
               null,
-              curr.data.changeset,
+              curr.data.user,
               null,
               curr.data.timestamp,
               null,
@@ -207,6 +213,7 @@ object StreamDiffs extends CommandApp(
           'sequence,
           'changeset,
           'uid,
+          'user,
           when(isRoad('tags) and isNew('version, 'minorVersion), ST_Length('geom))
             .otherwise(lit(0)) as 'road_m_added,
           when(isRoad('tags) and !isNew('version, 'minorVersion), abs(ST_Length('geom) - ST_Length('prevGeom)))
@@ -231,7 +238,7 @@ object StreamDiffs extends CommandApp(
             .otherwise(lit(0)) as 'pois_added,
           when(isPOI('tags) and !isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'pois_modified)
-        .groupBy('timestamp, 'sequence, 'changeset, 'uid)
+        .groupBy('timestamp, 'sequence, 'changeset, 'uid, 'user)
         .agg(
           sum('road_m_added / 1000).as('road_km_added),
           sum('road_m_modified / 1000).as('road_km_modified),
@@ -253,7 +260,7 @@ object StreamDiffs extends CommandApp(
           var partitionId: Long = _
           var version: Long = _
           var connection: Connection = _
-          val insertSQL =
+          val UpdateChangesetsQuery =
             """
               |INSERT INTO changesets AS c (
               |  id,
@@ -295,6 +302,21 @@ object StreamDiffs extends CommandApp(
               |  AND NOT coalesce(c.augmented_diffs, ARRAY[]::integer[]) && ?
             """.stripMargin
 
+          val UpdateUsersQuery =
+            """
+              |INSERT INTO users AS u (
+              |  id,
+              |  name
+              |) VALUES (
+              |  ?, ?
+              |)
+              |ON CONFLICT (id) DO UPDATE
+              |-- update the user's name if necessary
+              |SET
+              |  name = ?
+              |WHERE u.id = ?
+            """.stripMargin
+
           def open(partitionId: Long, version: Long): Boolean = {
             // Called when starting to process one partition of new data in the executor. The version is for data
             // deduplication when there are failures. When recovering from a failure, some data may be generated
@@ -318,6 +340,7 @@ object StreamDiffs extends CommandApp(
             val sequence = row.getAs[Long]("sequence")
             val changeset = row.getAs[Long]("changeset")
             val uid = row.getAs[Long]("uid")
+            val user = row.getAs[String]("user")
             val roadKmAdded = row.getAs[Double]("road_km_added")
             val roadKmModified = row.getAs[Double]("road_km_modified")
             val waterwayKmAdded = row.getAs[Double]("waterway_km_added")
@@ -331,49 +354,59 @@ object StreamDiffs extends CommandApp(
             val poisAdded = row.getAs[Long]("pois_added")
             val poisModified = row.getAs[Long]("pois_modified")
 
-            println(partitionId, version)
-            println(sequence, changeset, roadKmAdded, roadKmModified, waterwayKmAdded, waterwayKmModified, roadsAdded, roadsModified, waterwaysAdded, waterwaysModified, buildingsAdded, buildingsModified, poisAdded, poisModified)
-
-            val stmt = connection.prepareStatement(insertSQL)
+            val updateChangesets = connection.prepareStatement(UpdateChangesetsQuery)
 
             try {
-              stmt.setLong(1, changeset)
-              stmt.setLong(2, uid)
-              stmt.setLong(3, roadsAdded)
-              stmt.setLong(4, roadsModified)
-              stmt.setLong(5, waterwaysAdded)
-              stmt.setLong(6, waterwaysModified)
-              stmt.setLong(7, buildingsAdded)
-              stmt.setLong(8, buildingsModified)
-              stmt.setLong(9, poisAdded)
-              stmt.setLong(10, poisModified)
-              stmt.setDouble(11, roadKmAdded)
-              stmt.setDouble(12, roadKmModified)
-              stmt.setDouble(13, waterwayKmAdded)
-              stmt.setDouble(14, waterwayKmModified)
-              stmt.setArray(
+              updateChangesets.setLong(1, changeset)
+              updateChangesets.setLong(2, uid)
+              updateChangesets.setLong(3, roadsAdded)
+              updateChangesets.setLong(4, roadsModified)
+              updateChangesets.setLong(5, waterwaysAdded)
+              updateChangesets.setLong(6, waterwaysModified)
+              updateChangesets.setLong(7, buildingsAdded)
+              updateChangesets.setLong(8, buildingsModified)
+              updateChangesets.setLong(9, poisAdded)
+              updateChangesets.setLong(10, poisModified)
+              updateChangesets.setDouble(11, roadKmAdded)
+              updateChangesets.setDouble(12, roadKmModified)
+              updateChangesets.setDouble(13, waterwayKmAdded)
+              updateChangesets.setDouble(14, waterwayKmModified)
+              updateChangesets.setArray(
                 15, connection.createArrayOf("integer", Array(sequence.underlying)))
-              stmt.setLong(16, roadsAdded)
-              stmt.setLong(17, roadsModified)
-              stmt.setLong(18, waterwaysAdded)
-              stmt.setLong(19, waterwaysModified)
-              stmt.setLong(20, buildingsAdded)
-              stmt.setLong(21, buildingsModified)
-              stmt.setLong(22, poisAdded)
-              stmt.setLong(23, poisModified)
-              stmt.setDouble(24, roadKmAdded)
-              stmt.setDouble(25, roadKmModified)
-              stmt.setDouble(26, waterwayKmAdded)
-              stmt.setDouble(27, waterwayKmModified)
-              stmt.setArray(
+              updateChangesets.setLong(16, roadsAdded)
+              updateChangesets.setLong(17, roadsModified)
+              updateChangesets.setLong(18, waterwaysAdded)
+              updateChangesets.setLong(19, waterwaysModified)
+              updateChangesets.setLong(20, buildingsAdded)
+              updateChangesets.setLong(21, buildingsModified)
+              updateChangesets.setLong(22, poisAdded)
+              updateChangesets.setLong(23, poisModified)
+              updateChangesets.setDouble(24, roadKmAdded)
+              updateChangesets.setDouble(25, roadKmModified)
+              updateChangesets.setDouble(26, waterwayKmAdded)
+              updateChangesets.setDouble(27, waterwayKmModified)
+              updateChangesets.setArray(
                 28, connection.createArrayOf("integer", Array(sequence.underlying)))
-              stmt.setLong(29, changeset)
-              stmt.setArray(
+              updateChangesets.setLong(29, changeset)
+              updateChangesets.setArray(
                 30, connection.createArrayOf("integer", Array(sequence.underlying)))
 
-              stmt.execute()
+              updateChangesets.execute
             } finally {
-              stmt.close()
+              updateChangesets.close()
+            }
+
+            val updateUsers = connection.prepareStatement(UpdateUsersQuery)
+
+            try {
+              updateUsers.setLong(1, uid)
+              updateUsers.setString(2, user)
+              updateUsers.setString(3, user)
+              updateUsers.setLong(4, uid)
+
+              updateUsers.execute
+            } finally {
+              updateUsers.close()
             }
           }
 
