@@ -1,5 +1,7 @@
 package osmesa.analytics.oneoffs
 
+import java.sql.{Connection, DriverManager}
+
 import com.monovore.decline._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
@@ -100,6 +102,8 @@ object StreamDiffs extends CommandApp(
           StructField("tags", MapType(StringType, StringType, valueContainsNull = false), nullable = false) ::
           StructField("prevChangeset", LongType, nullable = true) ::
           StructField("changeset", LongType, nullable = false) ::
+          StructField("prevUid", LongType, nullable = true) ::
+          StructField("uid", LongType, nullable = false) ::
           StructField("prevUpdated", TimestampType, nullable = true) ::
           StructField("updated", TimestampType, nullable = false) ::
           StructField("prevVisible", BooleanType, nullable = true) ::
@@ -143,6 +147,8 @@ object StreamDiffs extends CommandApp(
               curr.geom.toWKB(4326),
               prev.data.tags,
               curr.data.tags,
+              prev.data.uid,
+              curr.data.uid,
               prev.data.changeset,
               curr.data.changeset,
               prev.data.timestamp,
@@ -169,6 +175,8 @@ object StreamDiffs extends CommandApp(
               null,
               curr.data.tags,
               null,
+              curr.data.uid,
+              null,
               curr.data.changeset,
               null,
               curr.data.timestamp,
@@ -179,6 +187,8 @@ object StreamDiffs extends CommandApp(
               null,
               0), AugmentedDiffSchema): Row
         }
+
+      val uri = "jdbc:postgresql:///osmesa-stats"
 
       // TODO geocode features
 
@@ -196,6 +206,7 @@ object StreamDiffs extends CommandApp(
           'timestamp,
           'sequence,
           'changeset,
+          'uid,
           when(isRoad('tags) and isNew('version, 'minorVersion), ST_Length('geom))
             .otherwise(lit(0)) as 'road_m_added,
           when(isRoad('tags) and !isNew('version, 'minorVersion), abs(ST_Length('geom) - ST_Length('prevGeom)))
@@ -220,7 +231,7 @@ object StreamDiffs extends CommandApp(
             .otherwise(lit(0)) as 'pois_added,
           when(isPOI('tags) and !isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'pois_modified)
-        .groupBy('timestamp, 'sequence, 'changeset)
+        .groupBy('timestamp, 'sequence, 'changeset, 'uid)
         .agg(
           sum('road_m_added / 1000).as('road_km_added),
           sum('road_m_modified / 1000).as('road_km_modified),
@@ -237,52 +248,140 @@ object StreamDiffs extends CommandApp(
         .writeStream
         .queryName("aggregate statistics by sequence")
 //        .outputMode(OutputMode.Append)
-        .format("console")
-//        .foreach(new ForeachWriter[Row] {
-//          var partitionId: Long = -1
-//          var version: Long = -1
-//
-//          def open(partitionId: Long, version: Long): Boolean = {
-//            // Called when starting to process one partition of new data in the executor. The version is for data
-//            // deduplication when there are failures. When recovering from a failure, some data may be generated
-//            // multiple times but they will always have the same version.
-//            //
-//            //If this method finds using the partitionId and version that this partition has already been processed,
-//            // it can return false to skip the further data processing. However, close still will be called for
-//            // cleaning up resources.
-//
-////            println(s"partition id: ${partitionId}, version: ${version}")
-//            this.partitionId = partitionId
-//            this.version = version
-//
-//            true
-//          }
-//
-//          def process(row: Row) = {
-//            // write string to connection
-//            val sequence = row.getAs[Long]("sequence")
-//            val changeset = row.getAs[Long]("changeset")
-//            val roadKmAdded = row.getAs[Double]("road_km_added")
-//            val roadKmModified = row.getAs[Double]("road_km_modified")
-//            val waterwayKmAdded = row.getAs[Double]("waterway_km_added")
-//            val waterwayKmModified = row.getAs[Double]("waterway_km_modified")
-//            val roadsAdded = row.getAs[Long]("roads_added")
-//            val roadsModified = row.getAs[Long]("roads_modified")
-//            val waterwaysAdded = row.getAs[Long]("waterways_added")
-//            val waterwaysModified = row.getAs[Long]("waterways_modified")
-//            val buildingsAdded = row.getAs[Long]("buildings_added")
-//            val buildingsModified = row.getAs[Long]("buildings_modified")
-//            val poisAdded = row.getAs[Long]("pois_added")
-//            val poisModified = row.getAs[Long]("pois_modified")
-//
-//            println(partitionId, version)
-//            println(sequence, changeset, roadKmAdded, roadKmModified, waterwayKmAdded, waterwayKmModified, roadsAdded, roadsModified, waterwaysAdded, waterwaysModified, buildingsAdded, buildingsModified, poisAdded, poisModified)
-//          }
-//
-//          def close(errorOrNull: Throwable): Unit = {
-//            // close the connection
-//          }
-//        })
+//        .format("console")
+        .foreach(new ForeachWriter[Row] {
+          var partitionId: Long = _
+          var version: Long = _
+          var connection: Connection = _
+          val insertSQL =
+            """
+              |INSERT INTO changesets AS c (
+              |  id,
+              |  user_id,
+              |  roads_added,
+              |  roads_modified,
+              |  waterways_added,
+              |  waterways_modified,
+              |  buildings_added,
+              |  buildings_modified,
+              |  pois_added,
+              |  pois_modified,
+              |  road_km_added,
+              |  road_km_modified,
+              |  waterway_km_added,
+              |  waterway_km_modified,
+              |  augmented_diffs,
+              |  updated_at
+              |) VALUES (
+              |  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp
+              |)
+              |ON CONFLICT (id) DO UPDATE
+              |SET
+              |  roads_added = c.roads_added + ?,
+              |  roads_modified = c.roads_modified + ?,
+              |  waterways_added = c.waterways_added + ?,
+              |  waterways_modified = c.waterways_modified + ?,
+              |  buildings_added = c.buildings_added + ?,
+              |  buildings_modified = c.buildings_modified + ?,
+              |  pois_added = c.pois_added + ?,
+              |  pois_modified = c.pois_modified + ?,
+              |  road_km_added = c.road_km_added + ?,
+              |  road_km_modified = c.road_km_modified + ?,
+              |  waterway_km_added = c.waterway_km_added + ?,
+              |  waterway_km_modified = c.waterway_km_modified + ?,
+              |  augmented_diffs = coalesce(c.augmented_diffs, ARRAY[]::integer[]) || ?,
+              |  updated_at = current_timestamp
+              |WHERE c.id = ?
+              |  AND NOT coalesce(c.augmented_diffs, ARRAY[]::integer[]) && ?
+            """.stripMargin
+
+          def open(partitionId: Long, version: Long): Boolean = {
+            // Called when starting to process one partition of new data in the executor. The version is for data
+            // deduplication when there are failures. When recovering from a failure, some data may be generated
+            // multiple times but they will always have the same version.
+            //
+            //If this method finds using the partitionId and version that this partition has already been processed,
+            // it can return false to skip the further data processing. However, close still will be called for
+            // cleaning up resources.
+
+//            println(s"partition id: ${partitionId}, version: ${version}")
+            this.partitionId = partitionId
+            this.version = version
+
+            this.connection = DriverManager.getConnection(uri)
+
+            true
+          }
+
+          def process(row: Row) = {
+            // write string to connection
+            val sequence = row.getAs[Long]("sequence")
+            val changeset = row.getAs[Long]("changeset")
+            val uid = row.getAs[Long]("uid")
+            val roadKmAdded = row.getAs[Double]("road_km_added")
+            val roadKmModified = row.getAs[Double]("road_km_modified")
+            val waterwayKmAdded = row.getAs[Double]("waterway_km_added")
+            val waterwayKmModified = row.getAs[Double]("waterway_km_modified")
+            val roadsAdded = row.getAs[Long]("roads_added")
+            val roadsModified = row.getAs[Long]("roads_modified")
+            val waterwaysAdded = row.getAs[Long]("waterways_added")
+            val waterwaysModified = row.getAs[Long]("waterways_modified")
+            val buildingsAdded = row.getAs[Long]("buildings_added")
+            val buildingsModified = row.getAs[Long]("buildings_modified")
+            val poisAdded = row.getAs[Long]("pois_added")
+            val poisModified = row.getAs[Long]("pois_modified")
+
+            println(partitionId, version)
+            println(sequence, changeset, roadKmAdded, roadKmModified, waterwayKmAdded, waterwayKmModified, roadsAdded, roadsModified, waterwaysAdded, waterwaysModified, buildingsAdded, buildingsModified, poisAdded, poisModified)
+
+            val stmt = connection.prepareStatement(insertSQL)
+
+            try {
+              stmt.setLong(1, changeset)
+              stmt.setLong(2, uid)
+              stmt.setLong(3, roadsAdded)
+              stmt.setLong(4, roadsModified)
+              stmt.setLong(5, waterwaysAdded)
+              stmt.setLong(6, waterwaysModified)
+              stmt.setLong(7, buildingsAdded)
+              stmt.setLong(8, buildingsModified)
+              stmt.setLong(9, poisAdded)
+              stmt.setLong(10, poisModified)
+              stmt.setDouble(11, roadKmAdded)
+              stmt.setDouble(12, roadKmModified)
+              stmt.setDouble(13, waterwayKmAdded)
+              stmt.setDouble(14, waterwayKmModified)
+              stmt.setArray(
+                15, connection.createArrayOf("integer", Array(sequence.underlying)))
+              stmt.setLong(16, roadsAdded)
+              stmt.setLong(17, roadsModified)
+              stmt.setLong(18, waterwaysAdded)
+              stmt.setLong(19, waterwaysModified)
+              stmt.setLong(20, buildingsAdded)
+              stmt.setLong(21, buildingsModified)
+              stmt.setLong(22, poisAdded)
+              stmt.setLong(23, poisModified)
+              stmt.setDouble(24, roadKmAdded)
+              stmt.setDouble(25, roadKmModified)
+              stmt.setDouble(26, waterwayKmAdded)
+              stmt.setDouble(27, waterwayKmModified)
+              stmt.setArray(
+                28, connection.createArrayOf("integer", Array(sequence.underlying)))
+              stmt.setLong(29, changeset)
+              stmt.setArray(
+                30, connection.createArrayOf("integer", Array(sequence.underlying)))
+
+              stmt.execute()
+            } finally {
+              stmt.close()
+            }
+          }
+
+          def close(errorOrNull: Throwable): Unit = {
+            // close the connection
+            this.connection.close()
+          }
+        })
         .start
 
 //      while (true) {
