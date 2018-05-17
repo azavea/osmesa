@@ -1,35 +1,24 @@
 package osmesa.analytics.oneoffs
 
-import osmesa.analytics._
+import java.math.BigDecimal
+import java.text.SimpleDateFormat
+import java.util.{Date, Locale, TimeZone}
 
 import cats.implicits._
-import com.amazonaws.services.s3.model.{PutObjectRequest, ObjectMetadata}
 import com.amazonaws.services.s3.model.CannedAccessControlList._
 import com.monovore.decline._
-import com.vividsolutions.jts.{geom => jts}
 import geotrellis.proj4._
 import geotrellis.raster._
 import geotrellis.spark._
-import geotrellis.spark.tiling._
 import geotrellis.spark.io.s3._
-import geotrellis.util._
+import geotrellis.spark.tiling._
 import geotrellis.vector._
-import geotrellis.vector.io._
 import geotrellis.vectortile._
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql._
-import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import spray.json.DefaultJsonProtocol._
-import vectorpipe._
+import osmesa.analytics._
 
-import java.math.BigDecimal
-import java.io.{ByteArrayInputStream}
-import java.nio.charset.StandardCharsets
-import java.net.URLEncoder
-import java.text.SimpleDateFormat
-import java.util.{Date, Locale, TimeZone}
 import scala.collection.mutable
 
 case class FootprintInfo(user: Long, ageInDays: Int, density: Int)
@@ -44,7 +33,7 @@ object FootprintByUserCommand extends CommandApp(
     val changesetsO = Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process.")
     val bucketO = Opts.option[String]("bucket", help = "Bucket to write results to")
     val prefixO = Opts.option[String]("prefix", help = "Prefix of keys path for results.")
-    val hashtagsO = Opts.option[String]("hashtags", help = "Path to s3 file containg hashtags to consider.").orNone
+    val hashtagsO = Opts.option[String]("hashtags", help = "Path to s3 file containing hashtags to consider.").orNone
     val partitionsO = Opts.option[Int]("partitions", help = "Number of partitions for the partitioner.").orNone
     val publicO = Opts.flag("public", help = "If flag is set, save as public data.").orFalse
 

@@ -1,14 +1,10 @@
 package osmesa.analytics.oneoffs
 
-import osmesa.common.model._
-import osmesa.analytics._
-import osmesa.analytics.stats._
-
-import scala.util.{Try, Success, Failure}
-
 import cats.implicits._
 import com.monovore.decline._
-import org.apache.spark.sql._
+import osmesa.analytics._
+import osmesa.analytics.stats._
+import osmesa.common.model._
 
 object StatsJobCommand extends CommandApp(
 
@@ -21,9 +17,9 @@ object StatsJobCommand extends CommandApp(
     val bucketO = Opts.option[String]("bucket", help = "Bucket to write results to")
     val prefixO = Opts.option[String]("prefix", help = "Prefix of keys path for results.")
     val hashtagsO = Opts.option[String]("hashtags", help = "Comma separated list of hashtags to consider.").orNone
-    val changesetPartitionsO = Opts.option[Int]("changeset_partitions", help = "Number of partitions for the changeset partitioner.").orNone
-    val wayPartitionsO = Opts.option[Int]("way_partitions", help = "Number of partitions for the way partitioner.").orNone
-    val nodePartitionsO = Opts.option[Int]("node_partitions", help = "Number of partitions for the node partitioner.").orNone
+    val changesetPartitionsO = Opts.option[Int]("changeset-partitions", help = "Number of partitions for the changeset partitioner.").orNone
+    val wayPartitionsO = Opts.option[Int]("way-partitions", help = "Number of partitions for the way partitioner.").orNone
+    val nodePartitionsO = Opts.option[Int]("node-partitions", help = "Number of partitions for the node partitioner.").orNone
 
     (
       historyO,

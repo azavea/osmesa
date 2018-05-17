@@ -1,6 +1,8 @@
 package osmesa.analytics
 
+import geotrellis.spark.io.kryo.KryoRegistrator
 import org.apache.spark.SparkConf
+import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 
@@ -14,10 +16,9 @@ object Analytics {
       .set("spark.sql.parquet.mergeSchema", "false")
       .set("spark.sql.parquet.filterPushdown", "true")
       .set("spark.sql.hive.metastorePartitionPruning", "true")
-    // Commenting out the kryo serialization, as it was causing stack overflow exceptions
-    // for the vector tile generation jobs.
-      // .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-      // .set("spark.kryo.registrator", classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
+      .set("spark.ui.showConsoleProgress", "true")
+      .set("spark.serializer", classOf[KryoSerializer].getName)
+      .set("spark.kryo.registrator", classOf[KryoRegistrator].getName)
 
     SparkSession.builder
         .config(conf)
