@@ -1,25 +1,16 @@
 package osmesa.analytics.stats
 
-import osmesa.analytics._
+import java.math.BigDecimal
+import java.sql.Timestamp
 
 import cats.implicits._
-import com.monovore.decline._
 import com.vividsolutions.jts.geom.Coordinate
-import geotrellis.vector.{Feature, Line, Point}
-import geotrellis.spark.util.KryoWrapper
-import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.functions._
-import vectorpipe._
-
-import java.math.BigDecimal
-import java.time.Instant
-import java.sql.Timestamp
-import scala.collection.mutable
-import scala.util.{Try, Success, Failure}
+import osmesa.analytics._
 
 object CalculateStats {
   private implicit def changeTopicEncoder: Encoder[Array[StatTopic]] = ExpressionEncoder()
@@ -350,7 +341,7 @@ object CalculateStats {
         }.
         partitionBy(changesetPartitioner)
 
-    // Measure lenghts for roads and waterways
+    // Measure lengths for roads and waterways
 
     val relevantNodesToWays: RDD[(Long, Iterable[(Long, Long, Long, Coordinate)])] =
       groupedNodes.
