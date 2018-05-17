@@ -8,7 +8,7 @@ object Version {
   val cats = "1.0.0-RC1"
   val scalactic = "3.0.3"
   val scalatest = "3.0.3"
-  val spark = "2.2.0"
+  val spark = "2.3.0"
   val kryo = "4.0.0"
   val snakeyaml = "1.8"
   val circe = "0.9.0-M2"
