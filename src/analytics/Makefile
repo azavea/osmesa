@@ -32,4 +32,4 @@ db: DATABASE_URL
 	@psql -c "SELECT 1" > /dev/null 2>&1 || \
 	createdb
 
-db/all: db/changesets
+db/all: db/changesets db/users
