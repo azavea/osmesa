@@ -12,6 +12,7 @@ import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import geotrellis.vector.io._
+import osmesa.common.ProcessOSM
 
 import scala.collection.mutable.ArrayBuffer
 

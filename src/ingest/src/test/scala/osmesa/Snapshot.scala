@@ -8,6 +8,7 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import osmesa.common.ProcessOSM
 
 
 /*

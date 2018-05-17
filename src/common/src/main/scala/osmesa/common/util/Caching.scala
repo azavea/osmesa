@@ -1,9 +1,9 @@
-package osmesa.ingest.util
+package osmesa.common.util
+
+import java.io.File
 
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import org.apache.spark.sql._
-
-import java.io.File
 
 
 trait Caching {

@@ -8,7 +8,8 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import osmesa.ingest.util.Caching
+import osmesa.common.ProcessOSM
+import osmesa.common.util.Caching
 
 /*
  * Usage example:
