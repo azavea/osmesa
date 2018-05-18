@@ -236,6 +236,26 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           var connection: Connection = _
           val UpdateChangesetsQuery =
             """
+              |-- pre-shape the data to avoid repetition
+              |WITH data AS (
+              |  SELECT
+              |    ? AS id,
+              |    ? AS user_id,
+              |    ? AS roads_added,
+              |    ? AS roads_modified,
+              |    ? AS waterways_added,
+              |    ? AS waterways_modified,
+              |    ? AS buildings_added,
+              |    ? AS buildings_modified,
+              |    ? AS pois_added,
+              |    ? AS pois_modified,
+              |    ? AS road_km_added,
+              |    ? AS road_km_modified,
+              |    ? AS waterway_km_added,
+              |    ? AS waterway_km_modified,
+              |    ? AS augmented_diffs,
+              |    current_timestamp AS updated_at
+              |)
               |INSERT INTO changesets AS c (
               |  id,
               |  user_id,
@@ -253,42 +273,44 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  waterway_km_modified,
               |  augmented_diffs,
               |  updated_at
-              |) VALUES (
-              |  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp
-              |)
+              |) SELECT * FROM data
               |ON CONFLICT (id) DO UPDATE
               |SET
-              |  roads_added = c.roads_added + ?,
-              |  roads_modified = c.roads_modified + ?,
-              |  waterways_added = c.waterways_added + ?,
-              |  waterways_modified = c.waterways_modified + ?,
-              |  buildings_added = c.buildings_added + ?,
-              |  buildings_modified = c.buildings_modified + ?,
-              |  pois_added = c.pois_added + ?,
-              |  pois_modified = c.pois_modified + ?,
-              |  road_km_added = c.road_km_added + ?,
-              |  road_km_modified = c.road_km_modified + ?,
-              |  waterway_km_added = c.waterway_km_added + ?,
-              |  waterway_km_modified = c.waterway_km_modified + ?,
-              |  augmented_diffs = coalesce(c.augmented_diffs, ARRAY[]::integer[]) || ?,
+              |  roads_added = c.roads_added + EXCLUDED.roads_added,
+              |  roads_modified = c.roads_modified + EXCLUDED.roads_modified,
+              |  waterways_added = c.waterways_added + EXCLUDED.waterways_added,
+              |  waterways_modified = c.waterways_modified + EXCLUDED.waterways_modified,
+              |  buildings_added = c.buildings_added + EXCLUDED.buildings_added,
+              |  buildings_modified = c.buildings_modified + EXCLUDED.buildings_modified,
+              |  pois_added = c.pois_added + EXCLUDED.pois_added,
+              |  pois_modified = c.pois_modified + EXCLUDED.pois_modified,
+              |  road_km_added = c.road_km_added + EXCLUDED.road_km_added,
+              |  road_km_modified = c.road_km_modified + EXCLUDED.road_km_modified,
+              |  waterway_km_added = c.waterway_km_added + EXCLUDED.waterway_km_added,
+              |  waterway_km_modified = c.waterway_km_modified + EXCLUDED.waterway_km_modified,
+              |  augmented_diffs = coalesce(c.augmented_diffs, ARRAY[]::integer[]) || EXCLUDED.augmented_diffs,
               |  updated_at = current_timestamp
-              |WHERE c.id = ?
-              |  AND NOT coalesce(c.augmented_diffs, ARRAY[]::integer[]) && ?
+              |WHERE c.id = EXCLUDED.id
+              |  AND NOT coalesce(c.augmented_diffs, ARRAY[]::integer[]) && EXCLUDED.augmented_diffs
             """.stripMargin
 
           val UpdateUsersQuery =
             """
+              |--pre-shape the data to avoid repetition
+              |WITH data AS (
+              |  SELECT
+              |    ? AS id,
+              |    ? AS name
+              |)
               |INSERT INTO users AS u (
               |  id,
               |  name
-              |) VALUES (
-              |  ?, ?
-              |)
+              |) SELECT * FROM data
               |ON CONFLICT (id) DO UPDATE
               |-- update the user's name if necessary
               |SET
-              |  name = ?
-              |WHERE u.id = ?
+              |  name = EXCLUDED.name
+              |WHERE u.id = EXCLUDED.id
             """.stripMargin
 
           val UpdateChangesetCountriesQuery =
@@ -296,9 +318,9 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |-- pre-shape the data to avoid repetition
               |WITH data AS (
               |  SELECT
-              |    ? as changeset_id,
-              |    id as country_id,
-              |    ? as edit_count
+              |    ? AS changeset_id,
+              |    id AS country_id,
+              |    ? AS edit_count
               |  FROM countries
               |  WHERE code = ?
               |)
@@ -368,23 +390,6 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               updateChangesets.setDouble(14, waterwayKmModified)
               updateChangesets.setArray(
                 15, connection.createArrayOf("integer", Array(sequence.underlying)))
-              updateChangesets.setLong(16, roadsAdded)
-              updateChangesets.setLong(17, roadsModified)
-              updateChangesets.setLong(18, waterwaysAdded)
-              updateChangesets.setLong(19, waterwaysModified)
-              updateChangesets.setLong(20, buildingsAdded)
-              updateChangesets.setLong(21, buildingsModified)
-              updateChangesets.setLong(22, poisAdded)
-              updateChangesets.setLong(23, poisModified)
-              updateChangesets.setDouble(24, roadKmAdded)
-              updateChangesets.setDouble(25, roadKmModified)
-              updateChangesets.setDouble(26, waterwayKmAdded)
-              updateChangesets.setDouble(27, waterwayKmModified)
-              updateChangesets.setArray(
-                28, connection.createArrayOf("integer", Array(sequence.underlying)))
-              updateChangesets.setLong(29, changeset)
-              updateChangesets.setArray(
-                30, connection.createArrayOf("integer", Array(sequence.underlying)))
 
               updateChangesets.execute
             } finally {
@@ -396,8 +401,6 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             try {
               updateUsers.setLong(1, uid)
               updateUsers.setString(2, user)
-              updateUsers.setString(3, user)
-              updateUsers.setLong(4, uid)
 
               updateUsers.execute
             } finally {
