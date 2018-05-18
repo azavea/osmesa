@@ -1,12 +1,13 @@
 package osmesa.analytics.oneoffs
 
+import java.net.URI
 import java.sql.{Connection, DriverManager}
 
+import cats.implicits._
 import com.monovore.decline._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
 import geotrellis.vector.{Feature, Geometry}
-import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
@@ -17,51 +18,29 @@ import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.{AugmentedDiff, ProcessOSM}
 
-import scala.concurrent.duration._
-
 /*
  * Usage example:
  *
- * sbt "project ingest" assembly
+ * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.MakeGeometries \
- *   ingest/target/scala-2.11/osmesa-ingest.jar \
- *   --orc=$HOME/data/osm/isle-of-man.orc \
- *   --out=$HOME/data/osm/isle-of-man-geoms.orc \
+ *   --class osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor \
+ *   ingest/target/scala-2.11/osmesa-analytics.jar \
+ *   --augmented-diff-source s3://somewhere/diffs/ \
+ *   --database-url $DATABASE_URL
  */
-
-
-object StreamDiffs extends CommandApp(
-  name = "osmesa-make-geometries",
-  header = "Create geometries from an ORC file",
+object AugmentedDiffStreamProcessor extends CommandApp(
+  name = "osmesa-augmented-diff-stream-processor",
+  header = "Update statistics from streaming augmented diffs",
   main = {
     type AugmentedDiffFeature = Feature[Geometry, AugmentedDiff]
-    val FeatureCollectionSchema = StructType(
-      StructField("id", StringType) ::
-        StructField("type", StringType) ::
-        StructField("features", ArrayType(
-          StructType(
-            StructField("id", StringType) ::
-              //            StructField("geometry", StructType(
-              //              StructField("type", StringType) ::
-              //                // StructField("coordinates", ArrayType(FloatType)) ::
-              //                StructField("coordinates", StringType) ::
-              //                Nil
-              //            )) ::
-              StructField("geometry", StringType) ::
-              StructField("properties", MapType(StringType, StringType, valueContainsNull = false)) ::
-              Nil
-          )
-        )) ::
-        Nil)
 
-    /* CLI option handling */
-    val orcO = Opts.option[String]("orc", help = "Location of the ORC file to process")
-      .withDefault("/Users/seth/src/azavea/augdiff-pipeline/overpass-diffs/overpass-diff-publisher/artificial/")
-    val logger = Logger.getLogger(getClass)
+    val augmentedDiffSourceOpt = Opts.option[URI](
+      "augmented-diff-source", short = "a", metavar = "uri", help = "Location of augmented diffs to process")
+    val databaseUrlOpt = Opts.option[URI](
+      "database-url", short = "d", metavar = "database URL", help = "Database URL")
 
-    orcO.map { orc =>
+    (augmentedDiffSourceOpt, databaseUrlOpt).mapN { (augmentedDiffSource, databaseUri) =>
       /* Settings compatible for both local and EMR execution */
       val conf = new SparkConf()
         .setIfMissing("spark.master", "local[*]")
@@ -76,9 +55,6 @@ object StreamDiffs extends CommandApp(
 
       import ss.implicits._
 
-      /* Silence the damn INFO logger */
-      Logger.getRootLogger.setLevel(Level.WARN)
-
       // TODO read changeset replication from planet.osm.org
       // probably using a custom receiver: https://spark.apache.org/docs/2.3.0/streaming-custom-receivers.html
       // since data isn't available from a "filesystem"
@@ -86,11 +62,10 @@ object StreamDiffs extends CommandApp(
       // OR guess at file names and periodically check (cf osm-replication-streams)
 
       // read augmented diffs as text for better geometry support (by reading from GeoJSON w/ GeoTrellis)
-      val diffs = ss.readStream.option("maxFilesPerTrigger", 1).textFile(orc)
+      val diffs = ss.readStream.option("maxFilesPerTrigger", 1).textFile(augmentedDiffSource.toString)
 
       implicit val augmentedDiffFeatureEncoder: Encoder[(Option[AugmentedDiffFeature], AugmentedDiffFeature)] =
         Encoders.kryo[(Option[AugmentedDiffFeature], AugmentedDiffFeature)]
-      implicit val tagsEncoder: Encoder[(String, Map[String, String])] = Encoders.kryo[(String, Map[String, String])]
 
       val AugmentedDiffSchema = StructType(
         StructField("sequence", LongType) ::
@@ -121,80 +96,78 @@ object StreamDiffs extends CommandApp(
       implicit val encoder: Encoder[Row] = AugmentedDiffEncoder
 
       val geoms = diffs map {
-          line =>
-            val features = line
-              // Spark doesn't like RS-delimited JSON; perhaps Spray doesn't either
-              .replace("\u001e", "")
-              .parseGeoJson[JsonFeatureCollectionMap]
-              .getAll[AugmentedDiffFeature]
+        line =>
+          val features = line
+            // Spark doesn't like RS-delimited JSON; perhaps Spray doesn't either
+            .replace("\u001e", "")
+            .parseGeoJson[JsonFeatureCollectionMap]
+            .getAll[AugmentedDiffFeature]
 
-            (features.get("old"), features("new"))
-        } map {
-          case (Some(prev), curr) =>
-            val _type = curr.data.elementType match {
-              case "node" => ProcessOSM.NodeType
-              case "way" => ProcessOSM.WayType
-              case "relation" => ProcessOSM.RelationType
-            }
+          (features.get("old"), features("new"))
+      } map {
+        case (Some(prev), curr) =>
+          val _type = curr.data.elementType match {
+            case "node" => ProcessOSM.NodeType
+            case "way" => ProcessOSM.WayType
+            case "relation" => ProcessOSM.RelationType
+          }
 
-            val minorVersion = if (prev.data.version == curr.data.version) 1 else 0
+          val minorVersion = if (prev.data.version == curr.data.version) 1 else 0
 
-            // generate Rows directly for more control over DataFrame schema; toDF will infer these, but let's be
-            // explicit
-            new GenericRowWithSchema(Array(
-              curr.data.sequence.orNull,
-              _type,
-              prev.data.id,
-              prev.geom.toWKB(4326),
-              curr.geom.toWKB(4326),
-              prev.data.tags,
-              curr.data.tags,
-              prev.data.changeset,
-              curr.data.changeset,
-              prev.data.uid,
-              curr.data.uid,
-              prev.data.user,
-              curr.data.user,
-              prev.data.timestamp,
-              curr.data.timestamp,
-              prev.data.visible.getOrElse(true),
-              curr.data.visible.getOrElse(true),
-              prev.data.version,
-              curr.data.version,
-              -1, // previous minor version is unknown
-              minorVersion), AugmentedDiffSchema): Row
-          case (None, curr) =>
-            val _type = curr.data.elementType match {
-              case "node" => ProcessOSM.NodeType
-              case "way" => ProcessOSM.WayType
-              case "relation" => ProcessOSM.RelationType
-            }
+          // generate Rows directly for more control over DataFrame schema; toDF will infer these, but let's be
+          // explicit
+          new GenericRowWithSchema(Array(
+            curr.data.sequence.orNull,
+            _type,
+            prev.data.id,
+            prev.geom.toWKB(4326),
+            curr.geom.toWKB(4326),
+            prev.data.tags,
+            curr.data.tags,
+            prev.data.changeset,
+            curr.data.changeset,
+            prev.data.uid,
+            curr.data.uid,
+            prev.data.user,
+            curr.data.user,
+            prev.data.timestamp,
+            curr.data.timestamp,
+            prev.data.visible.getOrElse(true),
+            curr.data.visible.getOrElse(true),
+            prev.data.version,
+            curr.data.version,
+            -1, // previous minor version is unknown
+            minorVersion), AugmentedDiffSchema): Row
+        case (None, curr) =>
+          val _type = curr.data.elementType match {
+            case "node" => ProcessOSM.NodeType
+            case "way" => ProcessOSM.WayType
+            case "relation" => ProcessOSM.RelationType
+          }
 
-            new GenericRowWithSchema(Array(
-              curr.data.sequence.orNull,
-              _type,
-              curr.data.id,
-              null,
-              curr.geom.toWKB(4326),
-              null,
-              curr.data.tags,
-              null,
-              curr.data.changeset,
-              null,
-              curr.data.uid,
-              null,
-              curr.data.user,
-              null,
-              curr.data.timestamp,
-              null,
-              curr.data.visible.getOrElse(true),
-              null,
-              curr.data.version,
-              null,
-              0), AugmentedDiffSchema): Row
-        }
-
-      val uri = "jdbc:postgresql:///osmesa-stats"
+          new GenericRowWithSchema(Array(
+            curr.data.sequence.orNull,
+            _type,
+            curr.data.id,
+            null,
+            curr.geom.toWKB(4326),
+            null,
+            curr.data.tags,
+            null,
+            curr.data.changeset,
+            null,
+            curr.data.uid,
+            null,
+            curr.data.user,
+            null,
+            curr.data.timestamp,
+            null,
+            curr.data.visible.getOrElse(true),
+            null,
+            curr.data.version,
+            null,
+            0), AugmentedDiffSchema): Row
+      }
 
       // TODO geocode features
 
@@ -254,8 +227,6 @@ object StreamDiffs extends CommandApp(
           sum('pois_modified).as('pois_modified))
         .writeStream
         .queryName("aggregate statistics by sequence")
-//        .outputMode(OutputMode.Append)
-//        .format("console")
         .foreach(new ForeachWriter[Row] {
           var partitionId: Long = _
           var version: Long = _
@@ -326,11 +297,10 @@ object StreamDiffs extends CommandApp(
             // it can return false to skip the further data processing. However, close still will be called for
             // cleaning up resources.
 
-//            println(s"partition id: ${partitionId}, version: ${version}")
             this.partitionId = partitionId
             this.version = version
 
-            this.connection = DriverManager.getConnection(uri)
+            this.connection = DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
 
             true
           }
@@ -417,19 +387,9 @@ object StreamDiffs extends CommandApp(
         })
         .start
 
-//      while (true) {
-//        println(query.lastProgress)
-//        Thread.sleep(5000)
-//      }
-
-      //      val actionCounts = tags.groupBy('value).count
-      //      val query = actionCounts.writeStream.outputMode("complete").format("console").start()
-      //
       query.awaitTermination()
 
       ss.stop()
-
-      println("Done.")
     }
   }
 )
