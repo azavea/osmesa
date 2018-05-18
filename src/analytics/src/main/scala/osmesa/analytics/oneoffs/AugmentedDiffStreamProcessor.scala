@@ -169,14 +169,15 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             0), AugmentedDiffSchema): Row
       }
 
-      // TODO geocode features
+      // TODO update footprint MVTs
+      // TODO update MVTs (possibly including data from changeset replication)
 
       // aggregations are triggered when an event with a later timestamp ("event time") is received
       // in practice, this means that aggregation doesn't occur until the *next* sequence is received
       // the receiver is potentially responsible for "flushing" (with a textFile source, creating an empty file with a
       // lexicographically lower filename appears to seed the "event time" when processing 1 file per trigger)
 
-      val query = geoms
+      val query = ProcessOSM.geocode(geoms)
         .withColumn("timestamp", to_timestamp('sequence * 60 + 1347432900))
         // if sequences are received sequentially (and atomically), 0 seconds should suffice; anything received with an
         // earlier timestamp after that point will be dropped
@@ -187,6 +188,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           'changeset,
           'uid,
           'user,
+          'countries,
           when(isRoad('tags) and isNew('version, 'minorVersion), ST_Length('geom))
             .otherwise(lit(0)) as 'road_m_added,
           when(isRoad('tags) and !isNew('version, 'minorVersion), abs(ST_Length('geom) - ST_Length('prevGeom)))
@@ -213,18 +215,19 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             .otherwise(lit(0)) as 'pois_modified)
         .groupBy('timestamp, 'sequence, 'changeset, 'uid, 'user)
         .agg(
-          sum('road_m_added / 1000).as('road_km_added),
-          sum('road_m_modified / 1000).as('road_km_modified),
-          sum('waterway_m_added / 1000).as('waterway_km_added),
-          sum('waterway_m_modified / 1000).as('waterway_km_modified),
-          sum('roads_added).as('roads_added),
-          sum('roads_modified).as('roads_modified),
-          sum('waterways_added).as('waterways_added),
-          sum('waterways_modified).as('waterways_modified),
-          sum('buildings_added).as('buildings_added),
-          sum('buildings_modified).as('buildings_modified),
-          sum('pois_added).as('pois_added),
-          sum('pois_modified).as('pois_modified))
+          sum('road_m_added / 1000) as 'road_km_added,
+          sum('road_m_modified / 1000) as 'road_km_modified,
+          sum('waterway_m_added / 1000) as 'waterway_km_added,
+          sum('waterway_m_modified / 1000) as 'waterway_km_modified,
+          sum('roads_added) as 'roads_added,
+          sum('roads_modified) as 'roads_modified,
+          sum('waterways_added) as 'waterways_added,
+          sum('waterways_modified) as 'waterways_modified,
+          sum('buildings_added) as 'buildings_added,
+          sum('buildings_modified) as 'buildings_modified,
+          sum('pois_added) as 'pois_added,
+          sum('pois_modified) as 'pois_modified,
+          count_values(flatten(collect_list('countries))) as 'countries)
         .writeStream
         .queryName("aggregate statistics by sequence")
         .foreach(new ForeachWriter[Row] {
@@ -288,6 +291,28 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |WHERE u.id = ?
             """.stripMargin
 
+          val UpdateChangesetCountriesQuery =
+            """
+              |-- pre-shape the data to avoid repetition
+              |WITH data AS (
+              |  SELECT
+              |    ? as changeset_id,
+              |    id as country_id,
+              |    ? as edit_count
+              |  FROM countries
+              |  WHERE code = ?
+              |)
+              |INSERT INTO changesets_countries as cc (
+              |  changeset_id,
+              |  country_id,
+              |  edit_count
+              |) SELECT * FROM data
+              |ON CONFLICT (changeset_id, country_id) DO UPDATE
+              |SET
+              |  edit_count = cc.edit_count + EXCLUDED.edit_count
+              |WHERE cc.changeset_id = EXCLUDED.changeset_id
+            """.stripMargin
+
           def open(partitionId: Long, version: Long): Boolean = {
             // Called when starting to process one partition of new data in the executor. The version is for data
             // deduplication when there are failures. When recovering from a failure, some data may be generated
@@ -306,7 +331,6 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           }
 
           def process(row: Row) = {
-            // write string to connection
             val sequence = row.getAs[Long]("sequence")
             val changeset = row.getAs[Long]("changeset")
             val uid = row.getAs[Long]("uid")
@@ -323,6 +347,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             val buildingsModified = row.getAs[Long]("buildings_modified")
             val poisAdded = row.getAs[Long]("pois_added")
             val poisModified = row.getAs[Long]("pois_modified")
+            val countries = row.getAs[Map[String, Int]]("countries")
 
             val updateChangesets = connection.prepareStatement(UpdateChangesetsQuery)
 
@@ -377,6 +402,20 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               updateUsers.execute
             } finally {
               updateUsers.close()
+            }
+
+            countries foreach { case (code, count) =>
+              val updateChangesetCountries = connection.prepareStatement(UpdateChangesetCountriesQuery)
+
+              try {
+                updateChangesetCountries.setLong(1, changeset)
+                updateChangesetCountries.setLong(2, count)
+                updateChangesetCountries.setString(3, code)
+
+                updateChangesetCountries.execute
+              } finally {
+                updateChangesetCountries.close()
+              }
             }
           }
 
