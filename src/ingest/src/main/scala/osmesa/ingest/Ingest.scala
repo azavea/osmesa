@@ -236,16 +236,15 @@ object Ingest extends CommandApp(
 
       val layoutScheme = ZoomedLayoutScheme(WebMercator, 512)
 
+
       def build[G <: Geometry](keyedGeoms: RDD[(SpatialKey, (SpatialKey, GenerateVT.VTF[G]))], layoutLevel: LayoutLevel): Unit = {
         val LayoutLevel(zoom, layout) = layoutLevel
-        val fs = FileSystem.get(new URI(s"s3://${bucket}"), ss.sparkContext.hadoopConfiguration)
-        val keys = if (fs.exists(new Path(s"s3://${bucket}/${prefix}/${zoom}/keys"))) {
-          val existingKeys = ss.read.textFile(s"${bucket}/${prefix}/${zoom}/keys")
-          (existingKeys.rdd ++ keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"}))
-        } else {
-          keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"})
-        }
-        keys.saveAsTextFile(s"${bucket}/${prefix}/${zoom}/keys")
+        val keys = keyedGeoms.map({sk => s"${sk._1.col}/${sk._1.row}"})
+
+        // Write out populated spatial keys (use DF for append abilities)
+        import ss.implicits._
+        keys.distinct.toDF
+          .write.format("text").mode(SaveMode.Append).save(s"s3://${bucket}/${prefix}/keys")
 
         GenerateVT.save(GenerateVT.makeVectorTiles(keyedGeoms, layout, layer), zoom, bucket, prefix)
 
