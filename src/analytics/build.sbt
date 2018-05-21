@@ -16,6 +16,7 @@ libraryDependencies ++= Seq(
 
   decline,
   sparkHive % "provided",
+  sparkStreaming % "provided",
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
   gtS3 exclude("com.google.protobuf", "protobuf-java"),
   gtSpark exclude("com.google.protobuf", "protobuf-java"),
@@ -31,7 +32,9 @@ libraryDependencies ++= Seq(
   scalactic,
   gtSparkTestKit,
   logging,
-  scalatest
+  scalatest,
+  osmosisXml,
+  circeYaml
 )
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */
