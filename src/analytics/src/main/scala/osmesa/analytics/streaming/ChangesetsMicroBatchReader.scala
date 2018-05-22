@@ -13,6 +13,7 @@ import org.apache.spark.sql.sources.v2.reader.{DataReader, DataReaderFactory}
 import org.apache.spark.sql.types._
 
 import scala.collection.JavaConverters._
+import scala.compat.java8.OptionConverters._
 
 case class ChangesetsStreamBatchTask(baseURI: URI, start: SequenceOffset, end: SequenceOffset)
     extends DataReaderFactory[Row] {
@@ -37,7 +38,7 @@ class ChangesetsStreamBatchReader(baseURI: URI, start: SequenceOffset, end: Sequ
 
     // fetch next batch of changesets if necessary
     // this is a loop in case sequences contain no changesets
-    while (index >= changesets.length && currentOffset < end) {
+    while (index >= changesets.length && currentOffset + 1 < end) {
       // fetch next sequence
       currentOffset += 1
       changesets = ChangesetsSource.getSequence(baseURI, currentOffset.sequence).toVector
@@ -45,7 +46,7 @@ class ChangesetsStreamBatchReader(baseURI: URI, start: SequenceOffset, end: Sequ
       index = 0
     }
 
-    currentOffset < end || (currentOffset == end && index < changesets.length)
+    currentOffset < end && index < changesets.length
   }
 
   override def get(): Row = {
@@ -96,70 +97,68 @@ class ChangesetsMicroBatchReader(options: DataSourceOptions, checkpointLocation:
                   nullable = false) ::
       Nil)
 
-  private var start: SequenceOffset = _
-  private var end: SequenceOffset = _
+  private val baseURI = new URI(
+    options
+      .get("base_uri")
+      .orElse("https://planet.osm.org/replication/changesets/"))
 
-  /**
-    * Set the desired offset range for reader factories created from this reader. Reader factories
-    * will generate only data within (`start`, `end`]; that is, from the first record after `start`
-    * to the record with offset `end`.
-    *
-    * @param start The initial offset to scan from. If not specified, scan from an
-    *              implementation-specified start point, such as the earliest available record.
-    * @param end   The last offset to include in the scan. If not specified, scan up to an
-    *              implementation-defined endpoint, such as the last available offset
-    *              or the start offset plus a target batch size.
-    */
+  private var start: Option[SequenceOffset] = options
+    .get("start_sequence")
+    .asScala
+    .map(s => SequenceOffset(s.toInt))
+
+  private var end: Option[SequenceOffset] = options
+    .get("end_sequence")
+    .asScala
+    .map(s => SequenceOffset(s.toInt))
+
+  private var committed: Option[SequenceOffset] = None
+
   override def setOffsetRange(start: Optional[Offset], end: Optional[Offset]): Unit = {
-    this.start = start
-      .orElse(SequenceOffset(options.getInt("start_sequence", Int.MinValue)))
-      .asInstanceOf[SequenceOffset]
+    this.start = Some(
+      start.asScala
+        .map(_.asInstanceOf[SequenceOffset])
+        .getOrElse(
+          committed
+            .map(_ + 1)
+            .getOrElse(this.start.getOrElse {
+              ChangesetsSource.createInitialOffset(baseURI)
+            })))
 
-    this.end = end
-      .orElse(SequenceOffset(options.getInt("end_sequence", Int.MaxValue)))
-      .asInstanceOf[SequenceOffset]
+    this.end = Some(
+      end.asScala
+        .map(_.asInstanceOf[SequenceOffset])
+        .getOrElse(committed.map(_ + 2).getOrElse(this.end.getOrElse(this.start.get + 1))))
+
+    if (this.start == this.end) {
+      this.end = Some(this.end.get + 1)
+    }
   }
 
   override def getStartOffset: Offset = {
-    if (Option(start).isEmpty) {
+    start.getOrElse {
       throw new IllegalStateException("start offset not set")
     }
-
-    start
   }
 
   override def getEndOffset: Offset = {
-    if (Option(end).isEmpty) {
+    end.getOrElse {
       throw new IllegalStateException("end offset not set")
     }
-
-    end
   }
 
   override def deserializeOffset(json: String): Offset =
     SequenceOffset(json.toInt)
 
-  override def commit(end: Offset): Unit = Unit
+  override def commit(end: Offset): Unit =
+    committed = Some(end.asInstanceOf[SequenceOffset])
 
   override def stop(): Unit = Unit
 
   override def readSchema(): StructType = ChangesetSchema
 
-  override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] = {
-    logDebug("createDataReaderFactories")
-    val baseURI = new URI(
-      options
-        .get("base_uri")
-        .orElse("https://planet.osm.org/replication/changesets/"))
-
-    val start = this.start match {
-      case SequenceOffset(Int.MinValue) =>
-        ChangesetsSource.createInitialOffset(baseURI)
-      case s => s
-    }
-
-    logInfo(s"createDataReaderFactories, ${start}, ${end}")
-
-    List(ChangesetsStreamBatchTask(baseURI, start, end).asInstanceOf[DataReaderFactory[Row]]).asJava
-  }
+  override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =
+    List(
+      ChangesetsStreamBatchTask(baseURI, start.get, end.get)
+        .asInstanceOf[DataReaderFactory[Row]]).asJava
 }

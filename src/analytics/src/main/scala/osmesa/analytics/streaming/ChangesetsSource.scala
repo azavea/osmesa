@@ -25,8 +25,7 @@ object ChangesetsSource extends Logging {
 
   case class ChangesetsState(last_run: DateTime, sequence: Int)
 
-  private[streaming] def createInitialOffset(baseURI: URI): SequenceOffset = {
-    // TODO extract this
+  def getInitialOffset(baseURI: URI): Int = {
     val response =
       Http(baseURI.resolve("state.yaml").toString).asString
 
@@ -36,9 +35,13 @@ object ChangesetsSource extends Logging {
       .flatMap(_.as[ChangesetsState])
       .valueOr(throw _)
 
-    logInfo(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
+    logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
 
-    SequenceOffset(state.sequence)
+    state.sequence
+  }
+
+  private[streaming] def createInitialOffset(baseURI: URI): SequenceOffset = {
+    SequenceOffset(getInitialOffset(baseURI))
   }
 
   @tailrec
@@ -47,11 +50,11 @@ object ChangesetsSource extends Logging {
     val path =
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osm.gz"
 
-    logInfo(s"Fetching sequence $sequence")
+    logDebug(s"Fetching sequence $sequence")
     val response = Http(baseURI.resolve(path).toString).asBytes
 
     if (response.code === 404) {
-      logInfo(s"$sequence is not yet available, sleeping.")
+      logDebug(s"$sequence is not yet available, sleeping.")
       Thread.sleep(15000)
       getSequence(baseURI, sequence)
     } else {
@@ -61,7 +64,7 @@ object ChangesetsSource extends Logging {
 
       val changesets = (data \ "changeset").map(Changeset.fromXML)
 
-      logInfo(s"Received ${changesets.length} changesets")
+      logDebug(s"Received ${changesets.length} changesets")
 
       changesets
     }
