@@ -74,7 +74,7 @@ object ChangesetStreamProcessor
 
             val changesets =
               ss.readStream
-                .format("osmesa.analytics.streaming.ChangesetsProvider")
+                .format("changesets")
                 .options(options)
                 .option("base_uri", changesetSource.toString)
                 .load
