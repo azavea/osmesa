@@ -76,7 +76,6 @@ object ChangesetStreamProcessor
               ss.readStream
                 .format("changesets")
                 .options(options)
-                .option("base_uri", changesetSource.toString)
                 .load
 
             val changesetProcessor = changesets
