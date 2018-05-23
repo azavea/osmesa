@@ -1,6 +1,7 @@
 package osmesa.analytics.oneoffs
 
 import java.net.URI
+import java.sql.{Connection, DriverManager, Timestamp}
 
 import cats.implicits._
 import com.monovore.decline._
@@ -17,7 +18,6 @@ import osmesa.common.AugmentedDiff
  * spark-submit \
  *   --class osmesa.analytics.oneoffs.ChangesetStreamProcessor \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
- *   --changeset-source s3://somewhere/diffs/ \
  *   --database-url $DATABASE_URL
  */
 object ChangesetStreamProcessor
@@ -36,7 +36,6 @@ object ChangesetStreamProcessor
             .withDefault(new URI("https://planet.osm.org/replication/changesets/"))
         val databaseUrlOpt = Opts
           .option[URI]("database-url", short = "d", metavar = "database URL", help = "Database URL")
-          .orNone
         val startSequenceOpt = Opts
           .option[Int](
             "start-sequence",
@@ -84,23 +83,119 @@ object ChangesetStreamProcessor
                 .load
 
             val changesetProcessor = changesets
-//              .withWatermark("created_at", "5 seconds")
-              .select('sequence, 'id, 'tags, 'created_at)
+              .select('id, 'created_at, 'closed_at, 'user, 'uid, 'tags)
               .writeStream
-              .format("console")
-//              .foreach(new ForeachWriter[Row] {
-//                override def open(partitionId: Long, version: Long): Boolean = true
-//
-//                override def process(value: Row): Unit = {
-//                  val sequence = value.getAs[Int]("sequence")
-//                  val id = value.getAs[Long]("id")
-//                  val tags = value.getAs[Map[String, String]]("tags")
-//
-//                  println(sequence, id, tags.getOrElse("comment", ""))
-//                }
-//
-//                override def close(errorOrNull: Throwable): Unit = Unit
-//              })
+              .queryName("update changeset metadata")
+              .foreach(new ForeachWriter[Row] {
+                var partitionId: Long = _
+                var version: Long = _
+                var connection: Connection = _
+                val UpdateChangesetsQuery: String =
+                  """
+                    |-- pre-shape the data to avoid repetition
+                    |WITH data AS (
+                    |  SELECT
+                    |    ? AS id,
+                    |    ? AS editor,
+                    |    ? AS user_id,
+                    |    ?::timestamp with time zone AS created_at,
+                    |    ?::timestamp with time zone AS closed_at,
+                    |    current_timestamp AS updated_at
+                    |)
+                    |INSERT INTO changesets AS c (
+                    |  id,
+                    |  editor,
+                    |  user_id,
+                    |  created_at,
+                    |  closed_at,
+                    |  updated_at
+                    |) SELECT * FROM data
+                    |ON CONFLICT (id) DO UPDATE
+                    |SET
+                    |  editor = EXCLUDED.editor,
+                    |  user_id = EXCLUDED.user_id,
+                    |  created_at = EXCLUDED.created_at,
+                    |  closed_at = EXCLUDED.closed_at,
+                    |  updated_at = current_timestamp
+                    |WHERE c.id = EXCLUDED.id
+                  """.stripMargin
+
+                val UpdateUsersQuery: String =
+                  """
+                    |--pre-shape the data to avoid repetition
+                    |WITH data AS (
+                    |  SELECT
+                    |    ? AS id,
+                    |    ? AS name
+                    |)
+                    |INSERT INTO users AS u (
+                    |  id,
+                    |  name
+                    |) SELECT * FROM data
+                    |ON CONFLICT (id) DO UPDATE
+                    |-- update the user's name if necessary
+                    |SET
+                    |  name = EXCLUDED.name
+                    |WHERE u.id = EXCLUDED.id
+                  """.stripMargin
+
+                def open(partitionId: Long, version: Long): Boolean = {
+                  // Called when starting to process one partition of new data in the executor. The version is for data
+                  // deduplication when there are failures. When recovering from a failure, some data may be generated
+                  // multiple times but they will always have the same version.
+                  //
+                  //If this method finds using the partitionId and version that this partition has already been processed,
+                  // it can return false to skip the further data processing. However, close still will be called for
+                  // cleaning up resources.
+
+                  this.partitionId = partitionId
+                  this.version = version
+
+                  connection = DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
+
+                  true
+                }
+
+                def process(row: Row): Unit = {
+                  val id = row.getAs[Long]("id")
+                  val createdAt = row.getAs[Timestamp]("created_at")
+                  val closedAt = row.getAs[Timestamp]("closed_at")
+                  val user = row.getAs[String]("user")
+                  val uid = row.getAs[Long]("uid")
+                  val tags = row.getAs[Map[String, String]]("tags")
+
+                  val editor = tags.get("created_by").orNull
+
+                  val updateChangesets = connection.prepareStatement(UpdateChangesetsQuery)
+
+                  try {
+                    updateChangesets.setLong(1, id)
+                    updateChangesets.setString(2, editor)
+                    updateChangesets.setLong(3, uid)
+                    updateChangesets.setTimestamp(4, createdAt)
+                    updateChangesets.setTimestamp(5, closedAt)
+
+                    updateChangesets.execute
+                  } finally {
+                    updateChangesets.close()
+                  }
+
+                  val updateUsers = connection.prepareStatement(UpdateUsersQuery)
+
+                  try {
+                    updateUsers.setLong(1, uid)
+                    updateUsers.setString(2, user)
+
+                    updateUsers.execute
+                  } finally {
+                    updateUsers.close()
+                  }
+                }
+
+                def close(errorOrNull: Throwable): Unit = {
+                  connection.close()
+                }
+              })
               .start
 
             changesetProcessor.awaitTermination()
