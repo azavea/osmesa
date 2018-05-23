@@ -1,4 +1,4 @@
-package osmesa.analytics.streaming
+package osmesa.common.streaming
 
 import java.net.URI
 import java.util
@@ -10,6 +10,7 @@ import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
 import org.apache.spark.sql.sources.v2.reader.{DataReader, DataReaderFactory}
 import org.apache.spark.sql.types._
+import osmesa.common.model.Changeset
 
 import scala.collection.JavaConverters._
 import scala.compat.java8.OptionConverters._

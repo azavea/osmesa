@@ -1,4 +1,4 @@
-package osmesa.analytics.streaming
+package osmesa.common.model
 
 import java.sql.Timestamp
 

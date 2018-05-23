@@ -32,5 +32,4 @@ object Dependencies {
   val circeYaml      = "io.circe"                    %% "circe-yaml"                   % "0.8.0"
   val logging        = "com.typesafe.scala-logging"  %% "scala-logging"                % Version.scalaLogging
   val commonsIO      = "commons-io"                  %  "commons-io"                   % Version.commonsIO
-  val osmosisXml     = "org.openstreetmap.osmosis"   % "osmosis-xml"                   % Version.osmosis
 }

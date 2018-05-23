@@ -1,4 +1,4 @@
-package osmesa.analytics.streaming
+package osmesa.common.streaming
 
 import org.apache.spark.sql.sources.v2.reader.streaming.Offset
 
