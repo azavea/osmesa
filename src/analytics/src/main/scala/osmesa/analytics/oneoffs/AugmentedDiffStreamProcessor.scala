@@ -44,7 +44,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
       /* Settings compatible for both local and EMR execution */
       val conf = new SparkConf()
         .setIfMissing("spark.master", "local[*]")
-        .setAppName("make-geometries")
+        .setAppName("augmented-diff-stream-processor")
         .set("spark.serializer", classOf[org.apache.spark.serializer.KryoSerializer].getName)
         .set("spark.kryo.registrator", classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
 
@@ -234,7 +234,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           var partitionId: Long = _
           var version: Long = _
           var connection: Connection = _
-          val UpdateChangesetsQuery =
+          val UpdateChangesetsQuery: String =
             """
               |-- pre-shape the data to avoid repetition
               |WITH data AS (
@@ -294,7 +294,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  AND NOT coalesce(c.augmented_diffs, ARRAY[]::integer[]) && EXCLUDED.augmented_diffs
             """.stripMargin
 
-          val UpdateUsersQuery =
+          val UpdateUsersQuery: String =
             """
               |--pre-shape the data to avoid repetition
               |WITH data AS (
@@ -313,7 +313,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |WHERE u.id = EXCLUDED.id
             """.stripMargin
 
-          val UpdateChangesetCountriesQuery =
+          val UpdateChangesetCountriesQuery: String =
             """
               |-- pre-shape the data to avoid repetition
               |WITH data AS (
@@ -347,12 +347,12 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             this.partitionId = partitionId
             this.version = version
 
-            this.connection = DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
+            connection = DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
 
             true
           }
 
-          def process(row: Row) = {
+          def process(row: Row): Unit = {
             val sequence = row.getAs[Long]("sequence")
             val changeset = row.getAs[Long]("changeset")
             val uid = row.getAs[Long]("uid")
@@ -423,8 +423,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           }
 
           def close(errorOrNull: Throwable): Unit = {
-            // close the connection
-            this.connection.close()
+            connection.close()
           }
         })
         .start
