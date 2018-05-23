@@ -1,4 +1,4 @@
-package osmesa.analytics.streaming
+package osmesa.common.streaming
 
 import java.util.Optional
 

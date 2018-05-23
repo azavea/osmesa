@@ -1,4 +1,4 @@
-package osmesa.analytics.streaming
+package osmesa.common.streaming
 
 import java.io.ByteArrayInputStream
 import java.net.URI
@@ -11,6 +11,7 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
+import osmesa.common.model.Changeset
 import scalaj.http.Http
 
 import scala.annotation.tailrec

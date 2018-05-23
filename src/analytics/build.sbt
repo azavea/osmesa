@@ -31,9 +31,7 @@ libraryDependencies ++= Seq(
   scalactic,
   gtSparkTestKit,
   logging,
-  scalatest,
-  osmosisXml,
-  circeYaml
+  scalatest
 )
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */
