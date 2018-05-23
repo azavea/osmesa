@@ -5,6 +5,7 @@ import java.sql.Timestamp
 import org.joda.time.format.ISODateTimeFormat
 import spray.json.{DeserializationException, JsBoolean, JsNumber, JsObject, JsString, JsValue, RootJsonReader}
 
+// TODO is this an AugmentedDiff or an OSM Element w/ a sequence property?
 case class AugmentedDiff(
                           sequence: Option[Long],
                           changeset: Long,

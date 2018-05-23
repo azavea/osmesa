@@ -87,6 +87,8 @@ object MakeGeometries extends CommandApp(
       nodeGeoms
         .union(wayGeoms.drop('geometryChanged).where(size('tags) > 0))
         .union(relationGeoms)
+//        .withColumn("wkt", ST_AsText('geom))
+//        .drop('geom)
         .repartition(numPartitions)
         .write
         .mode(SaveMode.Overwrite)
