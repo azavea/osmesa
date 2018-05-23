@@ -1,26 +1,28 @@
 package osmesa.analytics.streaming
 
+import java.sql.Timestamp
+
 import org.joda.time.DateTime
 
-class Changeset(val id: Long,
-                val createdAt: DateTime,
-                val closedAt: Option[DateTime],
-                val open: Boolean,
-                val numChanges: Int,
-                val user: String,
-                val uid: Long,
-                val minLat: Option[Float],
-                val maxLat: Option[Float],
-                val minLon: Option[Float],
-                val maxLon: Option[Float],
-                val commentsCount: Int,
-                val tags: Map[String, String])
+case class Changeset(id: Long,
+                     createdAt: Timestamp,
+                     closedAt: Option[Timestamp],
+                     open: Boolean,
+                     numChanges: Int,
+                     user: String,
+                     uid: Long,
+                     minLat: Option[Float],
+                     maxLat: Option[Float],
+                     minLon: Option[Float],
+                     maxLon: Option[Float],
+                     commentsCount: Int,
+                     tags: Map[String, String])
 
 object Changeset {
-  implicit def stringToDateTime(s: String): DateTime =
-    DateTime.parse(s)
+  implicit def stringToTimestamp(s: String): Timestamp =
+    Timestamp.from(DateTime.parse(s).toDate.toInstant)
 
-  implicit def stringToOptionalDateTime(s: String): Option[DateTime] =
+  implicit def stringToOptionalTimestamp(s: String): Option[Timestamp] =
     s match {
       case "" => None
       case ts => Some(ts)
@@ -31,7 +33,6 @@ object Changeset {
       case "" => None
       case c  => Some(c.toFloat)
     }
-
   def fromXML(node: scala.xml.Node): Changeset = {
     val id = (node \@ "id").toLong
     val commentsCount = (node \@ "comments_count").toInt

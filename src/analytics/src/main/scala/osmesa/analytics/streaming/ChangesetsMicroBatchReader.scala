@@ -1,7 +1,6 @@
 package osmesa.analytics.streaming
 
 import java.net.URI
-import java.sql.Timestamp
 import java.util
 import java.util.Optional
 
@@ -55,8 +54,8 @@ class ChangesetsStreamBatchReader(baseURI: URI, start: SequenceOffset, end: Sequ
     Row(
       currentOffset.sequence,
       changeset.id,
-      Timestamp.from(changeset.createdAt.toDate.toInstant),
-      changeset.closedAt.map(dt => Timestamp.from(dt.toDate.toInstant)).orNull,
+      changeset.createdAt,
+      changeset.closedAt.orNull,
       changeset.open,
       changeset.numChanges,
       changeset.user,
