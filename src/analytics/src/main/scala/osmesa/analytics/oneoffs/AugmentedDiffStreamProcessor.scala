@@ -55,12 +55,6 @@ object AugmentedDiffStreamProcessor extends CommandApp(
 
       import ss.implicits._
 
-      // TODO read changeset replication from planet.osm.org
-      // probably using a custom receiver: https://spark.apache.org/docs/2.3.0/streaming-custom-receivers.html
-      // since data isn't available from a "filesystem"
-      // see https://github.com/perlundq/yajsync for an rsync implementation
-      // OR guess at file names and periodically check (cf osm-replication-streams)
-
       // read augmented diffs as text for better geometry support (by reading from GeoJSON w/ GeoTrellis)
       val diffs = ss.readStream.option("maxFilesPerTrigger", 1).textFile(augmentedDiffSource.toString)
 
