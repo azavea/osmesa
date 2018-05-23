@@ -40,9 +40,8 @@ object ChangesetsSource extends Logging {
     state.sequence
   }
 
-  private[streaming] def createInitialOffset(baseURI: URI): SequenceOffset = {
+  private[streaming] def createInitialOffset(baseURI: URI): SequenceOffset =
     SequenceOffset(getInitialOffset(baseURI))
-  }
 
   @tailrec
   def getSequence(baseURI: URI, sequence: Long): Seq[Changeset] = {

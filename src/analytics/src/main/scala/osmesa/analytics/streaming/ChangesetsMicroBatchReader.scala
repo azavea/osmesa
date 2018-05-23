@@ -101,6 +101,7 @@ class ChangesetsMicroBatchReader(options: DataSourceOptions, checkpointLocation:
       .get("base_uri")
       .orElse("https://planet.osm.org/replication/changesets/"))
 
+  // TODO make lazy in order to make setOffsetRange more readable?
   private var start: Option[SequenceOffset] = options
     .get("start_sequence")
     .asScala
