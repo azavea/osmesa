@@ -16,7 +16,8 @@ case class Changeset(id: Long,
                      minLon: Option[Float],
                      maxLon: Option[Float],
                      commentsCount: Int,
-                     tags: Map[String, String])
+                     tags: Map[String, String],
+                     comments: Seq[ChangesetComment])
 
 object Changeset {
   implicit def stringToTimestamp(s: String): Timestamp =
@@ -33,6 +34,7 @@ object Changeset {
       case "" => None
       case c  => Some(c.toFloat)
     }
+
   def fromXML(node: scala.xml.Node): Changeset = {
     val id = (node \@ "id").toLong
     val commentsCount = (node \@ "comments_count").toInt
@@ -49,19 +51,21 @@ object Changeset {
     val minLat = node \@ "min_lon"
     val tags =
       (node \ "tag").map(tag => (tag \@ "k", tag \@ "v")).toMap
+    val comments = (node \ "discussion" \ "comment").map(ChangesetComment.fromXML)
 
-    new Changeset(id,
-                  createdAt,
-                  closedAt,
-                  open,
-                  numChanges,
-                  user,
-                  uid,
-                  minLat,
-                  maxLat,
-                  minLon,
-                  maxLon,
-                  commentsCount,
-                  tags)
+    Changeset(id,
+              createdAt,
+              closedAt,
+              open,
+              numChanges,
+              user,
+              uid,
+              minLat,
+              maxLat,
+              minLon,
+              maxLon,
+              commentsCount,
+              tags,
+              comments)
   }
 }
