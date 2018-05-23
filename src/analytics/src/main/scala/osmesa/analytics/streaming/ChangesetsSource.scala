@@ -58,9 +58,9 @@ object ChangesetsSource extends Logging {
       Thread.sleep(15000)
       getSequence(baseURI, sequence)
     } else {
+      // NOTE: if diff bodies get really large, switch to a SAX parser to help with the memory footprint
       val data = XML.loadString(
-        IOUtils.toString(new GZIPInputStream(
-          new ByteArrayInputStream(response.body))))
+        IOUtils.toString(new GZIPInputStream(new ByteArrayInputStream(response.body))))
 
       val changesets = (data \ "changeset").map(Changeset.fromXML)
 
