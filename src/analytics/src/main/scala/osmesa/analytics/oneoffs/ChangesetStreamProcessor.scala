@@ -5,10 +5,9 @@ import java.sql.{Connection, DriverManager, Timestamp}
 
 import cats.implicits._
 import com.monovore.decline._
-import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark._
 import org.apache.spark.sql._
-import osmesa.common.AugmentedDiff
+import osmesa.common.functions.osm._
 
 /*
  * Usage example:
@@ -25,8 +24,6 @@ object ChangesetStreamProcessor
       name = "osmesa-augmented-diff-stream-processor",
       header = "Update statistics from streaming augmented diffs",
       main = {
-        type AugmentedDiffFeature = Feature[Geometry, AugmentedDiff]
-
         val changesetSourceOpt =
           Opts
             .option[URI]("changeset-source",
@@ -83,13 +80,41 @@ object ChangesetStreamProcessor
                 .load
 
             val changesetProcessor = changesets
-              .select('id, 'created_at, 'closed_at, 'user, 'uid, 'tags)
+              .select('id,
+                      'created_at,
+                      'closed_at,
+                      'user,
+                      'uid,
+                      'tags.getField("created_by") as 'editor,
+                      hashtags('tags) as 'hashtags)
               .writeStream
               .queryName("update changeset metadata")
               .foreach(new ForeachWriter[Row] {
                 var partitionId: Long = _
                 var version: Long = _
                 var connection: Connection = _
+                // https://stackoverflow.com/questions/34708509/how-to-use-returning-with-on-conflict-in-postgresql
+                val GetHashtagIdQuery: String =
+                  """
+                    |WITH data AS (
+                    |  SELECT
+                    |    ? AS hashtag
+                    |),
+                    |ins AS (
+                    |  INSERT INTO hashtags AS h (
+                    |    hashtag
+                    |  ) SELECT * FROM data
+                    |  ON CONFLICT DO NOTHING
+                    |  RETURNING id
+                    |)
+                    |SELECT id
+                    |FROM ins
+                    |UNION ALL
+                    |SELECT id
+                    |FROM data
+                    |JOIN hashtags USING(hashtag)
+                  """.stripMargin
+
                 val UpdateChangesetsQuery: String =
                   """
                     |-- pre-shape the data to avoid repetition
@@ -118,6 +143,20 @@ object ChangesetStreamProcessor
                     |  closed_at = EXCLUDED.closed_at,
                     |  updated_at = current_timestamp
                     |WHERE c.id = EXCLUDED.id
+                  """.stripMargin
+
+                val UpdateChangesetsHashtagsQuery: String =
+                  """
+                    |WITH data AS (
+                    |  SELECT
+                    |    ? AS changeset_id,
+                    |    ? AS hashtag_id
+                    |)
+                    |INSERT INTO changesets_hashtags (
+                    |  changeset_id,
+                    |  hashtag_id
+                    |) SELECT * FROM data
+                    |ON CONFLICT DO NOTHING
                   """.stripMargin
 
                 val UpdateUsersQuery: String =
@@ -162,9 +201,8 @@ object ChangesetStreamProcessor
                   val closedAt = row.getAs[Timestamp]("closed_at")
                   val user = row.getAs[String]("user")
                   val uid = row.getAs[Long]("uid")
-                  val tags = row.getAs[Map[String, String]]("tags")
-
-                  val editor = tags.get("created_by").orNull
+                  val editor = row.getAs[String]("editor")
+                  val hashtags = row.getAs[Seq[String]]("hashtags")
 
                   val updateChangesets = connection.prepareStatement(UpdateChangesetsQuery)
 
@@ -189,6 +227,35 @@ object ChangesetStreamProcessor
                     updateUsers.execute
                   } finally {
                     updateUsers.close()
+                  }
+
+                  hashtags.foreach {
+                    hashtag =>
+                      val getHashtagId = connection.prepareStatement(GetHashtagIdQuery)
+
+                      try {
+                        getHashtagId.setString(1, hashtag)
+
+                        val rs = getHashtagId.executeQuery()
+
+                        while (rs.next()) {
+                          val hashtagId = rs.getLong("id")
+
+                          val updateChangesetsHashtags =
+                            connection.prepareStatement(UpdateChangesetsHashtagsQuery)
+
+                          try {
+                            updateChangesetsHashtags.setLong(1, id)
+                            updateChangesetsHashtags.setLong(2, hashtagId)
+
+                            updateChangesetsHashtags.execute
+                          } finally {
+                            updateChangesetsHashtags.close()
+                          }
+                        }
+                      } finally {
+                        getHashtagId.close()
+                      }
                   }
                 }
 
