@@ -189,7 +189,13 @@ package object osm {
   val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
 
   private val _hashtags = (comment: String) =>
-    HashtagMatcher.findAllMatchIn(comment).map(_.group(1).toLowerCase).toSeq
+    HashtagMatcher
+      .findAllMatchIn(comment)
+      // fetch the first group (after #)
+      .map(_.group(1).toLowerCase)
+      // check that each group contains at least one letter
+      .filter("""\p{L}""".r.findFirstIn(_).isDefined)
+      .toSeq
 
   val hashtags: UserDefinedFunction = udf { (tags: Map[String, String]) =>
     tags.get("comment") match {
