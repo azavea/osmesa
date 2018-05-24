@@ -14,11 +14,7 @@ libraryDependencies ++= Seq(
   gtShapefile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
-  //geomesaHbaseDatastore,
   cats,
-  hbaseClient % "provided",
-  hbaseCommon % "provided",
-  hbaseServer % "provided",
   scalactic,
   scalatest
 )
