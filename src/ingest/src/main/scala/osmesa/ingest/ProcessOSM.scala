@@ -324,51 +324,47 @@ object ProcessOSM {
 
     val wayGeoms = waysAndNodes
       .select('changeset, 'id, 'version, 'updated, 'isArea, 'idx, 'lat, 'lon)
-      .repartition('id, 'updated)
-      .sortWithinPartitions('id, 'version, 'updated, 'idx)
-      .drop('idx)
-      // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays) instead of using a UDAF
-      .mapPartitions(rows => {
-        rows
-          .toVector
-          .groupBy(row =>
-            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Timestamp]("updated"))
-          )
-          .map {
-            case ((changeset, id, version, updated), rows: Seq[Row]) =>
-              val isArea = rows.head.getAs[Boolean]("isArea")
-              val geom = rows.map(row =>
-                Seq(Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN),
-                  Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN))) match {
-                    // no coordinates provided
-                    case coords if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
-                    // some of the coordinates are empty; this is invalid
-                    case coords if coords.exists(Option(_).isEmpty) => None
-                    // some of the coordinates are invalid
-                    case coords if coords.exists(_.exists(_.isNaN)) => None
-                    // 1 pair of coordinates provided
-                    case coords if coords.length == 1 =>
-                      Some(Point(coords.head.head, coords.head.last))
-                    case coords => {
-                      coords.map(xy => (xy.head.toDouble, xy.last.toDouble)) match {
-                        case pairs => Line(pairs)
-                      }
-                    } match {
-                      case ring if isArea && ring.vertexCount >= 4 && ring.isClosed =>
-                        Some(Polygon(ring))
-                      case line => Some(line)
-                    }
-                  }
+      .groupByKey(row =>
+        (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Timestamp]("updated"))
+      )
+      .mapGroups {
+        case ((changeset, id, version, updated), rows) =>
+          val nds = rows.toVector
+
+          val isArea = nds.head.getAs[Boolean]("isArea")
+          val geom = nds
+            .sortWith((a, b) => a.getAs[Int]("idx") < b.getAs[Int]("idx"))
+            .map { row =>
+              Seq(Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN),
+                  Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN))
+            } match {
+              // no coordinates provided
+              case coords if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
+              // some of the coordinates are empty; this is invalid
+              case coords if coords.exists(Option(_).isEmpty) => None
+              // some of the coordinates are invalid
+              case coords if coords.exists(_.exists(_.isNaN)) => None
+              // 1 pair of coordinates provided
+              case coords if coords.length == 1 =>
+                Some(Point(coords.head.head, coords.head.last))
+              case coords => {
+                coords.map(xy => (xy.head.toDouble, xy.last.toDouble)) match {
+                  case pairs => Line(pairs)
+                }
+              } match {
+                case ring if isArea && ring.vertexCount >= 4 && ring.isClosed =>
+                  Some(Polygon(ring))
+                case line => Some(line)
+              }
+            }
 
               val wkb = geom match {
                 case Some(g) if g.isValid => g.toWKB(4326)
                 case _ => null
               }
 
-              new GenericRowWithSchema(Array(changeset, id, version, updated, wkb), BareElementSchema): Row
-          }
-          .toIterator
-      })
+            new GenericRowWithSchema(Array(changeset, id, version, updated, wkb), BareElementSchema): Row
+      }
 
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
@@ -503,27 +499,23 @@ object ProcessOSM {
 
     implicit val encoder: Encoder[Row] = VersionedElementEncoder
 
-    // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
     val relationGeoms = members
-      .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
-      .mapPartitions(rows => {
-        rows
-          .toVector
-          .groupBy(row =>
-            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
-          )
-          .map {
-            case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
-              val types = rows.map(_.getAs[Byte]("type"))
-              val roles = rows.map(_.getAs[String]("role"))
-              val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
+        .groupByKey { row =>
+          (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]
+            ("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+        }
+        .mapGroups {
+          case ((changeset, id, version, minorVersion, updated, validUntil), rows) =>
+            val members = rows.toVector
+            val types = members.map(_.getAs[Byte]("type"))
+            val roles = members.map(_.getAs[String]("role"))
+            val geoms = members.map(_.getAs[Array[Byte]]("geom"))
 
-              val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
+            val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
 
-              new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row
-          }
-          .toIterator
-      })
+            new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb),
+              VersionedElementSchema): Row
+        }
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
@@ -570,35 +562,34 @@ object ProcessOSM {
 
     // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
     val relationGeoms = members
-      .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
-      .mapPartitions(rows => {
-        rows
-          .toVector
-          .groupBy(row =>
-            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
-          )
-          .flatMap {
-            case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
-              val types = rows.map(_.getAs[Byte]("type"))
-              val roles = rows.map(_.getAs[String]("role"))
-              val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
+      .groupByKey { row =>
+        (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]
+          ("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+      }
+      .flatMapGroups {
+        case ((changeset, id, version, minorVersion, updated, validUntil), rows) =>
+          val members = rows.toVector
+          val types = members.map(_.getAs[Byte]("type"))
+          val roles = members.map(_.getAs[String]("role"))
+          val geoms = members.map(_.getAs[Array[Byte]]("geom"))
 
-              buildRoute(id, version, updated, types, roles, geoms) match {
-                case Some(components) =>
-                  components.map {
-                    case ("", wkb) =>
-                      // no role
-                      new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated, validUntil, wkb), TaggedVersionedElementSchema): Row
-                    case (role, wkb) =>
-                      new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion, updated, validUntil, wkb), TaggedVersionedElementSchema): Row
-                  }
-                case None =>
-                  // no geometry
-                  Seq(new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated, validUntil, null), TaggedVersionedElementSchema): Row)
+          buildRoute(id, version, updated, types, roles, geoms) match {
+            case Some(components) =>
+              components.map {
+                case ("", wkb) =>
+                  // no role
+                  new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
+                    validUntil, wkb), TaggedVersionedElementSchema): Row
+                case (role, wkb) =>
+                  new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion,
+                    updated, validUntil, wkb), TaggedVersionedElementSchema): Row
               }
+            case None =>
+              // no geometry
+              Seq(new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
+                validUntil, null), TaggedVersionedElementSchema): Row)
           }
-          .toIterator
-      })
+      }
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
