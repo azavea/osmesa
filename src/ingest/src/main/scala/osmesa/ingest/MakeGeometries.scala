@@ -40,7 +40,10 @@ object MakeGeometries extends CommandApp(
         .setAppName("make-geometries")
         .set("spark.serializer", classOf[org.apache.spark.serializer.KryoSerializer].getName)
         .set("spark.kryo.registrator", classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
-        .set("spark.sql.orc.impl", "native")
+        // for this dataset, these actually reduce performance; perhaps something to do with parsing / predicate
+        // pushdown for complex types (array<struct<type:string,ref:long,role:string>> appears to be the worst offender)
+//        .set("spark.sql.orc.impl", "native")
+//        .set("spark.sql.orc.filterPushdown", "true")
 
       implicit val ss: SparkSession = SparkSession.builder
         .config(conf)
@@ -54,19 +57,19 @@ object MakeGeometries extends CommandApp(
 
       val df = ss.read.orc(orc)
 
-      val cache = Option(new URI(cacheDir).getScheme) match {
+      implicit val cache: Caching = Option(new URI(cacheDir).getScheme) match {
         case Some("s3") => Caching.onS3(cacheDir)
         // bare paths don't get a scheme
         case None if cacheDir != "" => Caching.onFs(cacheDir)
         case _ => Caching.none
       }
 
+      implicit val cachePartitions: Option[Int] = Some(numPartitions)
+
       // Construct geometries
       // this can also be done (sans caching) w/ ProcessOSM.constructGeometries
 
-      val nodes = cache.orc("prepared_nodes") {
-        ProcessOSM.preprocessNodes(df)
-      }
+      val nodes = ProcessOSM.preprocessNodes(df)
 
       val nodeGeoms = cache.orc("node_geoms") {
         ProcessOSM.constructPointGeometries(nodes)
@@ -80,12 +83,12 @@ object MakeGeometries extends CommandApp(
         ProcessOSM.reconstructRelationGeometries(df, wayGeoms)
       }
 
-      // TODO remove way geoms that contribute to relations but have no inherent value (unclear how to identify these)
       nodeGeoms
-        .union(wayGeoms.where(size('tags) > 0))
+        .union(wayGeoms.drop('geometryChanged).where(size('tags) > 0))
         .union(relationGeoms)
         .repartition(numPartitions)
         .write
+        .mode(SaveMode.Overwrite)
         .orc(out)
 
       ss.stop()
