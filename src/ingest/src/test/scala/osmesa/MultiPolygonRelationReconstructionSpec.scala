@@ -94,87 +94,28 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
           .withColumn("minorVersion", lit(0))
           .withColumn("updated", lit(Timestamp.valueOf("2001-01-01 00:00:00")))
           .withColumn("validUntil", lit(Timestamp.valueOf("2002-01-01 00:00:00")))
-          .repartition('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil)
-          .mapPartitions(rows => {
-//            var changeset: Long = -1
-//            var id: Long = -1
-//            var version: Int = -1
-//            var minorVersion: Int = -1
-//            var updated: Timestamp = null
-//            var validUntil: Timestamp = null
-//
-//            val types = ArrayBuffer[Byte]()
-//            val roles = ArrayBuffer[String]()
-//            val geoms = ArrayBuffer[Array[Byte]]()
-//
-//            rows.flatMap { row =>
-//              val _changeset = row.getAs[Long]("changeset")
-//              val _id = row.getAs[Long]("id")
-//              val _version = row.getAs[Integer]("version")
-//              val _minorVersion = row.getAs[Integer]("minorVersion")
-//              val _updated = row.getAs[Timestamp]("updated")
-//              val _validUntil = row.getAs[Timestamp]("validUntil")
-//              val out = ArrayBuffer[Row]()
-//
-//              if (changeset != _changeset && id != _id && version != _version && minorVersion != _minorVersion && updated != _updated && validUntil != _validUntil) {
-//                if (types.nonEmpty) {
-//                  val wkb = buildMultiPolygon(_id, _version, _updated, types, roles, geoms).orNull
-//
-//                  out.append(new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row)
-//                }
-//
-//                changeset = _changeset
-//                id = _id
-//                version = _version
-//                minorVersion = _minorVersion
-//                updated = _updated
-//                validUntil = _validUntil
-//
-//                types.clear()
-//                roles.clear()
-//                geoms.clear()
-//              }
-//
-//              types.append(row.getAs[String]("type") match {
-//                case "node" => NodeType
-//                case "way" => WayType
-//                case "relation" => RelationType
-//                case _ => null.asInstanceOf[Byte]
-//              })
-//              roles.append(row.getAs[String]("role"))
-//              geoms.append(row.getAs[Array[Byte]]("geom"))
-//
-//              if (!rows.hasNext) {
-//                val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
-//
-//                out.append(new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row)
-//              }
-//
-//              out
-//            }
+          .groupByKey { row =>
+            (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]
+              ("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+          }
+          .mapGroups {
+            case ((changeset, id, version, minorVersion, updated, validUntil), rows) =>
+              val members = rows.toVector
+              // TODO store Bytes as the type in fixtures
+              val types = members.map(_.getAs[String]("type") match {
+                case "node" => NodeType
+                case "way" => WayType
+                case "relation" => RelationType
+                case _ => null.asInstanceOf[Byte]
+              })
+              val roles = members.map(_.getAs[String]("role"))
+              val geoms = members.map(_.getAs[Array[Byte]]("geom"))
 
-            rows
-              .toVector
-              .groupBy(row =>
-                (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
-              )
-              .map {
-                case ((changeset, id, version, minorVersion, updated, validUntil), rows: Seq[Row]) =>
-                  val types = rows.map(_.getAs[String]("type") match {
-                    case "node" => NodeType
-                    case "way" => WayType
-                    case "relation" => RelationType
-                    case _ => null.asInstanceOf[Byte]
-                  })
-                  val roles = rows.map(_.getAs[String]("role"))
-                  val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
+              val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
 
-                  val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
-
-                  new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row
-              }
-              .toIterator
-          })
+              new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb),
+                VersionedElementSchema): Row
+          }
         )
 
         val expected = fixture.wkt
