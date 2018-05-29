@@ -12,10 +12,16 @@ package object functions {
   private def _reproject(geom: Array[Byte], targetCRS: CRS = WebMercator) =
     Option(geom).map(_.readWKB.reproject(LatLng, targetCRS).toWKB(targetCRS.epsgCode.get)).orNull
 
-  // Convert BigDecimals to double
+  // Convert BigDecimals to doubles
   // Reduces size taken for representation at the expense of some precision loss.
   val asDouble: UserDefinedFunction = udf {
     Option(_: BigDecimal).map(_.doubleValue).getOrElse(Double.NaN)
+  }
+
+  // Convert BigDecimals to floats
+  // Reduces size taken for representation at the expense of more precision loss.
+  val asFloat: UserDefinedFunction = udf {
+    Option(_: BigDecimal).map(_.floatValue).getOrElse(Float.NaN)
   }
 
   val ST_AsText: UserDefinedFunction = udf {

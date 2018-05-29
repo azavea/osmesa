@@ -8,9 +8,9 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import osmesa.functions._
 import osmesa.functions.osm._
 import osmesa.ingest.util.Caching
+import osmesa.functions._
 
 
 /*
@@ -57,7 +57,7 @@ object ExtractMultiPolygons extends CommandApp(
 
       val df = ss.read.orc(orc)
 
-      val cache = Option(new URI(cacheDir).getScheme) match {
+      implicit val cache: Caching = Option(new URI(cacheDir).getScheme) match {
         case Some("s3") => Caching.onS3(cacheDir)
         // bare paths don't get a scheme
         case None if cacheDir != "" => Caching.onFs(cacheDir)
@@ -110,7 +110,10 @@ object ExtractMultiPolygons extends CommandApp(
         .withColumn("wkt", ST_AsText('geom))
         .drop('geom)
         .orderBy('id, 'version, 'updated)
-        .repartition(1).write.orc(outGeoms)
+        .repartition(1)
+        .write
+        .mode(SaveMode.Overwrite)
+        .orc(outGeoms)
 
       ss.stop()
 
