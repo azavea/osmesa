@@ -137,7 +137,7 @@ package object osm {
 
   private val POITags = Set("amenity", "shop", "craft", "office", "leisure", "aeroway")
 
-  private val HashtagMatcher = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!"#$%()*,.\/:;<=>?@\[\]^{|}~]+)""".r
+  private val HashtagMatcher = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
 
   private lazy val logger = Logger.getLogger(getClass)
 
