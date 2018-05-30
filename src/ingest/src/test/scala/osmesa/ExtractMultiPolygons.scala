@@ -74,7 +74,7 @@ object ExtractMultiPolygons extends CommandApp(
       // get all ways referenced by relations
       val wayIds = relations
         .select(explode('members).as('member))
-        .where($"member.type" === "way")
+        .where($"member.type" === ProcessOSM.WayType)
         .select($"member.ref".as("id"))
         .distinct
 
@@ -102,7 +102,7 @@ object ExtractMultiPolygons extends CommandApp(
 
       val wayGeoms = cache.orc("way-geoms") {
         ProcessOSM.reconstructWayGeometries(referencedWays, referencedNodes, Some(nodesToWays))
-      }.withColumn("type", lit("way"))
+      }
 
       val relationGeoms = ProcessOSM.reconstructRelationGeometries(relations, wayGeoms)
 
