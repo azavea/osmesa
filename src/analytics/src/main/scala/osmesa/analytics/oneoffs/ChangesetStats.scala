@@ -164,69 +164,75 @@ object ChangesetStats extends CommandApp(
       val changesetStats = rawChangesetStats
         .join(changesetMetadata, Seq("changeset"), "left_outer")
 
-      val userStats = changesetStats
-        .groupBy('uid, 'name)
-        .agg(
-          sum('road_km_added) as 'road_km_added,
-          sum('road_km_modified) as 'road_km_modified,
-          sum('waterway_km_added) as 'waterway_km_added,
-          sum('waterway_km_modified) as 'waterway_km_modified,
-          sum('roads_added) as 'roads_added,
-          sum('roads_modified) as 'roads_modified,
-          sum('waterways_added) as 'waterways_added,
-          sum('waterways_modified) as 'waterways_modified,
-          sum('buildings_added) as 'buildings_added,
-          sum('buildings_modified) as 'buildings_modified,
-          sum('pois_added) as 'pois_added,
-          sum('pois_modified) as 'pois_modified,
-          count('changeset) as 'changeset_count,
-          // TODO more efficient as a UDAF; even more efficient using mapPartitions
-          count_values(collect_list('editor)) as 'editors,
-          count_values(collect_list(to_date(date_trunc("day", 'created_at)))) as 'edit_times,
-          count_values(flatten(collect_list('hashtags))) as 'hashtags,
-          sum_counts(collect_list('countries)) as 'countries
-        )
-        .withColumn("edit_count", ('roads_added + 'roads_modified + 'waterways_added + 'waterways_modified +
-          'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
-
-      val hashtagStats = changesetStats
-        .withColumn("hashtag", explode('hashtags))
-        .groupBy('hashtag)
-        .agg(
-          sum('road_km_added) as 'road_km_added,
-          sum('road_km_modified) as 'road_km_modified,
-          sum('waterway_km_added) as 'waterway_km_added,
-          sum('waterway_km_modified) as 'waterway_km_modified,
-          sum('roads_added) as 'roads_added,
-          sum('roads_modified) as 'roads_modified,
-          sum('waterways_added) as 'waterways_added,
-          sum('waterways_modified) as 'waterways_modified,
-          sum('buildings_added) as 'buildings_added,
-          sum('buildings_modified) as 'buildings_modified,
-          sum('pois_added) as 'pois_added,
-          sum('pois_modified) as 'pois_modified,
-          count('changeset) as 'changeset_count,
-          count_values(collect_list('editor)) as 'editors,
-          count_values(collect_list(to_date(date_trunc("day", 'created_at)))) as 'edit_times,
-          flatten(collect_list('hashtags)) as 'hashtags,
-          sum_counts(collect_list('countries)) as 'countries
-        )
-        .withColumn("edit_count", ('roads_added + 'roads_modified + 'waterways_added + 'waterways_modified +
-          'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
-        .withColumn("related_hashtags", count_values(without('hashtags, 'hashtag)))
-        .drop('hashtags)
-
-      userStats
-        .repartition(1)
+      changesetStats
+        .repartition(50)
         .write
         .mode(SaveMode.Overwrite)
-        .orc(output.resolve("user-stats").toString)
-
-      hashtagStats
-        .repartition(1)
-        .write
-        .mode(SaveMode.Overwrite)
-        .orc(output.resolve("hashtag-stats").toString)
+        .orc(output.resolve("changesets").toString)
+//
+//      val userStats = changesetStats
+//        .groupBy('uid, 'name)
+//        .agg(
+//          sum('road_km_added) as 'road_km_added,
+//          sum('road_km_modified) as 'road_km_modified,
+//          sum('waterway_km_added) as 'waterway_km_added,
+//          sum('waterway_km_modified) as 'waterway_km_modified,
+//          sum('roads_added) as 'roads_added,
+//          sum('roads_modified) as 'roads_modified,
+//          sum('waterways_added) as 'waterways_added,
+//          sum('waterways_modified) as 'waterways_modified,
+//          sum('buildings_added) as 'buildings_added,
+//          sum('buildings_modified) as 'buildings_modified,
+//          sum('pois_added) as 'pois_added,
+//          sum('pois_modified) as 'pois_modified,
+//          count('changeset) as 'changeset_count,
+//          // TODO more efficient as a UDAF; even more efficient using mapPartitions
+//          count_values(collect_list('editor)) as 'editors,
+//          count_values(collect_list(to_date(date_trunc("day", 'created_at)))) as 'edit_times,
+//          count_values(flatten(collect_list('hashtags))) as 'hashtags,
+//          sum_counts(collect_list('countries)) as 'countries
+//        )
+//        .withColumn("edit_count", ('roads_added + 'roads_modified + 'waterways_added + 'waterways_modified +
+//          'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
+//
+//      val hashtagStats = changesetStats
+//        .withColumn("hashtag", explode('hashtags))
+//        .groupBy('hashtag)
+//        .agg(
+//          sum('road_km_added) as 'road_km_added,
+//          sum('road_km_modified) as 'road_km_modified,
+//          sum('waterway_km_added) as 'waterway_km_added,
+//          sum('waterway_km_modified) as 'waterway_km_modified,
+//          sum('roads_added) as 'roads_added,
+//          sum('roads_modified) as 'roads_modified,
+//          sum('waterways_added) as 'waterways_added,
+//          sum('waterways_modified) as 'waterways_modified,
+//          sum('buildings_added) as 'buildings_added,
+//          sum('buildings_modified) as 'buildings_modified,
+//          sum('pois_added) as 'pois_added,
+//          sum('pois_modified) as 'pois_modified,
+//          count('changeset) as 'changeset_count,
+//          count_values(collect_list('editor)) as 'editors,
+//          count_values(collect_list(to_date(date_trunc("day", 'created_at)))) as 'edit_times,
+//          flatten(collect_list('hashtags)) as 'hashtags,
+//          sum_counts(collect_list('countries)) as 'countries
+//        )
+//        .withColumn("edit_count", ('roads_added + 'roads_modified + 'waterways_added + 'waterways_modified +
+//          'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
+//        .withColumn("related_hashtags", count_values(without('hashtags, 'hashtag)))
+//        .drop('hashtags)
+//
+//      userStats
+//        .repartition(1)
+//        .write
+//        .mode(SaveMode.Overwrite)
+//        .orc(output.resolve("user-stats").toString)
+//
+//      hashtagStats
+//        .repartition(1)
+//        .write
+//        .mode(SaveMode.Overwrite)
+//        .orc(output.resolve("hashtag-stats").toString)
 
       spark.stop()
     }
