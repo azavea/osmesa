@@ -33,7 +33,7 @@ object ChangesetStats extends CommandApp(
 
       val wayGeoms = ProcessOSM.geocode(ProcessOSM.reconstructWayGeometries(
         // pre-filter to interesting ways
-        history.where('type === "way" and (isBuilding('tags) or isRoad('tags) or isWaterway('tags))),
+        history.where('type === "way" and (isBuilding('tags) or isRoad('tags) or isWaterway('tags) or isPOI('tags))),
         // let reconstructWayGeometries do its thing; nodes are cheap
         history.where('type === "node")
       ).drop('geometryChanged))
