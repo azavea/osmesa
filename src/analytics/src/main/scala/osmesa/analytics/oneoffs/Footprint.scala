@@ -81,8 +81,10 @@ object Footprint extends Logging {
   val Cols = 256
   val Rows = 256
 
-  implicit def encodeTile(tile: Tile): Array[Byte] = tile.toBytes
-  implicit def decodeTile(bytes: Array[Byte]): Tile = IntArrayTile.fromBytes(bytes, Cols, Rows)
+  implicit def encodeTile(tile: Tile): (Array[Byte], Int, Int) =
+    (tile.toBytes, tile.cols, tile.rows)
+  implicit def decodeTile(tile: (Array[Byte], Int, Int)): Tile =
+    IntArrayTile.fromBytes(tile._1, tile._2, tile._3)
 
   implicit val tupleEncoder: Encoder[KeyedTile] = Encoders.kryo[KeyedTile]
   implicit val encoder: Encoder[Row] = TiledGeometryEncoder
@@ -143,34 +145,26 @@ object Footprint extends Logging {
               }
           case _ => Seq.empty[Row]
         }
-      }
-      .repartition('key, 'zoom, 'col, 'row)
-      .mapPartitions(rows => {
-        rows.toVector
-          .groupBy(
-            row =>
-              (row.getAs[String]("key"),
-               row.getAs[Int]("zoom"),
-               row.getAs[Int]("col"),
-               row.getAs[Int]("row")))
-          .map {
-            case ((k, z, x, y), rows: Seq[Row]) =>
-              val sk = SpatialKey(x, y)
-              val tileExtent = sk.extent(layout)
-              val rasterExtent = RasterExtent(tileExtent, Cols, Rows)
-              val geoms = rows.map(_.getAs[Array[Byte]]("geom").readWKB)
+      } groupByKey { row =>
+      (row.getAs[String]("key"),
+       row.getAs[Int]("zoom"),
+       row.getAs[Int]("col"),
+       row.getAs[Int]("row"))
+    } mapGroups {
+      case ((k, z, x, y), rows) =>
+        val sk = SpatialKey(x, y)
+        val tileExtent = sk.extent(layout)
+        val tile = IntArrayTile.ofDim(Cols, Rows)
+        val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
+        val geoms = rows.map(_.getAs[Array[Byte]]("geom").readWKB)
 
-              val tile = IntArrayTile.ofDim(Cols, Rows)
+        geoms.foreach(g =>
+          g.foreach(rasterExtent) { (c, r) =>
+            tile.set(c, r, tile.get(c, r) + 1)
+        })
 
-              geoms.foreach(g =>
-                g.foreach(rasterExtent) { (c, r) =>
-                  tile.set(c, r, tile.get(c, r) + 1)
-              })
-
-              (k, z, x, y, Raster.tupToRaster(tile, tileExtent))
-          }
-          .toIterator
-      })
+        (k, z, x, y, Raster.tupToRaster(tile, tileExtent))
+    }
   }
 
   def write(tiles: Dataset[KeyedTile], layerName: String, outputURI: URI): Unit = {
@@ -178,7 +172,7 @@ object Footprint extends Logging {
       val tiles = rows.map {
         case (k, zoom, x, y, raster) =>
           val sk = SpatialKey(x, y)
-          val rasterExtent = RasterExtent(raster.extent, Cols, Rows)
+          val rasterExtent = RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
 
           val features = ArrayBuffer[PointFeature[Int]]()
 
