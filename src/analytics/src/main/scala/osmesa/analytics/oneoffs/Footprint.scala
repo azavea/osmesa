@@ -325,7 +325,7 @@ object Footprint extends Logging {
           val changesets =
             spark.read
               .orc(changesetsURI.toString)
-              .where(size(hashtags('tags) > 0))
+              .where(size(hashtags('tags)) > 0)
               .withColumn("hashtag", explode(hashtags('tags)))
               .withColumnRenamed("id", "changeset")
 
