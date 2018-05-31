@@ -280,7 +280,7 @@ object Footprint extends Logging {
           case _ => throw new NotImplementedError(s"${uri.getScheme} scheme is not implemented.")
         }
 
-        lines.filter(_.nonEmpty).map(_.trim).toSet
+        lines.filter(_.nonEmpty).map(_.trim).map(_.toLowerCase).toSet
       case None => Set.empty[String]
     }
 
