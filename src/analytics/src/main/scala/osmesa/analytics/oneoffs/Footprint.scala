@@ -25,7 +25,8 @@ import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import osmesa.analytics._
+import osmesa.analytics.{Analytics, S3Utils}
+import osmesa.common.functions.osm._
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
