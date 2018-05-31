@@ -154,7 +154,7 @@ object Footprint extends Logging {
       case ((k, z, x, y), rows) =>
         val sk = SpatialKey(x, y)
         val tileExtent = sk.extent(layout)
-        val tile = IntArrayTile.ofDim(Cols, Rows)
+        val tile = IntArrayTile.ofDim(Cols * 4, Rows * 4)
         val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
         val geoms = rows.map(_.getAs[Array[Byte]]("geom").readWKB)
 
