@@ -350,19 +350,19 @@ object Footprint extends Logging {
       case _ => throw new RuntimeException("Unrecognized footprint type")
     }
 
-    var tiles = tile(history, BASE_ZOOM).cache
-
     val layerName = footprintType match {
       case "users"    => "user_footprint"
       case "hashtags" => "hashtag_footprint"
     }
 
-    logInfo(s"Writing zoom ${BASE_ZOOM}...")
+    var tiles = tile(history, BASE_ZOOM).cache
+
+    logInfo(s"Writing ${tiles.count} tiles to zoom ${BASE_ZOOM}...")
     write(tiles, layerName, outputURI)
 
     for (zoom <- BASE_ZOOM - 1 to 0 by -1) {
       tiles = downsample(tiles).cache
-      logInfo(s"Writing zoom ${zoom}...")
+      logInfo(s"Writing ${tiles.count} tiles to zoom ${zoom}...")
       write(tiles, layerName, outputURI)
     }
 
