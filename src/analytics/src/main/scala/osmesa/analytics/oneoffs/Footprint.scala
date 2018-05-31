@@ -299,7 +299,7 @@ object Footprint extends Logging {
 //            // use the username as the footprint key
 //            .withColumnRenamed("user", "key")
         } else {
-          logInfo(s"Finding users who've participated in ${targetHashtags}")
+          logInfo(s"Finding users who've participated in ${targetHashtags.mkString(", ")}")
 
           // for hashtag access
           val changesets =
@@ -335,7 +335,7 @@ object Footprint extends Logging {
             // use the hashtag as the footprint key
             .withColumnRenamed("hashtag", "key")
         } else {
-          logInfo(s"Finding changesets containing these hashtags: ${targetHashtags}")
+          logInfo(s"Finding changesets containing these hashtags: ${targetHashtags.mkString(", ")}")
           val changesets =
             spark.read
               .orc(changesetsURI.toString)
