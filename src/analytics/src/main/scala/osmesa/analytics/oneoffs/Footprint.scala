@@ -14,6 +14,7 @@ import geotrellis.proj4._
 import geotrellis.raster._
 import geotrellis.raster.resample.Sum
 import geotrellis.spark._
+import geotrellis.spark.io.index.zcurve.ZSpatialKeyIndex
 import geotrellis.spark.io.s3.S3Client
 import geotrellis.spark.tiling._
 import geotrellis.vector._
@@ -173,12 +174,16 @@ object Footprint extends Logging {
         case (k, zoom, x, y, raster) =>
           val sk = SpatialKey(x, y)
           val rasterExtent = RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
+          val bounds =
+            KeyBounds(SpatialKey(0, 0), SpatialKey(raster.tile.cols - 1, raster.tile.rows - 1))
+          val index = new ZSpatialKeyIndex(bounds)
 
-          val features = ArrayBuffer[PointFeature[Int]]()
+          val features = ArrayBuffer[PointFeature[(Long, Int)]]()
 
           raster.tile.foreach { (c: Int, r: Int, value: Int) =>
             if (value > 0) {
-              features.append(PointFeature(Point(rasterExtent.gridToMap(c, r)), value))
+              features.append(PointFeature(Point(rasterExtent.gridToMap(c, r)),
+                                           (index.toIndex(SpatialKey(c, r)), value)))
             }
           }
 
@@ -186,7 +191,10 @@ object Footprint extends Logging {
       } map {
         case (k, zoom, sk, tileExtent, features) =>
           val vtFeatures =
-            features.map(f => f.mapData(density => Map("density" -> VInt64(density))))
+            features.map(f =>
+              f.mapData {
+                case ((id, density)) => Map("id" -> VInt64(id), "density" -> VInt64(density))
+            })
 
           (k,
            zoom,
