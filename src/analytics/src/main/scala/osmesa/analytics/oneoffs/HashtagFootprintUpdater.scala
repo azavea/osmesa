@@ -346,13 +346,18 @@ object HashtagFootprintUpdater
 
                 var parent = raster.tile
 
-                for (zoom <- z - 1 to 0 by -1) {
-                  val dz = BASE_ZOOM - zoom
+                // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
+                // point
+                for (zoom <- z - 1 to z - 8 by -1) {
+                  val dz = z - zoom
                   val factor = math.pow(2, dz).intValue
-                  val newCols = math.max(1, Cols / factor)
-                  val newRows = math.max(1, Rows / factor)
+                  val newCols = Cols / factor
+                  val newRows = Rows / factor
 
-                  parent = parent.resample(newCols, newRows, Sum)
+                  if (parent.cols > newCols && newCols > 0) {
+                    // only resample if the raster is getting smaller
+                    parent = parent.resample(newCols, newRows, Sum)
+                  }
 
                   tiles.append(
                     (k, zoom, x / factor, y / factor, Raster.tupToRaster(parent, raster.extent)))
