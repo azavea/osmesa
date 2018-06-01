@@ -342,28 +342,32 @@ object HashtagFootprintUpdater
                 (k, z, x, y, Raster.tupToRaster(tile, tileExtent))
             } flatMap {
               case (k, z, x, y, raster) =>
-                val tiles = ArrayBuffer((k, z, x, y, raster))
+                if (z == BASE_ZOOM) {
+                  val tiles = ArrayBuffer((k, z, x, y, raster))
 
-                var parent = raster.tile
+                  var parent = raster.tile
 
-                // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
-                // point
-                for (zoom <- z - 1 to z - 8 by -1) {
-                  val dz = z - zoom
-                  val factor = math.pow(2, dz).intValue
-                  val newCols = Cols / factor
-                  val newRows = Rows / factor
+                  // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
+                  // point
+                  for (zoom <- z - 1 to z - 8 by -1) {
+                    val dz = z - zoom
+                    val factor = math.pow(2, dz).intValue
+                    val newCols = Cols / factor
+                    val newRows = Rows / factor
 
-                  if (parent.cols > newCols && newCols > 0) {
-                    // only resample if the raster is getting smaller
-                    parent = parent.resample(newCols, newRows, Sum)
+                    if (parent.cols > newCols && newCols > 0) {
+                      // only resample if the raster is getting smaller
+                      parent = parent.resample(newCols, newRows, Sum)
+                    }
+
+                    tiles.append(
+                      (k, zoom, x / factor, y / factor, Raster.tupToRaster(parent, raster.extent)))
                   }
 
-                  tiles.append(
-                    (k, zoom, x / factor, y / factor, Raster.tupToRaster(parent, raster.extent)))
+                  tiles
+                } else {
+                  Seq((k, z, x, y, raster))
                 }
-
-                tiles
             } groupByKey {
               case (k, z, x, y, _) => (k, z, x, y)
             } mapGroups {
@@ -384,7 +388,6 @@ object HashtagFootprintUpdater
 
                     (k, z, x, y, Raster.tupToRaster(newTile, targetExtent))
                 }
-
             } mapPartitions {
               rows =>
                 val features = rows.map {
