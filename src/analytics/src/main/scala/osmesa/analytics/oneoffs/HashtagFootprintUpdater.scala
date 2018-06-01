@@ -100,7 +100,7 @@ object HashtagFootprintUpdater
          endSequenceOpt,
          tileSourceOpt).mapN {
           (augmentedDiffSource, changesetSource, startSequence, endSequence, tileSource) =>
-            /* Settings compatible for both local and EMR execution */
+            /* Settings compatible with both local and EMR execution */
             val conf = new SparkConf()
               .setIfMissing("spark.master", "local[*]")
               .setAppName("merged-changeset-stream-processor")
@@ -487,6 +487,8 @@ object HashtagFootprintUpdater
                         val layer = tile.layers(layerName)
 
                         // TODO check a secondary layer to see whether the current sequence has already been applied
+                        // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
+                        // single sequence may appear in different batches depending on when changeset metadata arrives
 
                         val newFeaturesById: Map[Long, Feature[Geometry, (Long, Int)]] =
                           feats
@@ -601,7 +603,13 @@ object HashtagFootprintUpdater
                 modifiedTiles.iterator
             }
 
-            val query = tiledHashtags.writeStream
+            val query = tiledHashtags
+              .withColumnRenamed("_1", "key")
+              .withColumnRenamed("_2", "zoom")
+              .withColumnRenamed("_3", "x")
+              .withColumnRenamed("_4", "y")
+              .withColumnRenamed("_5", "featureCount")
+              .writeStream
               .queryName("tiled hashtags")
               .format("console")
               .start
