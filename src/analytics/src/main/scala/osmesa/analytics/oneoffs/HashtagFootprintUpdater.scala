@@ -39,6 +39,8 @@ import osmesa.common.functions.osm._
 import osmesa.common.{AugmentedDiff, ProcessOSM}
 
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.parallel.ForkJoinTaskSupport
+import scala.concurrent.forkjoin.ForkJoinPool
 
 /*
  * Usage example:
@@ -392,10 +394,16 @@ object HashtagFootprintUpdater
                     (k, zoom, sk, raster.extent, features)
                 }
 
+                val parFeatures = features.toTraversable.par
+                // TODO allow size of pool to be increased as "concurrent-uploads-per-executor" or something
+                val taskSupport = new ForkJoinTaskSupport(new ForkJoinPool(8))
+
+                // increase the number of concurrent uploads
+                parFeatures.tasksupport = taskSupport
+
                 val layerName = "hashtag_footprint"
 
-                // TODO parallelize
-                features.map {
+                val modifiedTiles = parFeatures.map {
                   case (key, zoom, sk, extent, feats) =>
                     val filename = s"$key/${path(zoom, sk)}"
                     val uri = tileSource.resolve(filename)
@@ -524,6 +532,8 @@ object HashtagFootprintUpdater
 
                     (key, zoom, sk.col, sk.row, feats.size)
                 }
+
+                modifiedTiles.iterator
             }
 
             val query = tiledHashtags.writeStream
