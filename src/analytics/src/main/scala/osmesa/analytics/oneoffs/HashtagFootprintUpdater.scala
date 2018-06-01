@@ -368,17 +368,23 @@ object HashtagFootprintUpdater
               case (k, z, x, y, _) => (k, z, x, y)
             } mapGroups {
               case ((k, z, x, y), tiles) =>
-                val rasters = tiles.map(_._5).toList
-                val LayoutScheme = ZoomedLayoutScheme(WebMercator)
-                val targetExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+                tiles.map(_._5).toList match {
+                  case Seq(raster: Raster[Tile]) if raster.cols >= Cols =>
+                    // single, full-resolution raster (no need to merge)
+                    (k, z, x, y, raster)
+                  case rasters =>
+                    val LayoutScheme = ZoomedLayoutScheme(WebMercator)
+                    val targetExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
 
-                val newTile = rasters.head.tile.prototype(Cols, Rows)
+                    val newTile = rasters.head.tile.prototype(Cols, Rows)
 
-                rasters.foreach { raster =>
-                  newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
+                    rasters.foreach { raster =>
+                      newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
+                    }
+
+                    (k, z, x, y, Raster.tupToRaster(newTile, targetExtent))
                 }
 
-                (k, z, x, y, Raster.tupToRaster(newTile, targetExtent))
             } mapPartitions {
               rows =>
                 val features = rows.map {
