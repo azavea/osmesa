@@ -379,7 +379,7 @@ object Footprint extends Logging {
           spark.read
             .orc(historyURI.toString)
             // TODO this is dataset-specific
-            .where(!'uid isin(0, 1))
+            .where(!('uid isin (0, 1)))
             // use the username as the footprint key
             .withColumnRenamed("user", "key")
         } else {
