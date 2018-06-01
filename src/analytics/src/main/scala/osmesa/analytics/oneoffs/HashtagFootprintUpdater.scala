@@ -483,17 +483,16 @@ object HashtagFootprintUpdater
                           IOUtils.toByteArray(new GZIPInputStream(new ByteArrayInputStream(bytes))),
                           extent)
 
+                        // load the target layer
+                        val layer = tile.layers(layerName)
+
+                        // TODO check a secondary layer to see whether the current sequence has already been applied
+
                         val newFeaturesById: Map[Long, Feature[Geometry, (Long, Int)]] =
                           feats
                             .groupBy(_.data._1)
                             .mapValues(_.head)
                         val featureIds: Set[Long] = newFeaturesById.keySet
-
-                        // load the target layer
-                        val layer = tile.layers(layerName)
-
-                        println(
-                          s"Inspecting ${layer.features.size.formatted("%,d")} features in layer '${layerName}'")
 
                         val existingFeatures: Set[Long] =
                           layer.features.map(f => f.data("id"): Long).toSet
@@ -501,12 +500,8 @@ object HashtagFootprintUpdater
                         val unmodifiedFeatures =
                           layer.features.filterNot(f => featureIds.contains(f.data("id")))
 
-                        println(s"${unmodifiedFeatures.length} un-modified features")
-
                         val modifiedFeatures =
                           layer.features.filter(f => featureIds.contains(f.data("id")))
-
-                        println(s"${modifiedFeatures.length} modified features")
 
                         val replacementFeatures: Seq[Feature[Geometry, Map[String, Value]]] =
                           modifiedFeatures.map { f =>
@@ -534,6 +529,8 @@ object HashtagFootprintUpdater
                             val updatedLayer = makeLayer(layerName, extent, updatedFeatures)
 
                             // merge all available layers into a new tile
+                            // TODO update a second layer w/ features corresponding to sequences seen (in the absence of
+                            // tile / layer metadata)
                             val newTile =
                               VectorTile(tile.layers.updated(layerName, updatedLayer), extent)
 
@@ -552,7 +549,7 @@ object HashtagFootprintUpdater
 
                             write(uri, byteStream.toByteArray)
                           case _ =>
-                            println(s"No changes to $uri; skipping")
+                            println(s"No changes to $uri; THIS SHOULD NOT HAVE HAPPENED.")
                         }
                       case None =>
                         // create tile
@@ -578,6 +575,8 @@ object HashtagFootprintUpdater
                         )
 
                         // TODO use key as the layer name
+                        // TODO create a second layer w/ features corresponding to sequences seen (in the absence of
+                        // tile / layer metadata)
                         val vt = VectorTile(Map(layerName -> layer), extent)
 
                         val byteStream = new ByteArrayOutputStream()
