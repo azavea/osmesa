@@ -283,10 +283,13 @@ object HashtagFootprintUpdater
 
             val TiledGeometryEncoder: Encoder[Row] = RowEncoder(TiledGeometrySchema)
             type KeyedTile = (String, Int, Int, Int, Raster[Tile])
-            implicit def encodeTile(tile: Tile): (Array[Byte], Int, Int) =
-              (tile.toBytes, tile.cols, tile.rows)
-            implicit def decodeTile(tile: (Array[Byte], Int, Int)): Tile =
-              IntArrayTile.fromBytes(tile._1, tile._2, tile._3)
+            implicit def encodeTile(tile: Tile): (Array[Byte], Int, Int, CellType) =
+              (tile.toBytes, tile.cols, tile.rows, tile.cellType)
+            implicit def decodeTile(tile: (Array[Byte], Int, Int, CellType)): Tile =
+              IntArrayTile.fromBytes(tile._1,
+                                     tile._2,
+                                     tile._3,
+                                     tile._4.asInstanceOf[IntCells with NoDataHandling])
 
             implicit val tupleEncoder: Encoder[KeyedTile] = Encoders.kryo[KeyedTile]
 
@@ -327,7 +330,7 @@ object HashtagFootprintUpdater
                 val sk = SpatialKey(x, y)
                 val LayoutScheme = ZoomedLayoutScheme(WebMercator)
                 val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
-                val tile = IntArrayTile.ofDim(Cols * 4, Rows * 4)
+                val tile = IntArrayTile.ofDim(Cols * 4, Rows * 4, IntCellType)
                 val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
                 val geoms = rows.map(_.getAs[Array[Byte]]("geom").readWKB)
 
