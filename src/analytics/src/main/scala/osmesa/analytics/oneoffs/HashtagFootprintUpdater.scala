@@ -349,7 +349,56 @@ object HashtagFootprintUpdater
 
                   // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
                   // point
-                  for (zoom <- z - 1 to z - 8 by -1) {
+                  for (zoom <- z - 1 to math.max(0, z - 8) by -1) {
+                    val dz = z - zoom
+                    val factor = math.pow(2, dz).intValue
+                    val newCols = Cols / factor
+                    val newRows = Rows / factor
+
+                    if (parent.cols > newCols && newCols > 0) {
+                      // only resample if the raster is getting smaller
+                      parent = parent.resample(newCols, newRows, Sum)
+                    }
+
+                    tiles.append(
+                      (k, zoom, x / factor, y / factor, Raster.tupToRaster(parent, raster.extent)))
+                  }
+
+                  tiles
+                } else {
+                  Seq((k, z, x, y, raster))
+                }
+            } groupByKey {
+              case (k, z, x, y, _) => (k, z, x, y)
+            } mapGroups {
+              case ((k, z, x, y), tiles) =>
+                tiles.map(_._5).toList match {
+                  case Seq(raster: Raster[Tile]) if raster.cols >= Cols =>
+                    // single, full-resolution raster (no need to merge)
+                    (k, z, x, y, raster)
+                  case rasters =>
+                    val LayoutScheme = ZoomedLayoutScheme(WebMercator)
+                    val targetExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+
+                    val newTile = rasters.head.tile.prototype(Cols, Rows)
+
+                    rasters.foreach { raster =>
+                      newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
+                    }
+
+                    (k, z, x, y, Raster.tupToRaster(newTile, targetExtent))
+                }
+            } flatMap {
+              case (k, z, x, y, raster) =>
+                if (z == BASE_ZOOM - 8) {
+                  // resample z7 tiles to produce lower-zooms
+                  val tiles = ArrayBuffer((k, z, x, y, raster))
+
+                  var parent = raster.tile
+
+                  // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
+                  // point
+                  for (zoom <- z - 1 to math.max(0, z - 8) by -1) {
                     val dz = z - zoom
                     val factor = math.pow(2, dz).intValue
                     val newCols = Cols / factor
