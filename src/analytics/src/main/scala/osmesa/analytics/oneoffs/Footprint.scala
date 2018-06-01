@@ -297,11 +297,13 @@ object Footprint extends Logging {
     val history = footprintType match {
       case "users" =>
         if (targetHashtags.isEmpty) {
-          throw new RuntimeException("Refusing to generate footprints for all users")
-//          spark.read
-//            .orc(historyURI.toString)
-//            // use the username as the footprint key
-//            .withColumnRenamed("user", "key")
+//          throw new RuntimeException("Refusing to generate footprints for all users")
+          spark.read
+            .orc(historyURI.toString)
+            // TODO this is dataset-specific
+            .where(!'uid isin(0, 1))
+            // use the username as the footprint key
+            .withColumnRenamed("user", "key")
         } else {
           logInfo(s"Finding users who've participated in ${targetHashtags.mkString(", ")}")
 
