@@ -93,28 +93,106 @@ object Footprint extends Logging {
   implicit val tupleEncoder: Encoder[KeyedTile] = Encoders.kryo[KeyedTile]
   implicit val encoder: Encoder[Row] = TiledGeometryEncoder
 
-  def downsample(tiles: Dataset[KeyedTile]): Dataset[KeyedTile] = {
-    import tiles.sparkSession.implicits._
+  def pyramid(baseTiles: Dataset[KeyedTile], baseZoom: Int = BASE_ZOOM): Dataset[KeyedTile] = {
+    import baseTiles.sparkSession.implicits._
 
-    tiles.map {
-      case (k, z, x, y, Raster(tile, tileExtent)) =>
-        val newTile = tile.resample(Cols / 2, Rows / 2, Sum)
+    baseTiles flatMap {
+      case (k, z, x, y, raster) =>
+        if (z == baseZoom) {
+          val tiles = ArrayBuffer((k, z, x, y, raster))
 
-        (k, z - 1, x / 2, y / 2, Raster.tupToRaster(newTile, tileExtent))
+          var parent = raster.tile
+
+          // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
+          // point
+          for (zoom <- z - 1 to math.max(0, z - 8) by -1) {
+            val dz = z - zoom
+            val factor = math.pow(2, dz).intValue
+            val newCols = Cols / factor
+            val newRows = Rows / factor
+
+            if (parent.cols > newCols && newCols > 0) {
+              // only resample if the raster is getting smaller
+              parent = parent.resample(newCols, newRows, Sum)
+            }
+
+            tiles.append(
+              (k, zoom, x / factor, y / factor, Raster.tupToRaster(parent, raster.extent)))
+          }
+
+          tiles
+        } else {
+          Seq((k, z, x, y, raster))
+        }
     } groupByKey {
       case (k, z, x, y, _) => (k, z, x, y)
     } mapGroups {
-      case ((k, z, x, y), rows) =>
-        val rasters = rows.map(_._5).toList
-        val targetExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+      case ((k, z, x, y), tiles) =>
+        tiles.map(_._5).toList match {
+          case Seq(raster: Raster[Tile]) if raster.cols >= Cols =>
+            // single, full-resolution raster (no need to merge)
+            (k, z, x, y, raster)
+          case rasters =>
+            val LayoutScheme = ZoomedLayoutScheme(WebMercator)
+            val targetExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
 
-        val newTile = rasters.head.tile.prototype(Cols, Rows)
+            val newTile = rasters.head.tile.prototype(Cols, Rows)
 
-        rasters.foreach { raster =>
-          newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
+            rasters.foreach { raster =>
+              newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
+            }
+
+            (k, z, x, y, Raster.tupToRaster(newTile, targetExtent))
         }
+    } flatMap {
+      case (k, z, x, y, raster) =>
+        if (z == baseZoom - 8) {
+          // resample z7 tiles to produce lower-zooms
+          val tiles = ArrayBuffer((k, z, x, y, raster))
 
-        (k, z, x, y, Raster.tupToRaster(newTile, targetExtent))
+          var parent = raster.tile
+
+          // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
+          // point
+          for (zoom <- z - 1 to math.max(0, z - 8) by -1) {
+            val dz = z - zoom
+            val factor = math.pow(2, dz).intValue
+            val newCols = Cols / factor
+            val newRows = Rows / factor
+
+            if (parent.cols > newCols && newCols > 0) {
+              // only resample if the raster is getting smaller
+              parent = parent.resample(newCols, newRows, Sum)
+            }
+
+            tiles.append(
+              (k, zoom, x / factor, y / factor, Raster.tupToRaster(parent, raster.extent)))
+          }
+
+          tiles
+        } else {
+          Seq((k, z, x, y, raster))
+        }
+    } groupByKey {
+      case (k, z, x, y, _) => (k, z, x, y)
+    } mapGroups {
+      case ((k, z, x, y), tiles) =>
+        tiles.map(_._5).toList match {
+          case Seq(raster: Raster[Tile]) if raster.cols >= Cols =>
+            // single, full-resolution raster (no need to merge)
+            (k, z, x, y, raster)
+          case rasters =>
+            val LayoutScheme = ZoomedLayoutScheme(WebMercator)
+            val targetExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+
+            val newTile = rasters.head.tile.prototype(Cols, Rows)
+
+            rasters.foreach { raster =>
+              newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
+            }
+
+            (k, z, x, y, Raster.tupToRaster(newTile, targetExtent))
+        }
     }
   }
 
@@ -367,16 +445,9 @@ object Footprint extends Logging {
       case "hashtags" => "hashtag_footprint"
     }
 
-    var tiles = tile(history, BASE_ZOOM).cache
+    val tiles = pyramid(tile(history, BASE_ZOOM), BASE_ZOOM)
 
-    logInfo(s"Writing ${tiles.count} tiles to zoom ${BASE_ZOOM}...")
     write(tiles, layerName, outputURI)
-
-    for (zoom <- BASE_ZOOM - 1 to 0 by -1) {
-      tiles = downsample(tiles).cache
-      logInfo(s"Writing ${tiles.count} tiles to zoom ${zoom}...")
-      write(tiles, layerName, outputURI)
-    }
 
     spark.stop()
   }
