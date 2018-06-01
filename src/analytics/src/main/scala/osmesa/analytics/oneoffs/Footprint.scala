@@ -174,9 +174,8 @@ object Footprint extends Logging {
         case (k, zoom, x, y, raster) =>
           val sk = SpatialKey(x, y)
           val rasterExtent = RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
-          val bounds =
-            KeyBounds(SpatialKey(0, 0), SpatialKey(raster.tile.cols - 1, raster.tile.rows - 1))
-          val index = new ZSpatialKeyIndex(bounds)
+          val index = new ZSpatialKeyIndex(
+            KeyBounds(SpatialKey(0, 0), SpatialKey(raster.tile.cols - 1, raster.tile.rows - 1)))
 
           val features = ArrayBuffer[PointFeature[(Long, Int)]]()
 
