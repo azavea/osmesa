@@ -37,6 +37,7 @@ package object updater {
     val meta = new ObjectMetadata()
 
     meta.setContentLength(contentLength)
+    meta.setContentEncoding("gzip")
 
     meta
   }
