@@ -494,6 +494,8 @@ object HashtagFootprintUpdater
                     (key, zoom, sk.col, sk.row, feats.size)
                 }
 
+                taskSupport.environment.shutdown()
+
                 modifiedTiles.iterator
             }
 
