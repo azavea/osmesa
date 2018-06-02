@@ -1,7 +1,8 @@
 package osmesa.analytics
 
 import java.io.ByteArrayInputStream
-import java.net.URI
+import java.net.{URI, URLDecoder}
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
 import com.amazonaws.services.s3.model.{AmazonS3Exception, ObjectMetadata}
@@ -114,7 +115,7 @@ package object updater {
       case "s3" =>
         Try(
           s3.putObject(uri.getHost,
-                       uri.getPath.drop(1),
+                       URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString),
                        new ByteArrayInputStream(bytes),
                        createMetadata(bytes.length))) match {
           case Success(_) =>

@@ -21,12 +21,10 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
-import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import osmesa.analytics.Analytics
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, read, write}
-import osmesa.common.functions.osm._
 import osmesa.common.{AugmentedDiff, ProcessOSM}
 
 import scala.collection.mutable.ArrayBuffer
@@ -39,13 +37,13 @@ import scala.concurrent.forkjoin.ForkJoinPool
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.HashtagFootprintUpdater \
+ *   --class osmesa.analytics.oneoffs.UserFootprintUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar
  */
-object HashtagFootprintUpdater
+object UserFootprintUpdater
     extends CommandApp(
-      name = "osmesa-hashtag-footprint-updater",
-      header = "Consume minutely diffs + changesets and update hashtag footprint MVTs",
+      name = "osmesa-user-footprint-updater",
+      header = "Consume minutely diffs + changesets and update user footprint MVTs",
       main = {
         type AugmentedDiffFeature = Feature[Geometry, AugmentedDiff]
         val rootURI = new File("").toURI
@@ -71,28 +69,6 @@ object HashtagFootprintUpdater
             metavar = "sequence",
             help = "Minutely diff ending sequence. If absent, this will be an infinite stream.")
           .orNone
-        val changesetSourceOpt =
-          Opts
-            .option[URI]("changeset-source",
-                         short = "c",
-                         metavar = "uri",
-                         help = "Location of changesets to process")
-            .withDefault(new URI("https://planet.osm.org/replication/changesets/"))
-        val changesetsStartSequenceOpt = Opts
-          .option[Int](
-            "changeset-start-sequence",
-            short = "S",
-            metavar = "sequence",
-            help =
-              "Changeset starting sequence. If absent, the current (remote) sequence will be used.")
-          .orNone
-        val changesetsEndSequenceOpt = Opts
-          .option[Int]("changeset-end-sequence",
-                       short = "E",
-                       metavar = "sequence",
-                       help =
-                         "Changeset ending sequence. If absent, this will be an infinite stream.")
-          .orNone
         val tileSourceOpt = Opts
           .option[URI](
             "tile-source",
@@ -105,18 +81,12 @@ object HashtagFootprintUpdater
         (changeSourceOpt,
          changesStartSequenceOpt,
          changesEndSequenceOpt,
-         changesetSourceOpt,
-         changesetsStartSequenceOpt,
-         changesetsEndSequenceOpt,
          tileSourceOpt).mapN {
           (changeSource,
            changesStartSequence,
            changesEndSequence,
-           changesetSource,
-           changesetsStartSequence,
-           changesetsEndSequence,
            tileSource) =>
-            implicit val spark: SparkSession = Analytics.sparkSession("HashtagFootprintUpdater")
+            implicit val spark: SparkSession = Analytics.sparkSession("UserFootprintUpdater")
             import spark.implicits._
 
             val changeOptions = Map("base_uri" -> changeSource.toString) ++
@@ -132,32 +102,9 @@ object HashtagFootprintUpdater
               .options(changeOptions)
               .load
 
-            val changesetOptions = Map("base_uri" -> changesetSource.toString) ++
-              changesetsStartSequence
-                .map(s => Map("start_sequence" -> s.toString))
-                .getOrElse(Map.empty[String, String]) ++
-              changesetsEndSequence
-                .map(s => Map("end_sequence" -> s.toString))
-                .getOrElse(Map.empty[String, String])
-
-            val changesets = spark.readStream
-              .format("changesets")
-              .options(changesetOptions)
-              .load
-
-            val watermarkedChanges = changes
-            // geoms are standalone; no need to wait for anything
-              .withWatermark("timestamp", "0 seconds")
+            val changedNodes = changes
               .where('_type === ProcessOSM.NodeType and 'lat.isNotNull and 'lon.isNotNull)
-              .select('timestamp, 'changeset, 'lat, 'lon)
-
-            val watermarkedChangesets = changesets
-            // changesets can remain open for 24 hours; buy some extra time
-            // TODO can projecting into the future (created_at + 24 hours) and coalescing closed_at reduce the number
-            // of changesets being tracked?
-              .withWatermark("created_at", "25 hours")
-              .withColumn("hashtag", explode(hashtags('tags)))
-              .select('id as 'changeset, 'hashtag)
+              .select('user, 'lat, 'lon)
 
             val BASE_ZOOM = 15
             val Cols = 256
@@ -186,11 +133,8 @@ object HashtagFootprintUpdater
 
             implicit val tupleEncoder: Encoder[KeyedTile] = Encoders.kryo[KeyedTile]
 
-            val baseQuery = watermarkedChanges
-              .join(watermarkedChangesets, Seq("changeset"))
-
-            val tiledHashtags = baseQuery
-              .withColumnRenamed("hashtag", "key")
+            val tiledHashtags = changedNodes
+              .withColumnRenamed("user", "key")
               .flatMap {
                 row =>
                   val key = row.getAs[String]("key")
@@ -362,7 +306,7 @@ object HashtagFootprintUpdater
                 // increase the number of concurrent uploads
                 parFeatures.tasksupport = taskSupport
 
-                val layerName = "hashtag_footprint"
+                val layerName = "user_footprint"
 
                 val modifiedTiles = parFeatures.map {
                   case (key, zoom, sk, extent, feats) =>
@@ -504,7 +448,7 @@ object HashtagFootprintUpdater
               .withColumnRenamed("_4", "y")
               .withColumnRenamed("_5", "featureCount")
               .writeStream
-              .queryName("tiled hashtag footprints")
+              .queryName("tiled user footprints")
               .format("console")
               .start
 
