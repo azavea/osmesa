@@ -1,6 +1,6 @@
 package osmesa.common.streaming
 
-import java.io.ByteArrayInputStream
+import java.io.{ByteArrayInputStream, IOException}
 import java.net.URI
 import java.util.zip.GZIPInputStream
 
@@ -14,10 +14,11 @@ import org.joda.time.format.DateTimeFormat
 import osmesa.common.model.Changeset
 import scalaj.http.Http
 
-import scala.annotation.tailrec
+import scala.concurrent.duration._
 import scala.xml.XML
 
 object ChangesetsSource extends Logging {
+  val Delay: Duration = 15.seconds
   // state.yaml uses a custom date format
   private val formatter = DateTimeFormat.forPattern("y-M-d H:m:s.SSSSSSSSS Z")
 
@@ -44,7 +45,6 @@ object ChangesetsSource extends Logging {
   private[streaming] def createInitialOffset(baseURI: URI): SequenceOffset =
     SequenceOffset(getInitialOffset(baseURI))
 
-  @tailrec
   def getSequence(baseURI: URI, sequence: Long): Seq[Changeset] = {
     val s = f"$sequence%09d".toArray
     val path =
@@ -55,18 +55,29 @@ object ChangesetsSource extends Logging {
 
     if (response.code === 404) {
       logDebug(s"$sequence is not yet available, sleeping.")
-      Thread.sleep(15000)
+      Thread.sleep(Delay.toMillis)
       getSequence(baseURI, sequence)
     } else {
       // NOTE: if diff bodies get really large, switch to a SAX parser to help with the memory footprint
-      val data = XML.loadString(
-        IOUtils.toString(new GZIPInputStream(new ByteArrayInputStream(response.body))))
+      val bais = new ByteArrayInputStream(response.body)
+      val gzis = new GZIPInputStream(bais)
+      try {
+        val data = XML.loadString(IOUtils.toString(gzis))
 
-      val changesets = (data \ "changeset").map(Changeset.fromXML)
+        val changesets = (data \ "changeset").map(Changeset.fromXML)
 
-      logDebug(s"Received ${changesets.length} changesets")
+        logDebug(s"Received ${changesets.length} changesets")
 
-      changesets
+        changesets
+      } catch {
+        case e: IOException =>
+          logWarning(s"Error reading changeset s$sequence", e)
+          Thread.sleep(Delay.toMillis)
+          getSequence(baseURI, sequence)
+      } finally {
+        gzis.close()
+        bais.close()
+      }
     }
   }
 }
