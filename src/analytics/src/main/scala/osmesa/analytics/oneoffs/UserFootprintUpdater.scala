@@ -107,8 +107,8 @@ object UserFootprintUpdater
               .select('user, 'lat, 'lon)
 
             val BASE_ZOOM = 15
-            val Cols = 256
-            val Rows = 256
+            val Cols = 512
+            val Rows = 512
 
             val zoom = BASE_ZOOM
 //            val LayoutScheme = ZoomedLayoutScheme(WebMercator)

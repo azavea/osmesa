@@ -79,8 +79,8 @@ object Footprint extends Logging {
 
   val TiledGeometryEncoder: Encoder[Row] = RowEncoder(TiledGeometrySchema)
 
-  val Cols = 256
-  val Rows = 256
+  val Cols = 512
+  val Rows = 512
 
   implicit def encodeTile(tile: Tile): (Array[Byte], Int, Int, CellType) =
     (tile.toBytes, tile.cols, tile.rows, tile.cellType)
