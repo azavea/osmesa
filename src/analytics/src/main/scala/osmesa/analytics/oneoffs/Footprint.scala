@@ -315,7 +315,7 @@ object Footprint extends Logging {
       }
 
       // TODO allow size of pool to be increased as "concurrent-uploads-per-executor" or something
-      val taskSupport = new ForkJoinTaskSupport(new ForkJoinPool(8))
+      val taskSupport = new ForkJoinTaskSupport(new ForkJoinPool(16))
 
       val parTiles = tiles.toTraversable.par
       // increase the number of concurrent uploads
