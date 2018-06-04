@@ -5,8 +5,8 @@ import java.sql.{Connection, DriverManager, Timestamp}
 
 import cats.implicits._
 import com.monovore.decline._
-import org.apache.spark._
 import org.apache.spark.sql._
+import osmesa.analytics.Analytics
 import osmesa.common.functions.osm._
 
 /*
@@ -49,18 +49,7 @@ object ChangesetStreamProcessor
 
         (changesetSourceOpt, databaseUrlOpt, startSequenceOpt, endSequenceOpt).mapN {
           (changesetSource, databaseUri, startSequence, endSequence) =>
-            /* Settings compatible for both local and EMR execution */
-            val conf = new SparkConf()
-              .setIfMissing("spark.master", "local[*]")
-              .setAppName("changeset-stream-processor")
-              .set("spark.serializer", classOf[org.apache.spark.serializer.KryoSerializer].getName)
-              .set("spark.kryo.registrator",
-                   classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
-
-            implicit val ss: SparkSession = SparkSession.builder
-              .config(conf)
-              .enableHiveSupport
-              .getOrCreate
+            implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 
             import ss.implicits._
 

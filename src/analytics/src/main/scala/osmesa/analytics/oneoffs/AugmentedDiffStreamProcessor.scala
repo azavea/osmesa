@@ -8,12 +8,12 @@ import com.monovore.decline._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
 import geotrellis.vector.{Feature, Geometry}
-import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
+import osmesa.analytics.Analytics
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.{AugmentedDiff, ProcessOSM}
@@ -41,17 +41,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
       "database-url", short = "d", metavar = "database URL", help = "Database URL")
 
     (augmentedDiffSourceOpt, databaseUrlOpt).mapN { (augmentedDiffSource, databaseUri) =>
-      /* Settings compatible for both local and EMR execution */
-      val conf = new SparkConf()
-        .setIfMissing("spark.master", "local[*]")
-        .setAppName("augmented-diff-stream-processor")
-        .set("spark.serializer", classOf[org.apache.spark.serializer.KryoSerializer].getName)
-        .set("spark.kryo.registrator", classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
-
-      implicit val ss: SparkSession = SparkSession.builder
-        .config(conf)
-        .enableHiveSupport
-        .getOrCreate
+      implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
       import ss.implicits._
 
