@@ -129,6 +129,7 @@ object TileUpdater
                       } else {
                         logger.info(
                           s"Writing ${tile.toBytes.length.formatted("%,d")} bytes to $uri")
+                        // TODO gzip compress
                         write(uri, tile.toBytes)
                       }
 
