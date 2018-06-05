@@ -36,7 +36,7 @@ object ChangesSource extends Logging {
   private[streaming] def createOffsetForCurrentSequence(baseURI: URI): SequenceOffset =
     SequenceOffset(getCurrentSequence(baseURI))
 
-  def getSequence(baseURI: URI, sequence: Long): Seq[Element] = {
+  def getSequence(baseURI: URI, sequence: Int): Seq[Element] = {
     val s = f"$sequence%09d".toArray
     val path =
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osc.gz"
