@@ -24,7 +24,7 @@ case class ChangesStreamBatchTask(baseURI: URI, start: SequenceOffset, end: Sequ
 class ChangesStreamBatchReader(baseURI: URI, start: SequenceOffset, end: SequenceOffset)
   extends DataReader[Row]
     with Logging {
-  private var currentOffset = start
+  private var currentOffset = start + 1
   private var index = -1
   private var changes: Vector[Element] = _
 
@@ -46,7 +46,7 @@ class ChangesStreamBatchReader(baseURI: URI, start: SequenceOffset, end: Sequenc
       index = 0
     }
 
-    currentOffset < end && index < changes.length
+    currentOffset <= end && index < changes.length
   }
 
   override def get(): Row = {
@@ -79,6 +79,8 @@ class ChangesMicroBatchReader(options: DataSourceOptions, checkpointLocation: St
   extends MicroBatchReader
     with Logging {
 
+  val DefaultBatchSize: Int = 100
+
   // TODO extract me
   val ChangeSchema = StructType(
     StructField("sequence", IntegerType) ::
@@ -99,7 +101,9 @@ class ChangesMicroBatchReader(options: DataSourceOptions, checkpointLocation: St
               StructField("role", StringType, nullable = false) ::
               Nil
           )
-        ), nullable = true) ::
+        ),
+        nullable = true
+      ) ::
       StructField("changeset", LongType, nullable = false) ::
       StructField("timestamp", TimestampType, nullable = false) ::
       StructField("uid", LongType, nullable = false) ::
@@ -113,38 +117,49 @@ class ChangesMicroBatchReader(options: DataSourceOptions, checkpointLocation: St
       .get("base_uri")
       .orElse("https://planet.osm.org/replication/minute/"))
 
-  // TODO make lazy in order to make setOffsetRange more readable?
+  private val batchSize = options
+    .get("batch_size")
+    .asScala
+    .map(s => s.toInt)
+    .getOrElse(DefaultBatchSize)
+
   private var start: Option[SequenceOffset] = options
     .get("start_sequence")
     .asScala
-    .map(s => SequenceOffset(s.toInt))
+    .map(s => SequenceOffset(s.toInt) - 1)
 
   private var end: Option[SequenceOffset] = options
     .get("end_sequence")
     .asScala
     .map(s => SequenceOffset(s.toInt))
 
-  private var committed: Option[SequenceOffset] = None
-
   override def setOffsetRange(start: Optional[Offset], end: Optional[Offset]): Unit = {
+    // TODO memoize this, valid for 30s at a time
+    val currentOffset = ChangesSource.createOffsetForCurrentSequence(baseURI)
+
     this.start = Some(
       start.asScala
         .map(_.asInstanceOf[SequenceOffset])
-        .getOrElse(
-          committed
-            .map(_ + 1)
-            .getOrElse(this.start.getOrElse {
-              ChangesSource.createInitialOffset(baseURI)
-            })))
+        .getOrElse {
+          this.start.getOrElse {
+            currentOffset - 1
+          }
+        })
 
     this.end = Some(
       end.asScala
         .map(_.asInstanceOf[SequenceOffset])
-        .getOrElse(committed.map(_ + 2).getOrElse(this.end.getOrElse(this.start.get + 1))))
+        .getOrElse {
+          val next = this.end.map(_ + 1).getOrElse {
+            this.start.get + 1
+          }
 
-    if (this.start == this.end) {
-      this.end = Some(this.end.get + 1)
-    }
+          if (currentOffset > next) {
+            SequenceOffset(math.min(currentOffset.sequence, next.sequence + batchSize))
+          } else {
+            next
+          }
+        })
   }
 
   override def getStartOffset: Offset = {
@@ -163,7 +178,7 @@ class ChangesMicroBatchReader(options: DataSourceOptions, checkpointLocation: St
     SequenceOffset(json.toInt)
 
   override def commit(end: Offset): Unit =
-    committed = Some(end.asInstanceOf[SequenceOffset])
+    logInfo(s"Change sequence $end processed.")
 
   override def stop(): Unit = Unit
 

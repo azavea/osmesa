@@ -27,7 +27,7 @@ object ChangesetsSource extends Logging {
 
   case class ChangesetsState(last_run: DateTime, sequence: Int)
 
-  def getInitialOffset(baseURI: URI): Int = {
+  def getCurrentSequence(baseURI: URI): Int = {
     val response =
       Http(baseURI.resolve("state.yaml").toString).asString
 
@@ -42,8 +42,8 @@ object ChangesetsSource extends Logging {
     state.sequence
   }
 
-  private[streaming] def createInitialOffset(baseURI: URI): SequenceOffset =
-    SequenceOffset(getInitialOffset(baseURI))
+  private[streaming] def createOffsetForCurrentSequence(baseURI: URI): SequenceOffset =
+    SequenceOffset(getCurrentSequence(baseURI))
 
   def getSequence(baseURI: URI, sequence: Long): Seq[Changeset] = {
     val s = f"$sequence%09d".toArray
