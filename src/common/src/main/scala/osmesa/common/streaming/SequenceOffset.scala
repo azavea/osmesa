@@ -8,6 +8,7 @@ case class SequenceOffset(sequence: Int) extends Offset with Ordered[SequenceOff
   override val json: String = sequence.toString
 
   def +(increment: Int): SequenceOffset = SequenceOffset(sequence + increment)
+  def -(decrement: Int): SequenceOffset = SequenceOffset(sequence - decrement)
 
   override def compare(that: SequenceOffset): Int = this.sequence - that.sequence
 }

@@ -18,7 +18,7 @@ import scala.xml.XML
 object ChangesSource extends Logging {
   val Delay: Duration = 15.seconds
 
-  def getInitialOffset(baseURI: URI): Int = {
+  def getCurrentSequence(baseURI: URI): Int = {
     val response =
       Http(baseURI.resolve("state.txt").toString).asString
 
@@ -33,8 +33,8 @@ object ChangesSource extends Logging {
     sequence
   }
 
-  private[streaming] def createInitialOffset(baseURI: URI): SequenceOffset =
-    SequenceOffset(getInitialOffset(baseURI))
+  private[streaming] def createOffsetForCurrentSequence(baseURI: URI): SequenceOffset =
+    SequenceOffset(getCurrentSequence(baseURI))
 
   def getSequence(baseURI: URI, sequence: Long): Seq[Element] = {
     val s = f"$sequence%09d".toArray

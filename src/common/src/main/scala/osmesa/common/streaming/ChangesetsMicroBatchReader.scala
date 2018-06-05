@@ -76,6 +76,7 @@ class ChangesetsStreamBatchReader(baseURI: URI, start: SequenceOffset, end: Sequ
 class ChangesetsMicroBatchReader(options: DataSourceOptions, checkpointLocation: String)
     extends MicroBatchReader
     with Logging {
+  val DefaultBatchSize: Int = 100
 
   // TODO extract me
   val ChangesetSchema = StructType(
@@ -102,7 +103,12 @@ class ChangesetsMicroBatchReader(options: DataSourceOptions, checkpointLocation:
       .get("base_uri")
       .orElse("https://planet.osm.org/replication/changesets/"))
 
-  // TODO make lazy in order to make setOffsetRange more readable?
+  private val batchSize = options
+    .get("batch_size")
+    .asScala
+    .map(s => s.toInt)
+    .getOrElse(DefaultBatchSize)
+
   private var start: Option[SequenceOffset] = options
     .get("start_sequence")
     .asScala
@@ -113,27 +119,33 @@ class ChangesetsMicroBatchReader(options: DataSourceOptions, checkpointLocation:
     .asScala
     .map(s => SequenceOffset(s.toInt))
 
-  private var committed: Option[SequenceOffset] = None
-
   override def setOffsetRange(start: Optional[Offset], end: Optional[Offset]): Unit = {
+    // TODO memoize this, valid for 30s at a time
+    val currentOffset = ChangesSource.createOffsetForCurrentSequence(baseURI)
+
     this.start = Some(
       start.asScala
         .map(_.asInstanceOf[SequenceOffset])
-        .getOrElse(
-          committed
-            .map(_ + 1)
-            .getOrElse(this.start.getOrElse {
-              ChangesetsSource.createInitialOffset(baseURI)
-            })))
+        .getOrElse {
+          this.start.getOrElse {
+            currentOffset - 1
+          }
+        })
 
     this.end = Some(
       end.asScala
         .map(_.asInstanceOf[SequenceOffset])
-        .getOrElse(committed.map(_ + 2).getOrElse(this.end.getOrElse(this.start.get + 1))))
+        .getOrElse {
+          val next = this.end.map(_ + 1).getOrElse {
+            this.start.get + 1
+          }
 
-    if (this.start == this.end) {
-      this.end = Some(this.end.get + 1)
-    }
+          if (currentOffset > next) {
+            SequenceOffset(math.min(currentOffset.sequence, next.sequence + batchSize))
+          } else {
+            next
+          }
+        })
   }
 
   override def getStartOffset: Offset = {
@@ -152,7 +164,7 @@ class ChangesetsMicroBatchReader(options: DataSourceOptions, checkpointLocation:
     SequenceOffset(json.toInt)
 
   override def commit(end: Offset): Unit =
-    committed = Some(end.asInstanceOf[SequenceOffset])
+    logInfo(s"Changeset sequence ${end} processed.")
 
   override def stop(): Unit = Unit
 
