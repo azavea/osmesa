@@ -387,7 +387,7 @@ object UserFootprintUpdater
                               byteStream.close()
                             }
 
-                            write(uri, byteStream.toByteArray)
+                            write(uri, byteStream.toByteArray, Some("gzip"))
                           case _ =>
                             println(s"No changes to $uri; THIS SHOULD NOT HAVE HAPPENED.")
                         }
@@ -432,7 +432,7 @@ object UserFootprintUpdater
                           byteStream.close()
                         }
 
-                        write(uri, byteStream.toByteArray)
+                        write(uri, byteStream.toByteArray, Some("gzip"))
                     }
 
                     (key, zoom, sk.col, sk.row, feats.size)

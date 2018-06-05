@@ -6,9 +6,9 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
 import com.amazonaws.services.s3.model.{AmazonS3Exception, ObjectMetadata}
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.spark.SpatialKey
+import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
 import geotrellis.spark.tiling.{LayoutDefinition, ZoomedLayoutScheme}
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
@@ -25,7 +25,7 @@ import scala.util.{Failure, Success, Try}
 
 package object updater {
   private lazy val logger = Logger.getLogger(getClass)
-  private lazy val s3: AmazonS3 = AmazonS3ClientBuilder.defaultClient()
+  private lazy val s3: AmazonS3Client = S3Client.DEFAULT
 
   type AugmentedDiffFeature = Feature[Geometry, AugmentedDiff]
   type VTFeature = Feature[Geometry, VTProperties]
@@ -34,11 +34,11 @@ package object updater {
 
   val LayoutScheme: ZoomedLayoutScheme = ZoomedLayoutScheme(WebMercator)
 
-  private def createMetadata(contentLength: Int): ObjectMetadata = {
+  private def createMetadata(contentLength: Int, encoding: Option[String]): ObjectMetadata = {
     val meta = new ObjectMetadata()
 
     meta.setContentLength(contentLength)
-    meta.setContentEncoding("gzip")
+    encoding.foreach(meta.setContentEncoding)
 
     meta
   }
@@ -109,15 +109,14 @@ package object updater {
     }
   }
 
-  def write(uri: URI, bytes: Array[Byte]): Any = {
-    // TODO optionally compress (and, if compressed, include appropriate headers when writing to S3)
+  def write(uri: URI, bytes: Array[Byte], encoding: Option[String] = None): Any = {
     uri.getScheme match {
       case "s3" =>
         Try(
           s3.putObject(uri.getHost,
                        URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString),
                        new ByteArrayInputStream(bytes),
-                       createMetadata(bytes.length))) match {
+                       createMetadata(bytes.length, encoding))) match {
           case Success(_) =>
           case Failure(e) =>
             e match {

@@ -2,7 +2,8 @@ package osmesa.analytics.oneoffs
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.math.BigDecimal
-import java.net.URI
+import java.net.{URI, URLEncoder}
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.util.zip.GZIPOutputStream
 
@@ -323,27 +324,11 @@ object Footprint extends Logging {
 
       parTiles.foreach {
         case (k, z, x, y, bytes) =>
-          outputURI.getScheme match {
-            case "s3" =>
-              val s3Client = S3Client.DEFAULT
-              val bucket = outputURI.getHost
-              val prefix = outputURI.getPath.drop(1)
-
-              val metadata = new ObjectMetadata()
-              metadata.setContentEncoding("gzip")
-              metadata.setContentLength(bytes.length)
-              try {
-                s3Client.putObject(
-                  new PutObjectRequest(bucket,
-                                       s"$prefix/$k/$z/$x/$y.mvt",
-                                       new ByteArrayInputStream(bytes),
-                                       metadata))
-              } catch {
-                case e: AmazonS3Exception => logError(s"Failing writing $k/$z/$x/$y", e)
-              }
-            case _ =>
-              throw new NotImplementedError(s"${outputURI.getScheme} output is not implemented.")
-          }
+          osmesa.analytics.updater.write(
+            outputURI.resolve(
+              URLEncoder.encode(s"$k/$z/$x/$y.mvt", StandardCharsets.UTF_8.toString)),
+            bytes,
+            Some("gzip"))
       }
 
       taskSupport.environment.shutdown()
