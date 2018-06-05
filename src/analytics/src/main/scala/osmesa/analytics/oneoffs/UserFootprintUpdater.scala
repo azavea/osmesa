@@ -69,6 +69,12 @@ object UserFootprintUpdater
             metavar = "sequence",
             help = "Minutely diff ending sequence. If absent, this will be an infinite stream.")
           .orNone
+        val changesBatchSizeOpt = Opts
+          .option[Int]("changes-batch-size",
+                        short = "b",
+                        metavar = "batch size",
+                        help = "Change batch size.")
+          .orNone
         val tileSourceOpt = Opts
           .option[URI](
             "tile-source",
@@ -81,11 +87,9 @@ object UserFootprintUpdater
         (changeSourceOpt,
          changesStartSequenceOpt,
          changesEndSequenceOpt,
+         changesBatchSizeOpt,
          tileSourceOpt).mapN {
-          (changeSource,
-           changesStartSequence,
-           changesEndSequence,
-           tileSource) =>
+          (changeSource, changesStartSequence, changesEndSequence, changesBatchSize, tileSource) =>
             implicit val spark: SparkSession = Analytics.sparkSession("UserFootprintUpdater")
             import spark.implicits._
 
@@ -95,6 +99,9 @@ object UserFootprintUpdater
                 .getOrElse(Map.empty[String, String]) ++
               changesEndSequence
                 .map(s => Map("end_sequence" -> s.toString))
+                .getOrElse(Map.empty[String, String]) ++
+              changesBatchSize
+                .map(s => Map("batch_size" -> s.toString))
                 .getOrElse(Map.empty[String, String])
 
             val changes = spark.readStream
