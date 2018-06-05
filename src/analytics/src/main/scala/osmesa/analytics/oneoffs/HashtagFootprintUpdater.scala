@@ -15,7 +15,17 @@ import geotrellis.spark.io.index.zcurve.ZSpatialKeyIndex
 import geotrellis.spark.tiling.ZoomedLayoutScheme
 import geotrellis.spark.{KeyBounds, SpatialKey}
 import geotrellis.vector.io._
-import geotrellis.vector.{Feature, Geometry, Line, MultiLine, MultiPoint, MultiPolygon, Point, PointFeature, Polygon}
+import geotrellis.vector.{
+  Feature,
+  Geometry,
+  Line,
+  MultiLine,
+  MultiPoint,
+  MultiPolygon,
+  Point,
+  PointFeature,
+  Polygon
+}
 import geotrellis.vectortile.{StrictLayer, VInt64, Value, VectorTile}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.sql._
@@ -71,6 +81,12 @@ object HashtagFootprintUpdater
             metavar = "sequence",
             help = "Minutely diff ending sequence. If absent, this will be an infinite stream.")
           .orNone
+        val changesBatchSizeOpt = Opts
+          .option[Int]("changes-batch-size",
+                       short = "b",
+                       metavar = "batch size",
+                       help = "Change batch size.")
+          .orNone
         val changesetSourceOpt =
           Opts
             .option[URI]("changeset-source",
@@ -93,6 +109,12 @@ object HashtagFootprintUpdater
                        help =
                          "Changeset ending sequence. If absent, this will be an infinite stream.")
           .orNone
+        val changesetsBatchSizeOpt = Opts
+          .option[Int]("changesets-batch-size",
+                       short = "B",
+                       metavar = "batch size",
+                       help = "Changeset batch size.")
+          .orNone
         val tileSourceOpt = Opts
           .option[URI](
             "tile-source",
@@ -105,16 +127,20 @@ object HashtagFootprintUpdater
         (changeSourceOpt,
          changesStartSequenceOpt,
          changesEndSequenceOpt,
+         changesBatchSizeOpt,
          changesetSourceOpt,
          changesetsStartSequenceOpt,
          changesetsEndSequenceOpt,
+         changesetsBatchSizeOpt,
          tileSourceOpt).mapN {
           (changeSource,
            changesStartSequence,
            changesEndSequence,
+           changesBatchSize,
            changesetSource,
            changesetsStartSequence,
            changesetsEndSequence,
+           changesetsBatchSize,
            tileSource) =>
             implicit val spark: SparkSession = Analytics.sparkSession("HashtagFootprintUpdater")
             import spark.implicits._
@@ -125,6 +151,9 @@ object HashtagFootprintUpdater
                 .getOrElse(Map.empty[String, String]) ++
               changesEndSequence
                 .map(s => Map("end_sequence" -> s.toString))
+                .getOrElse(Map.empty[String, String]) ++
+              changesBatchSize
+                .map(s => Map("batch_size" -> s.toString))
                 .getOrElse(Map.empty[String, String])
 
             val changes = spark.readStream
@@ -139,6 +168,9 @@ object HashtagFootprintUpdater
               changesetsEndSequence
                 .map(s => Map("end_sequence" -> s.toString))
                 .getOrElse(Map.empty[String, String])
+            changesetsBatchSize
+              .map(s => Map("batch_size" -> s.toString))
+              .getOrElse(Map.empty[String, String])
 
             val changesets = spark.readStream
               .format("changesets")
