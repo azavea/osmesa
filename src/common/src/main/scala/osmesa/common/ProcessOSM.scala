@@ -68,13 +68,13 @@ object ProcessOSM {
     * @param timestamp Optional timestamp to snapshot at
     * @return DataFrame containing valid elements at timestamp (or now)
     */
-  def snapshot(df: DataFrame, timestamp: Timestamp = null): DataFrame = {
+  def snapshot(df: DataFrame, timestamp: Option[Timestamp] = None): DataFrame = {
     import df.sparkSession.implicits._
 
-    df
-      .where(
-        'updated <= coalesce(lit(timestamp), current_timestamp)
-          and coalesce(lit(timestamp), current_timestamp) < coalesce('validUntil, date_add(current_timestamp, 1)))
+    // TODO use snapshot args (Column) to move filtering earlier in the process to avoid unnecessary processing
+    df.where(
+        'updated <= coalesce(lit(timestamp.orNull), current_timestamp)
+          and coalesce(lit(timestamp.orNull), current_timestamp) < coalesce('validUntil, date_add(current_timestamp, 1)))
   }
 
   /**
@@ -212,6 +212,9 @@ object ProcessOSM {
   def constructGeometries(elements: DataFrame): DataFrame = {
     import elements.sparkSession.implicits._
 
+    // TODO accept condition: Column as an argument so that predicates can be pushed down
+    // see ExtractBuildingRelations (et al) for ways to limit the number of nodes and ways that are processed
+
     val nodes = ProcessOSM.preprocessNodes(elements)
 
     val nodeGeoms = ProcessOSM.constructPointGeometries(nodes)
@@ -268,8 +271,13 @@ object ProcessOSM {
     * @param _nodesToWays Optional lookup table.
     * @return Way geometries.
     */
-  def reconstructWayGeometries(_ways: DataFrame, _nodes: DataFrame, _nodesToWays: Option[DataFrame] = None)(implicit
-                                                                                                            cache: Caching = Caching.none, cachePartitions: Option[Int] = None): DataFrame = {
+  def reconstructWayGeometries(_ways: DataFrame,
+                               _nodes: DataFrame,
+                               _nodesToWays: Option[DataFrame] = None,
+                               snapshot: Option[Timestamp] = None)(
+      implicit
+      cache: Caching = Caching.none,
+      cachePartitions: Option[Int] = None): DataFrame = {
     implicit val ss: SparkSession = _ways.sparkSession
     import ss.implicits._
 
@@ -302,17 +310,26 @@ object ProcessOSM {
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
       .select('changeset, 'wayId as 'id, 'version, 'updated)
 
-    val allWayVersions = waysByChangeset
-      // Union with raw ways to include those in the time line (if they weren't already triggered by node modifications
-      // at the same time)
-      .union(ways.select('changeset, 'id, 'version, 'timestamp as 'updated))
-      // If a node and a way were modified within the same changeset at different times, there will be multiple entries
-      // per changeset (with different timestamps). There should only be one per changeset.
-      .groupBy('changeset, 'id)
-      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
-      .join(ways.select('id, 'version, 'nds, 'isArea), Seq("id", "version"))
+    val allWayVersions = if (snapshot.isDefined) {
+      // fetch just the ways that were valid at the snapshot timestamp
+      ways
+        .select('changeset, 'id, 'version, coalesce(lit(snapshot.orNull), current_timestamp) as 'updated)
+        .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
+        .groupBy('id)
+        .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated, max('changeset) as 'changeset)
+    } else {
+      waysByChangeset
+        // Union with raw ways to include those in the timeline (if they weren't already triggered by node modifications
+        // at the same time)
+        .union(ways.select('changeset, 'id, 'version, 'timestamp as 'updated))
+        // If a node and a way were modified within the same changeset at different times, there will be multiple entries
+        // per changeset (with different timestamps). There should only be one per changeset.
+        .groupBy('changeset, 'id)
+        .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
+    }
 
     val explodedWays = allWayVersions
+      .join(ways.select('id, 'version, 'nds, 'isArea), Seq("id", "version"))
       .select('changeset, 'id, 'version, 'updated, 'isArea, posexplode_outer('nds) as Seq("idx", "ref"))
       // repartition including updated timestamp to avoid skew (version is insufficient, as
       // multiple instances may exist with the same version)
@@ -391,14 +408,14 @@ object ProcessOSM {
         'geometryChanged)
   }
 
-  private def getRelationMembers(relations: DataFrame, geoms: DataFrame) = {
+  private def getRelationMembers(relations: DataFrame, geoms: DataFrame, snapshot: Option[Timestamp]) = {
     implicit val ss: SparkSession = relations.sparkSession
     import ss.implicits._
 
     // way to relation lookup table (missing 'role, since it's not needed here)
     val waysToRelations = relations
       .select(explode('members) as 'member, 'id as 'relationId, 'version, 'timestamp, 'validUntil)
-      .withColumn("type", $"member.type")
+      .withColumn("_type", $"member.type")
       .withColumn("id", $"member.ref")
       .drop('member)
 
@@ -413,11 +430,8 @@ object ProcessOSM {
       .drop('validUntil)
       // re-calculate validUntil windows
       .withColumn("validUntil", lead('updated, 1) over idByVersion)
-      // TODO when expanding beyond relations referring to ways, geoms should include 'type for the join to work
-      // properly
-      .withColumn("type", lit(WayType))
-      .select('type, 'changeset, 'id, 'updated)
-      .join(waysToRelations, Seq("id", "type"))
+      .select('_type, 'changeset, 'id, 'updated)
+      .join(waysToRelations, Seq("id", "_type"))
       .where(waysToRelations("timestamp") <= geoms("updated") and
         geoms("updated") < coalesce(waysToRelations("validUntil"), current_timestamp))
       .select('changeset, 'relationId as 'id, 'version, 'updated)
@@ -425,22 +439,30 @@ object ProcessOSM {
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
-    val allRelationVersions = relationsByChangeset
-      // Union with raw relations to include those in the time line (if they weren't already triggered by geometry
-      // modifications at the same time)
-      .union(relations.select('changeset, 'id, 'version, 'timestamp as 'updated))
-      // If a node, a way, and/or a relation were modified within the same changeset at different times, there will be
-      // multiple entries with different timestamps; this reduces them down to a single update per changeset.
-      .groupBy('changeset, 'id)
-      .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
+    val allRelationVersions = if (snapshot.isDefined) {
+      // fetch just the relations that were valid at the snapshot timestamp
+      relations.select('changeset, 'id, 'version, coalesce(lit(snapshot.orNull), current_timestamp) as 'updated)
+        .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
+        .groupBy('id)
+        .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated, max('changeset) as 'changeset)
+    } else {
+      relationsByChangeset
+        // Union with raw relations to include those in the time line (if they weren't already triggered by geometry
+        // modifications at the same time)
+        .union(relations.select('changeset, 'id, 'version, 'timestamp as 'updated))
+        // If a node, a way, and/or a relation were modified within the same changeset at different times, there will be
+        // multiple entries with different timestamps; this reduces them down to a single update per changeset.
+        .groupBy('changeset, 'id)
+        .agg(max('version).cast(IntegerType) as 'version, max('updated) as 'updated)
+    }
+
+    allRelationVersions
       .join(relations.select('id, 'version, 'members), Seq("id", "version"))
       // assign `minorVersion` and rewrite `validUntil` to match
       // this is done early (at the expense of passing through the shuffle w/ exploded 'members) to avoid extremely
       // large partitions (see: Germany w/ 7k+ geometry versions) after geometries have been constructed
       .withColumn("validUntil", lead('updated, 1) over idByUpdated)
       .withColumn("minorVersion", (row_number over idAndVersionByUpdated) - 1)
-
-    allRelationVersions
       .select('changeset, 'id, 'version, 'minorVersion, 'updated, 'validUntil, explode_outer('members) as "member")
       .select(
         'changeset,
@@ -449,7 +471,7 @@ object ProcessOSM {
         'minorVersion,
         'updated,
         'validUntil,
-        'member.getField("type") as 'type,
+        'member.getField("type") as '_type,
         'member.getField("ref") as 'ref,
         'member.getField("role") as 'role
       )
@@ -469,33 +491,115 @@ object ProcessOSM {
   def reconstructRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching = Caching.none,
                                                                              cachePartitions: Option[Int] = None)
   : DataFrame = {
+    implicit val ss: SparkSession = _relations.sparkSession
+    import ss.implicits._
+
     val relations = preprocessRelations(_relations)
 
-    reconstructMultiPolygonRelationGeometries(relations, geoms)
-      .union(reconstructRouteRelationGeometries(relations, geoms))
+    reconstructBuildingRelationGeometries(relations,geoms)
+      .union(reconstructMultiPolygonRelationGeometries(relations, geoms.where('_type === WayType)))
+      .union(reconstructRouteRelationGeometries(relations, geoms.where('_type === WayType)))
   }
 
-  def reconstructMultiPolygonRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching =
-  Caching.none,
-                                                                                         cachePartitions: Option[Int]
-                                                                                         = None)
-  : DataFrame = {
+  def reconstructBuildingRelationGeometries(_relations: DataFrame,
+                                            geoms: DataFrame,
+                                            snapshot: Option[Timestamp] = None)(
+      implicit cache: Caching = Caching.none,
+      cachePartitions: Option[Int] = None): DataFrame = {
+    implicit val ss: SparkSession = _relations.sparkSession
+    import ss.implicits._
+
+    // TODO support recursive relations, e.g. 3778631 (UN Plaza w/ a multipolygon relation as the outline)
+
+    val relations = preprocessRelations(_relations)
+      .where(isBuildingRelation('tags))
+
+    val members = getRelationMembers(relations, geoms, snapshot)
+      .join(
+      geoms.select(
+        '_type,
+        'id as "ref",
+        'updated as 'memberUpdated,
+        'validUntil as 'memberValidUntil,
+        'geom), Seq("_type", "ref"), "left_outer")
+      .where(
+        ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts
+          // through
+          ('memberUpdated <= 'updated and 'updated < coalesce('memberValidUntil, current_timestamp)))
+      .drop('memberUpdated)
+      .drop('memberValidUntil)
+      .drop('ref)
+
+    implicit val encoder: Encoder[Row] = TaggedVersionedElementEncoder
+
+    // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
+    val relationGeoms = members
+      // TODO drop columns that aren't processed and join w/ members after (to avoid bloating partitions)
+      .groupByKey { row =>
+        (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]
+          ("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
+      }
+      .flatMapGroups {
+        case ((changeset, id, version, minorVersion, updated, validUntil), rows) =>
+          val members = rows.toVector
+          val types = members.map(_.getAs[Byte]("_type"))
+          val roles = members.map(_.getAs[String]("role"))
+          val geoms = members.map(_.getAs[Array[Byte]]("geom"))
+
+          buildBuilding(id, version, updated, types, roles, geoms) match {
+            case Some(components) =>
+              components.map {
+                case ("", wkb) =>
+                  // no role
+                  new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
+                    validUntil, wkb), TaggedVersionedElementSchema): Row
+                case (role, wkb) =>
+                  new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion,
+                    updated, validUntil, wkb), TaggedVersionedElementSchema): Row
+              }
+            case None =>
+              // no geometry
+              Seq(new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
+                validUntil, null), TaggedVersionedElementSchema): Row)
+          }
+      }
+
+    // Join metadata to avoid passing it through exploded shuffles
+    relationGeoms
+      .join(relations.select('id, 'version, 'tags as 'originalTags, 'visible), Seq("id", "version"))
+      .select(
+        lit(RelationType) as '_type,
+        'id,
+        'geom,
+        mergeTags('originalTags, 'tags) as 'tags,
+        'changeset,
+        'updated,
+        'validUntil,
+        'visible,
+        'version,
+        'minorVersion)
+  }
+
+  def reconstructMultiPolygonRelationGeometries(_relations: DataFrame,
+                                                geoms: DataFrame,
+                                                snapshot: Option[Timestamp] = None)(
+      implicit cache: Caching = Caching.none,
+      cachePartitions: Option[Int] = None): DataFrame = {
     implicit val ss: SparkSession = _relations.sparkSession
     import ss.implicits._
 
     val relations = preprocessRelations(_relations)
       .where(isMultiPolygon('tags))
 
-    val members = getRelationMembers(relations, geoms)
+    val members = getRelationMembers(relations, geoms, snapshot)
       .where('role.isin(MultiPolygonRoles: _*))
-      // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
       .join(
       geoms.select(
-        lit(WayType) as 'type,
+        '_type,
         'id as "ref",
         'updated as 'memberUpdated,
         'validUntil as 'memberValidUntil,
-        'geom), Seq("type", "ref"), "left_outer")
+        'geom), Seq("_type", "ref"), "left_outer")
       .where(
         ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts
           // through
@@ -514,7 +618,7 @@ object ProcessOSM {
         .mapGroups {
           case ((changeset, id, version, minorVersion, updated, validUntil), rows) =>
             val members = rows.toVector
-            val types = members.map(_.getAs[Byte]("type"))
+            val types = members.map(_.getAs[Byte]("_type"))
             val roles = members.map(_.getAs[String]("role"))
             val geoms = members.map(_.getAs[Array[Byte]]("geom"))
 
@@ -540,25 +644,25 @@ object ProcessOSM {
         'minorVersion)
   }
 
-  def reconstructRouteRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching = Caching
-    .none,
-                                                                                  cachePartitions: Option[Int] = None)
-  : DataFrame = {
+  def reconstructRouteRelationGeometries(_relations: DataFrame,
+                                         geoms: DataFrame,
+                                         snapshot: Option[Timestamp] = None)(
+      implicit cache: Caching = Caching.none,
+      cachePartitions: Option[Int] = None): DataFrame = {
     implicit val ss: SparkSession = _relations.sparkSession
     import ss.implicits._
 
     val relations = preprocessRelations(_relations)
       .where(isRoute('tags))
 
-    val members = getRelationMembers(relations, geoms)
-      // TODO when expanding beyond way-based routes, geoms should include 'type for the join to work properly
+    val members = getRelationMembers(relations, geoms, snapshot)
       .join(
       geoms.select(
-        lit(WayType) as 'type,
+        '_type,
         'id as "ref",
         'updated as 'memberUpdated,
         'validUntil as 'memberValidUntil,
-        'geom), Seq("type", "ref"), "left_outer")
+        'geom), Seq("_type", "ref"), "left_outer")
       .where(
         ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts
           // through
@@ -578,7 +682,7 @@ object ProcessOSM {
       .flatMapGroups {
         case ((changeset, id, version, minorVersion, updated, validUntil), rows) =>
           val members = rows.toVector
-          val types = members.map(_.getAs[Byte]("type"))
+          val types = members.map(_.getAs[Byte]("_type"))
           val roles = members.map(_.getAs[String]("role"))
           val geoms = members.map(_.getAs[Array[Byte]]("geom"))
 

@@ -112,7 +112,7 @@ object Snapshot extends CommandApp(
         .union(ways)
         .union(relations)
 
-      ProcessOSM.snapshot(elements, timestamp)
+      ProcessOSM.snapshot(elements, Some(timestamp))
         .repartition(1)
         .write
         .orc(out)

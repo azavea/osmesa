@@ -5,10 +5,11 @@ import java.sql.Timestamp
 import com.google.common.collect.{Range, RangeMap, TreeRangeMap}
 import com.vividsolutions.jts.geom
 import com.vividsolutions.jts.geom._
+import geotrellis.vector
 import geotrellis.vector.io._
 import geotrellis.vector.{Line, MultiLine, MultiPolygon, Polygon}
 import org.apache.log4j.Logger
-import org.apache.spark.sql.{Column, Row, TypedColumn}
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
 import org.apache.spark.sql.types._
@@ -152,6 +153,11 @@ package object osm {
     }
 
   val isArea: UserDefinedFunction = udf(_isArea)
+
+  private val _isBuildingRelation = (tags: Map[String, String]) =>
+    tags.contains("type") && tags("type").toLowerCase == "building"
+
+  val isBuildingRelation: UserDefinedFunction = udf(_isBuildingRelation)
 
   private val _isMultiPolygon = (tags: Map[String, String]) =>
     tags.contains("type") && MultiPolygonTypes.contains(tags("type").toLowerCase)
@@ -602,6 +608,46 @@ package object osm {
     (_: Map[String, String]) ++ (_: Map[String, String])
   }
 
+
+  // TODO this (and accompanying functions) doesn't belong here
+  def buildBuilding(id: Long, version: Int, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Seq[(String, Array[Byte])]] = {
+    if (types.zip(wkbs).exists { case (_, g) => Option(g).isEmpty }) {
+      // bail early if null values are present (representing an incomplete join (potentially because relations are referenced))
+      logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
+      None
+    } else {
+      val geoms = wkbs.map(Option(_).map(_.readWKB) match {
+        case Some(geom: Polygon) => geom.as[Polygon]
+        case Some(geom: Line) =>
+          geom.as[Line].map { line =>
+            if (line.isClosed && line.vertexCount >= 4) {
+              Polygon(line)
+            } else {
+              logger.warn(s"Relation ${id} includes a line: ${line.toWKT}")
+              line
+            }
+          }
+        // convert lines to polygons; assume that they're closed
+        case Some(geom: vector.Point) => geom.as[vector.Point]
+        case _ => None
+      })
+
+      try {
+        // 2103295 was an example of a building relation where part of the roof exists as separate segments; should rings be formed per line 546 + formRings when incomplete?
+        Some(roles.zip(geoms)
+          .filter(_._2.isDefined)
+          .map(x => (x._1, x._2.get))
+          .map { case (role, geom) =>
+            (role, geom.toWKB(4326))
+          })
+      } catch {
+        case e: Throwable =>
+          logger.warn(s"Could not reconstruct building relation $id @ $version ($timestamp): $e")
+          e.getStackTrace.foreach(logger.warn)
+          None
+      }
+    }
+  }
 
   // TODO this (and accompanying functions) doesn't belong here
   def buildRoute(id: Long, version: Int, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Seq[(String, Array[Byte])]] = {
