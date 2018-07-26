@@ -65,7 +65,7 @@ object ExtractBuildingRelations
 
             // DOWN: get all versions of raw elements
 
-            // get all multipolygon relations
+            // get all building relations
             val relations = ProcessOSM.preprocessRelations(
               df.where('type === "relation" and isBuildingRelation('tags)))
 
@@ -121,12 +121,24 @@ object ExtractBuildingRelations
               _nodesToWays = Some(nodesToWays.withColumn("validUntil", lit(null))),
               snapshot = Some(now))
 
+            // TODO union w/ multipolygons to support recursive relations
+            val geoms = nodeGeoms.union(wayGeoms)
+
+            // TODO support recursive relations, e.g. 3778631 (UN Plaza w/ a multipolygon relation as the outline)
+            val recursiveRelations =
+              relations.where(containsMemberType(lit(ProcessOSM.RelationType), 'members))
+
+//            val multiPolygons: Dataset[Row] = ???
+
             // TODO only snapshot if source data is a snapshot (be nice if we could designate that as a trait on DataFrame)
-            val relationGeoms = ProcessOSM.reconstructBuildingRelationGeometries(relations,
-                                                                                 nodeGeoms
-                                                                                   .union(wayGeoms),
-                                                                                 snapshot =
-                                                                                   Some(now))
+            val relationGeoms = ProcessOSM.reconstructBuildingRelationGeometries(
+              // relations,
+              // Map types can't exist on DataFrames being intersected so we intersect on just the IDs
+              relations.select('id).except(recursiveRelations.select('id)).join(relations.select('id, 'tags), Seq("id")),
+              // geoms.union(multiPolygons),
+              geoms,
+              snapshot = Some(now)
+            )
 
             relationGeoms
               .where('geom.isNotNull)
