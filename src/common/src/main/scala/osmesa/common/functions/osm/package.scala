@@ -194,6 +194,13 @@ package object osm {
 
   val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
 
+  private val _containsMemberType = (`type`: Byte, members: Seq[Row]) =>
+    members.exists { row =>
+      row.getAs[Byte]("type") == `type`
+    }
+
+  val containsMemberType: UserDefinedFunction = udf(_containsMemberType)
+
   private val _hashtags = (comment: String) =>
     HashtagMatcher
       .findAllMatchIn(comment)
