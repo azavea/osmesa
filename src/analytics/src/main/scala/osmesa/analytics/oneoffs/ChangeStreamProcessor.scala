@@ -4,8 +4,9 @@ import java.net.URI
 
 import cats.implicits._
 import com.monovore.decline._
-import org.apache.spark._
 import org.apache.spark.sql._
+import osmesa.analytics.Analytics
+import osmesa.common.ProcessOSM
 
 /*
  * Usage example:
@@ -45,18 +46,9 @@ object ChangeStreamProcessor
 
         (changesetSourceOpt, startSequenceOpt, endSequenceOpt).mapN {
           (changesetSource, startSequence, endSequence) =>
-            /* Settings compatible for both local and EMR execution */
-            val conf = new SparkConf()
-              .setIfMissing("spark.master", "local[*]")
-              .setAppName("change-stream-processor")
-              .set("spark.serializer", classOf[org.apache.spark.serializer.KryoSerializer].getName)
-              .set("spark.kryo.registrator",
-                   classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
+            implicit val ss: SparkSession = Analytics.sparkSession("ChangeStreamProcessor")
 
-            implicit val ss: SparkSession = SparkSession.builder
-              .config(conf)
-              .enableHiveSupport
-              .getOrCreate
+            import ss.implicits._
 
             val options = Map("base_uri" -> changesetSource.toString) ++
               startSequence
@@ -64,7 +56,8 @@ object ChangeStreamProcessor
                 .getOrElse(Map.empty[String, String]) ++
               endSequence
                 .map(s => Map("end_sequence" -> s.toString))
-                .getOrElse(Map.empty[String, String])
+                .getOrElse(Map.empty[String, String]) ++
+            Map("batch_size" -> "5")
 
             val changes =
               ss.readStream
@@ -72,7 +65,10 @@ object ChangeStreamProcessor
                 .options(options)
                 .load
 
-            val changeProcessor = changes.writeStream
+            val changeProcessor = changes
+              .select('id, 'version, 'lat, 'lon, 'visible)
+              .where('_type === ProcessOSM.NodeType and !'visible)
+              .writeStream
               .queryName("display change data")
               .format("console")
               .start
