@@ -16,7 +16,9 @@ libraryDependencies ++= Seq(
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
   cats,
   scalactic,
-  scalatest
+  scalatest,
+
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % "provided"
 )
 
 fork in Test := true
