@@ -110,6 +110,9 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions, che
     }
   }
 
+  override def commit(end: Offset): Unit =
+    logInfo(s"Commit: $end")
+
   override def deserializeOffset(json: String): Offset =
     SequenceOffset(json.toInt)
 

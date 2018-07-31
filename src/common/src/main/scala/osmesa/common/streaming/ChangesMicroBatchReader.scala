@@ -5,7 +5,6 @@ import java.util
 
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.sources.v2.DataSourceOptions
-import org.apache.spark.sql.sources.v2.reader.streaming.Offset
 import org.apache.spark.sql.sources.v2.reader.{DataReader, DataReaderFactory}
 import org.apache.spark.sql.types._
 import osmesa.common.model.Element
@@ -88,9 +87,6 @@ class ChangesMicroBatchReader(options: DataSourceOptions, checkpointLocation: St
 
   override def getCurrentOffset: SequenceOffset =
     ChangesSource.createOffsetForCurrentSequence(baseURI)
-
-  override def commit(end: Offset): Unit =
-    logInfo(s"Change sequence $end processed.")
 
   override def readSchema(): StructType = ChangeSchema
 

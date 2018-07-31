@@ -178,8 +178,9 @@ object HashtagFootprintUpdater
               .load
 
             val watermarkedChanges = changes
-            // geoms may appear before the changeset they're within; wait 5 minutes
-              .withWatermark("timestamp", "5 minutes")
+            // geoms may appear before the changeset they're within or the changeset metadata may have been missed, in
+            // which case watch for it to be closed within the next 24 hours
+              .withWatermark("timestamp", "25 hours")
               .where('_type === ProcessOSM.NodeType and 'lat.isNotNull and 'lon.isNotNull)
               .select('timestamp, 'changeset, 'lat, 'lon)
 
