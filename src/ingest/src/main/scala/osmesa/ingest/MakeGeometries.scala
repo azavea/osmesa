@@ -41,6 +41,7 @@ object MakeGeometries extends CommandApp(
         .setAppName("make-geometries")
         .set("spark.serializer", classOf[org.apache.spark.serializer.KryoSerializer].getName)
         .set("spark.kryo.registrator", classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName)
+        .set("spark.ui.showConsoleProgress", "true")
         // for this dataset, these actually reduce performance; perhaps something to do with parsing / predicate
         // pushdown for complex types (array<struct<type:string,ref:long,role:string>> appears to be the worst offender)
 //        .set("spark.sql.orc.impl", "native")
