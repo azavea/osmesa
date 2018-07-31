@@ -8,7 +8,8 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import osmesa.ingest.util.Caching
+import osmesa.common.ProcessOSM
+import osmesa.common.util.Caching
 
 /*
  * Usage example:
@@ -86,6 +87,8 @@ object MakeGeometries extends CommandApp(
       nodeGeoms
         .union(wayGeoms.drop('geometryChanged).where(size('tags) > 0))
         .union(relationGeoms)
+//        .withColumn("wkt", ST_AsText('geom))
+//        .drop('geom)
         .repartition(numPartitions)
         .write
         .mode(SaveMode.Overwrite)

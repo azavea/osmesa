@@ -14,13 +14,11 @@ libraryDependencies ++= Seq(
   gtShapefile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
-  //geomesaHbaseDatastore,
   cats,
-  hbaseClient % "provided",
-  hbaseCommon % "provided",
-  hbaseServer % "provided",
   scalactic,
-  scalatest
+  scalatest,
+
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % "provided"
 )
 
 fork in Test := true
