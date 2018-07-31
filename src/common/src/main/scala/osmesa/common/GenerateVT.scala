@@ -1,9 +1,9 @@
 package osmesa
 
+import java.io.ByteArrayOutputStream
+import java.util.zip.{GZIPOutputStream, ZipEntry, ZipOutputStream}
+
 import com.amazonaws.services.s3.model.CannedAccessControlList._
-import geotrellis.raster._
-import geotrellis.raster.rasterize._
-import geotrellis.raster.rasterize.polygon._
 import geotrellis.spark._
 import geotrellis.spark.io.hadoop._
 import geotrellis.spark.io.index.zcurve.Z2
@@ -11,17 +11,13 @@ import geotrellis.spark.io.s3._
 import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vectortile._
-import org.apache.log4j.{Level, Logger}
+import org.apache.log4j.Logger
 import org.apache.spark.rdd.RDD
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 
-import scala.concurrent._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent._
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
-import scala.collection.JavaConverters._
-import java.io.ByteArrayOutputStream
-import java.util.zip.{ZipEntry, ZipOutputStream}
 
 
 object GenerateVT {
@@ -51,17 +47,33 @@ object GenerateVT {
 
   def save(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, bucket: String, prefix: String) = {
     vectorTiles
-      .mapValues(_.toBytes)
-      .saveToS3({ sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.mvt" },
-                putObjectModifier = { o =>
-                  val uncompressedInStream = o.getInputStream()
-                  val md = o.getMetadata()
-                  md.setUserMetadata(Map("Content-Encoding" -> "gzip").asJava)
+      .mapValues { tile =>
+        val byteStream = new ByteArrayOutputStream()
 
-                  o.withInputStream(new GzipCompressorInputStream(uncompressedInStream))
-                   .withMetadata(md)
-                   .withCannedAcl(PublicRead)
-                })
+        try {
+          val gzipStream = new GZIPOutputStream(byteStream)
+          try {
+            gzipStream.write(tile.toBytes)
+          } finally {
+            gzipStream.close()
+          }
+        } finally {
+          byteStream.close()
+        }
+
+        byteStream.toByteArray
+      }
+      .saveToS3(
+        { sk: SpatialKey => s"s3://${bucket}/${prefix}/${zoom}/${sk.col}/${sk.row}.mvt" },
+        putObjectModifier = { o =>
+          val md = o.getMetadata
+
+          md.setContentEncoding("gzip")
+
+          o
+            .withMetadata(md)
+            .withCannedAcl(PublicRead)
+        })
   }
 
   def saveHadoop(vectorTiles: RDD[(SpatialKey, VectorTile)], zoom: Int, uri: String) = {

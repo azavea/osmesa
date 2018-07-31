@@ -5,12 +5,13 @@ name := "osmesa-common"
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 
 libraryDependencies ++= Seq(
-//  gtGeomesa exclude("com.google.protobuf", "protobuf-java") exclude("org.locationtech.geomesa", "geomesa-accumulo-datastore"),
+  //  gtGeomesa exclude("com.google.protobuf", "protobuf-java") exclude("org.locationtech.geomesa",
+  // "geomesa-accumulo-datastore"),
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
-  "com.github.seratch" %% "awscala"     % "0.6.1",
-  "org.scalaj"         %% "scalaj-http" % "2.3.0",
+  //  "com.github.seratch" %% "awscala"     % "0.6.1",
+  "org.scalaj" %% "scalaj-http" % "2.3.0",
   sparkHive % "provided",
-  gtS3 exclude("com.google.protobuf", "protobuf-java"),
+  gtS3 exclude("com.google.protobuf", "protobuf-java") exclude("com.amazonaws", "aws-java-sdk-s3"),
   gtSpark exclude("com.google.protobuf", "protobuf-java"),
   gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
   decline,
@@ -24,7 +25,10 @@ libraryDependencies ++= Seq(
   circeExtras,
   circeParser,
   circeOptics,
-  circeJava8
+  circeJava8,
+  circeYaml,
+
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % "provided"
 )
 
 

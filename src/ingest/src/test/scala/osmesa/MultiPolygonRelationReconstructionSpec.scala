@@ -10,9 +10,9 @@ import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.functions._
 import org.scalatest.prop.{TableDrivenPropertyChecks, Tables}
 import org.scalatest.{Matchers, PropSpec}
-import osmesa.ProcessOSM._
-import osmesa.functions._
-import osmesa.functions.osm._
+import osmesa.common.ProcessOSM._
+import osmesa.common.functions._
+import osmesa.common.functions.osm._
 
 import scala.io.Source
 

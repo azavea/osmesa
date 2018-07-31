@@ -11,13 +11,14 @@ import geotrellis.spark.tiling._
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vectortile._
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import osmesa.ingest.util.Caching
-import org.apache.hadoop.fs._
+import osmesa.common.ProcessOSM
+import osmesa.common.util.Caching
 import vectorpipe._
 
 import scala.collection.mutable.ArrayBuffer

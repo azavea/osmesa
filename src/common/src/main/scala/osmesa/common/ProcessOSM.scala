@@ -1,4 +1,4 @@
-package osmesa
+package osmesa.common
 
 import java.io._
 import java.sql.Timestamp
@@ -13,9 +13,9 @@ import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import osmesa.functions._
-import osmesa.functions.osm._
-import osmesa.ingest.util.Caching
+import osmesa.common.functions._
+import osmesa.common.functions.osm._
+import osmesa.common.util.Caching
 import spray.json._
 
 object ProcessOSM {
@@ -112,7 +112,7 @@ object ProcessOSM {
           'id,
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
             lag('tags, 1) over idByVersion)
-          .otherwise('tags) as 'tags,
+            .otherwise('tags) as 'tags,
           when(!'visible, lit(Float.NaN)).otherwise(asFloat('lat)) as 'lat,
           when(!'visible, lit(Float.NaN)).otherwise(asFloat('lon)) as 'lon,
           'changeset,
@@ -152,7 +152,7 @@ object ProcessOSM {
           'id,
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
             lag('tags, 1) over idByVersion)
-          .otherwise('tags) as 'tags,
+            .otherwise('tags) as 'tags,
           $"nds.ref" as 'nds,
           'changeset,
           'timestamp,
@@ -191,7 +191,7 @@ object ProcessOSM {
           'id,
           when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull,
             lag('tags, 1) over idByUpdated)
-          .otherwise('tags) as 'tags,
+            .otherwise('tags) as 'tags,
           compressMemberTypes('members) as 'members,
           'changeset,
           'timestamp,
@@ -268,7 +268,8 @@ object ProcessOSM {
     * @param _nodesToWays Optional lookup table.
     * @return Way geometries.
     */
-  def reconstructWayGeometries(_ways: DataFrame, _nodes: DataFrame, _nodesToWays: Option[DataFrame] = None)(implicit cache: Caching = Caching.none, cachePartitions: Option[Int] = None): DataFrame = {
+  def reconstructWayGeometries(_ways: DataFrame, _nodes: DataFrame, _nodesToWays: Option[DataFrame] = None)(implicit
+                                                                                                            cache: Caching = Caching.none, cachePartitions: Option[Int] = None): DataFrame = {
     implicit val ss: SparkSession = _ways.sparkSession
     import ss.implicits._
 
@@ -294,9 +295,10 @@ object ProcessOSM {
     // Create a way entry for each changeset in which a node was modified, containing the timestamp of the node that
     // triggered the association. This will later be used to assemble ways at each of those points in time. If you need
     // authorship, join on changesets
+    // TODO check on partitioning of nodes (assume that the thing requesting the join gets to keep its partitioning)
     val waysByChangeset = nodes
       .select('changeset, 'id, 'timestamp as 'updated)
-      .join(nodesToWays, Array("id"))
+      .join(nodesToWays, Seq("id"))
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
       .select('changeset, 'wayId as 'id, 'version, 'updated)
 
@@ -311,7 +313,7 @@ object ProcessOSM {
       .join(ways.select('id, 'version, 'nds, 'isArea), Seq("id", "version"))
 
     val explodedWays = allWayVersions
-      .select('changeset, 'id, 'version, 'updated, 'isArea, posexplode_outer('nds) as Array("idx", "ref"))
+      .select('changeset, 'id, 'version, 'updated, 'isArea, posexplode_outer('nds) as Seq("idx", "ref"))
       // repartition including updated timestamp to avoid skew (version is insufficient, as
       // multiple instances may exist with the same version)
       .repartition('id, 'updated)
@@ -358,10 +360,10 @@ object ProcessOSM {
               }
             }
 
-              val wkb = geom match {
-                case Some(g) if g.isValid => g.toWKB(4326)
-                case _ => null
-              }
+            val wkb = geom match {
+              case Some(g) if g.isValid => g.toWKB(4326)
+              case _ => null
+            }
 
             new GenericRowWithSchema(Array(changeset, id, version, updated, wkb), BareElementSchema): Row
       }
@@ -411,7 +413,8 @@ object ProcessOSM {
       .drop('validUntil)
       // re-calculate validUntil windows
       .withColumn("validUntil", lead('updated, 1) over idByVersion)
-      // TODO when expanding beyond relations referring to ways, geoms should include 'type for the join to work properly
+      // TODO when expanding beyond relations referring to ways, geoms should include 'type for the join to work
+      // properly
       .withColumn("type", lit(WayType))
       .select('type, 'changeset, 'id, 'updated)
       .join(waysToRelations, Seq("id", "type"))
@@ -464,15 +467,18 @@ object ProcessOSM {
     * @return Relations geometries.
     */
   def reconstructRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching = Caching.none,
-                                                                                         cachePartitions: Option[Int] = None): DataFrame = {
+                                                                             cachePartitions: Option[Int] = None)
+  : DataFrame = {
     val relations = preprocessRelations(_relations)
 
     reconstructMultiPolygonRelationGeometries(relations, geoms)
       .union(reconstructRouteRelationGeometries(relations, geoms))
   }
 
-  def reconstructMultiPolygonRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching = Caching.none,
-                                                                             cachePartitions: Option[Int] = None)
+  def reconstructMultiPolygonRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching =
+  Caching.none,
+                                                                                         cachePartitions: Option[Int]
+                                                                                         = None)
   : DataFrame = {
     implicit val ss: SparkSession = _relations.sparkSession
     import ss.implicits._
@@ -484,14 +490,15 @@ object ProcessOSM {
       .where('role.isin(MultiPolygonRoles: _*))
       // TODO when expanding beyond multipolygons, geoms should include 'type for the join to work properly
       .join(
-        geoms.select(
-          lit(WayType) as 'type,
-          'id as "ref",
-          'updated as 'memberUpdated,
-          'validUntil as 'memberValidUntil,
-          'geom), Seq("type", "ref"), "left_outer")
+      geoms.select(
+        lit(WayType) as 'type,
+        'id as "ref",
+        'updated as 'memberUpdated,
+        'validUntil as 'memberValidUntil,
+        'geom), Seq("type", "ref"), "left_outer")
       .where(
-        ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts through
+        ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts
+          // through
           ('memberUpdated <= 'updated and 'updated < coalesce('memberValidUntil, current_timestamp)))
       .drop('memberUpdated)
       .drop('memberValidUntil)
@@ -519,7 +526,7 @@ object ProcessOSM {
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
-      .join(relations.select('id, 'version, 'tags, 'visible), Array("id", "version"))
+      .join(relations.select('id, 'version, 'tags, 'visible), Seq("id", "version"))
       .select(
         lit(RelationType) as '_type,
         'id,
@@ -533,8 +540,9 @@ object ProcessOSM {
         'minorVersion)
   }
 
-  def reconstructRouteRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching = Caching.none,
-                                                                             cachePartitions: Option[Int] = None)
+  def reconstructRouteRelationGeometries(_relations: DataFrame, geoms: DataFrame)(implicit cache: Caching = Caching
+    .none,
+                                                                                  cachePartitions: Option[Int] = None)
   : DataFrame = {
     implicit val ss: SparkSession = _relations.sparkSession
     import ss.implicits._
@@ -545,14 +553,15 @@ object ProcessOSM {
     val members = getRelationMembers(relations, geoms)
       // TODO when expanding beyond way-based routes, geoms should include 'type for the join to work properly
       .join(
-        geoms.select(
-          lit(WayType) as 'type,
-          'id as "ref",
-          'updated as 'memberUpdated,
-          'validUntil as 'memberValidUntil,
-          'geom), Seq("type", "ref"), "left_outer")
+      geoms.select(
+        lit(WayType) as 'type,
+        'id as "ref",
+        'updated as 'memberUpdated,
+        'validUntil as 'memberValidUntil,
+        'geom), Seq("type", "ref"), "left_outer")
       .where(
-        ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts through
+        ('memberUpdated.isNull and 'memberValidUntil.isNull and 'geom.isNull) or // allow left outer join artifacts
+          // through
           ('memberUpdated <= 'updated and 'updated < coalesce('memberValidUntil, current_timestamp)))
       .drop('memberUpdated)
       .drop('memberValidUntil)
@@ -618,22 +627,10 @@ object ProcessOSM {
     import geoms.sparkSession.implicits._
 
     geoms
-      .join(changesets.select('id as 'changeset, 'uid, 'user), Array("changeset"))
+      .join(changesets.select('id as 'changeset, 'uid, 'user), Seq("changeset"))
   }
 
-  def geometriesByRegion(nodeGeoms: DataFrame, wayGeoms: DataFrame): DataFrame = {
-    import nodeGeoms.sparkSession.implicits._
-
-    // Geocode geometries by country
-    val geoms = nodeGeoms
-      .withColumn("minorVersion", lit(0))
-      .withColumn("type", lit("node"))
-      .where('geom.isNotNull and size('tags) > 0)
-      .union(wayGeoms
-        .withColumn("type", lit("way"))
-        .where('geom.isNotNull and size('tags) > 0)
-      )
-      .repartition('id, 'type, 'updated)
+  def geocode(geoms: DataFrame): DataFrame = {
 
     object Resource {
       def apply(name: String): String = {
@@ -652,8 +649,8 @@ object ProcessOSM {
 
       implicit object CountryIdJsonFormat extends RootJsonFormat[CountryId] {
         def read(value: JsValue): CountryId =
-          value.asJsObject.fields.get("ADM0_A3") match {
-            case Some(JsString(code)) =>
+          value.asJsObject.getFields("ADM0_A3") match {
+            case Seq(JsString(code)) =>
               CountryId(code)
             case v =>
               throw DeserializationException(s"CountryId expected, got $v")
@@ -719,20 +716,24 @@ object ProcessOSM {
           map(_._2)
       }
     }
+
+    val newSchema = StructType(geoms.schema.fields :+ StructField(
+      "countries", ArrayType(StringType, containsNull = false), nullable = true))
+    implicit val encoder: Encoder[Row] = RowEncoder(newSchema)
+
     geoms
       .mapPartitions { partition =>
         val countryLookup = new CountryLookup()
 
-        partition.flatMap { row =>
-          val changeset = row.getAs[Long]("changeset")
-          val t = row.getAs[String]("type")
-          val id = row.getAs[Long]("id")
-          val geom = row.getAs[scala.Array[Byte]]("geom")
+        partition.map { row =>
+          val countryCodes = Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
+            case Some(geom) => countryLookup.lookup(geom).map(x => x.code)
+            case None => Seq.empty[String]
+          }
 
-          countryLookup.lookup(geom.readWKB).map(x => (changeset, t, id, x.code))
+          Row.fromSeq(row.toSeq :+ countryCodes)
         }
       }
-      .toDF("changeset", "type", "id", "country")
   }
 
   def regionsByChangeset(geomCountries: Dataset[Row]): DataFrame = {

@@ -3,10 +3,10 @@ package osmesa.ingest
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
+import org.apache.spark.sql.functions._
 import cats.implicits._
 import com.monovore.decline._
-
-import osmesa.ProcessOSM
+import osmesa.common.ProcessOSM
 
 /*
  * Usage example:
@@ -65,9 +65,10 @@ object RegionStatsApp extends CommandApp(
       Logger.getRootLogger.setLevel(Level.WARN)
 
       val nodeGeoms = ss.read.orc(nodeGeomsSrc)
+        .withColumn("minorVersion", lit(0))
       val wayGeoms = ss.read.orc(wayGeomsSrc)
 
-      val geometriesByRegion = ProcessOSM.geometriesByRegion(nodeGeoms, wayGeoms).cache
+      val geometriesByRegion = ProcessOSM.geocode(nodeGeoms.union(wayGeoms)).cache
 
       geometriesByRegion.repartition(10).write.format("orc").save(outRegions)
 

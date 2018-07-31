@@ -3,6 +3,7 @@ import sbt._
 object Dependencies {
   val decline        = "com.monovore"                %% "decline"                     % Version.decline
   val sparkHive      = "org.apache.spark"            %% "spark-hive"                  % Version.spark
+  val sparkStreaming = "org.apache.spark"            %% "spark-streaming"             % Version.spark
   val gtGeomesa      = "org.locationtech.geotrellis" %% "geotrellis-geomesa"          % Version.geotrellis
   val gtGeotools     = "org.locationtech.geotrellis" %% "geotrellis-geotools"         % Version.geotrellis
   val gtS3           = "org.locationtech.geotrellis" %% "geotrellis-s3"               % Version.geotrellis
@@ -28,6 +29,7 @@ object Dependencies {
   val circeParser    = "io.circe"                    %% "circe-parser"                 % Version.circe
   val circeOptics    = "io.circe"                    %% "circe-optics"                 % Version.circe
   val circeJava8     = "io.circe"                    %% "circe-java8"                  % Version.circe
+  val circeYaml      = "io.circe"                    %% "circe-yaml"                   % "0.8.0"
   val logging        = "com.typesafe.scala-logging"  %% "scala-logging"                % Version.scalaLogging
   val commonsIO      = "commons-io"                  %  "commons-io"                   % Version.commonsIO
 }

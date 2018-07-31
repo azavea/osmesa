@@ -12,24 +12,24 @@ libraryDependencies ++= Seq(
   "org.json4s" %% "json4s-core" % "3.2.11",
   "org.json4s" %% "json4s-ast" % "3.2.11",
 
+  "org.postgresql" % "postgresql" % "42.2.2",
+
   decline,
   sparkHive % "provided",
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
-  gtS3 exclude("com.google.protobuf", "protobuf-java"),
+  gtS3 exclude("com.google.protobuf", "protobuf-java") exclude("com.amazonaws", "aws-java-sdk-s3"),
   gtSpark exclude("com.google.protobuf", "protobuf-java"),
   gtVector exclude("com.google.protobuf", "protobuf-java"),
   gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
-  // geomesaHbaseDatastore,
   cats,
-  hbaseClient % "provided",
-  hbaseCommon % "provided",
-  hbaseServer % "provided",
   scalactic,
   gtSparkTestKit,
   logging,
-  scalatest
+  scalatest,
+
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % "provided"
 )
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */
