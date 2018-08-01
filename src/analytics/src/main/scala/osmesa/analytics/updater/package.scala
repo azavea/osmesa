@@ -17,7 +17,7 @@ import geotrellis.vectortile._
 import org.apache.commons.io.IOUtils
 import org.apache.log4j.Logger
 import osmesa.analytics.updater.Implicits._
-import osmesa.common.AugmentedDiff
+import osmesa.common.model.AugmentedDiff
 
 import scala.collection.mutable.ListBuffer
 import scala.io.Source

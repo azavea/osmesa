@@ -6,6 +6,7 @@ import java.util.Properties
 import java.util.zip.GZIPInputStream
 
 import cats.implicits._
+import com.softwaremill.macmemo.memoize
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
@@ -16,25 +17,7 @@ import scala.concurrent.duration.{Duration, _}
 import scala.xml.XML
 
 object ChangesSource extends Logging {
-  val Delay: Duration = 15.seconds
-
-  def getCurrentSequence(baseURI: URI): Int = {
-    val response =
-      Http(baseURI.resolve("state.txt").toString).asString
-
-    val state = new Properties
-    state.load(new StringReader(response.body))
-
-    val sequence = state.getProperty("sequenceNumber").toInt
-    val timestamp = DateTime.parse(state.getProperty("timestamp"))
-
-    logDebug(s"$baseURI state: $sequence @ $timestamp")
-
-    sequence
-  }
-
-  private[streaming] def createOffsetForCurrentSequence(baseURI: URI): SequenceOffset =
-    SequenceOffset(getCurrentSequence(baseURI))
+  val Delay: Duration = 15 seconds
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Element] = {
     val s = f"$sequence%09d".toArray
@@ -77,5 +60,26 @@ object ChangesSource extends Logging {
         bais.close()
       }
     }
+  }
+
+  private[streaming] def createOffsetForCurrentSequence(
+    baseURI: URI
+  ): SequenceOffset =
+    SequenceOffset(getCurrentSequence(baseURI))
+
+  @memoize(maxSize = 1, expiresAfter = 30 seconds)
+  def getCurrentSequence(baseURI: URI): Int = {
+    val response =
+      Http(baseURI.resolve("state.txt").toString).asString
+
+    val state = new Properties
+    state.load(new StringReader(response.body))
+
+    val sequence = state.getProperty("sequenceNumber").toInt
+    val timestamp = DateTime.parse(state.getProperty("timestamp"))
+
+    logDebug(s"$baseURI state: $sequence @ $timestamp")
+
+    sequence
   }
 }

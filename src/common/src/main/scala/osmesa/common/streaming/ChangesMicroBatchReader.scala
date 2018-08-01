@@ -7,18 +7,22 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.{DataReader, DataReaderFactory}
 import org.apache.spark.sql.types._
-import osmesa.common.model.Element
+import osmesa.common.model.{ChangeSchema, Element}
 
 import scala.collection.JavaConverters._
 
-case class ChangesStreamBatchTask(baseURI: URI, start: SequenceOffset, end: SequenceOffset)
-  extends DataReaderFactory[Row] {
+case class ChangesStreamBatchTask(baseURI: URI,
+                                  start: SequenceOffset,
+                                  end: SequenceOffset)
+    extends DataReaderFactory[Row] {
   override def createDataReader(): DataReader[Row] =
     new ChangesStreamBatchReader(baseURI, start, end)
 }
 
-class ChangesStreamBatchReader(baseURI: URI, start: SequenceOffset, end: SequenceOffset)
-  extends ReplicationStreamBatchReader[Element](baseURI, start, end) {
+class ChangesStreamBatchReader(baseURI: URI,
+                               start: SequenceOffset,
+                               end: SequenceOffset)
+    extends ReplicationStreamBatchReader[Element](baseURI, start, end) {
 
   override def getSequence(baseURI: URI, sequence: Int): Seq[Element] =
     ChangesSource.getSequence(baseURI, sequence)
@@ -26,7 +30,9 @@ class ChangesStreamBatchReader(baseURI: URI, start: SequenceOffset, end: Sequenc
   override def get(): Row = {
     val change = items(index)
 
-    val members = change.members.map(members => members.map(m => Row(m._type, m.ref, m.role)))
+    val members = change.members.map(
+      members => members.map(m => Row(m._type, m.ref, m.role))
+    )
 
     Row(
       currentOffset.sequence,
@@ -47,43 +53,14 @@ class ChangesStreamBatchReader(baseURI: URI, start: SequenceOffset, end: Sequenc
   }
 }
 
-class ChangesMicroBatchReader(options: DataSourceOptions, checkpointLocation: String)
-  extends ReplicationStreamMicroBatchReader(options, checkpointLocation) {
-  // TODO extract me
-  val ChangeSchema = StructType(
-    StructField("sequence", IntegerType) ::
-      StructField("_type", ByteType, nullable = false) ::
-      StructField("id", LongType, nullable = false) ::
-      StructField("tags",
-        MapType(StringType, StringType, valueContainsNull = false),
-        nullable = false) ::
-      StructField("lat", DataTypes.createDecimalType(9, 7), nullable = true) ::
-      StructField("lon", DataTypes.createDecimalType(10, 7), nullable = true) ::
-      StructField("nds", DataTypes.createArrayType(LongType), nullable = true) ::
-      StructField(
-        "members",
-        DataTypes.createArrayType(
-          StructType(
-            StructField("_type", ByteType, nullable = false) ::
-              StructField("ref", LongType, nullable = false) ::
-              StructField("role", StringType, nullable = false) ::
-              Nil
-          )
-        ),
-        nullable = true
-      ) ::
-      StructField("changeset", LongType, nullable = false) ::
-      StructField("timestamp", TimestampType, nullable = false) ::
-      StructField("uid", LongType, nullable = false) ::
-      StructField("user", StringType, nullable = false) ::
-      StructField("version", IntegerType, nullable = false) ::
-      StructField("visible", BooleanType, nullable = false) ::
-      Nil)
-
+class ChangesMicroBatchReader(options: DataSourceOptions,
+                              checkpointLocation: String)
+    extends ReplicationStreamMicroBatchReader(options, checkpointLocation) {
   private val baseURI = new URI(
     options
       .get("base_uri")
-      .orElse("https://planet.osm.org/replication/minute/"))
+      .orElse("https://planet.osm.org/replication/minute/")
+  )
 
   override def getCurrentOffset: SequenceOffset =
     ChangesSource.createOffsetForCurrentSequence(baseURI)
@@ -93,5 +70,6 @@ class ChangesMicroBatchReader(options: DataSourceOptions, checkpointLocation: St
   override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =
     List(
       ChangesStreamBatchTask(baseURI, start.get, end.get)
-        .asInstanceOf[DataReaderFactory[Row]]).asJava
+        .asInstanceOf[DataReaderFactory[Row]]
+    ).asJava
 }
