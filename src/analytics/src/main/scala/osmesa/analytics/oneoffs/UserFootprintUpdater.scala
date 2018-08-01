@@ -25,7 +25,8 @@ import org.apache.spark.sql.types._
 import osmesa.analytics.Analytics
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, read, write}
-import osmesa.common.{AugmentedDiff, ProcessOSM}
+import osmesa.common.ProcessOSM
+import osmesa.common.model.AugmentedDiff
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.ForkJoinTaskSupport

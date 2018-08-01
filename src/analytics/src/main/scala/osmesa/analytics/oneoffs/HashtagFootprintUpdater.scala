@@ -15,17 +15,7 @@ import geotrellis.spark.io.index.zcurve.ZSpatialKeyIndex
 import geotrellis.spark.tiling.ZoomedLayoutScheme
 import geotrellis.spark.{KeyBounds, SpatialKey}
 import geotrellis.vector.io._
-import geotrellis.vector.{
-  Feature,
-  Geometry,
-  Line,
-  MultiLine,
-  MultiPoint,
-  MultiPolygon,
-  Point,
-  PointFeature,
-  Polygon
-}
+import geotrellis.vector.{Feature, Geometry, Line, MultiLine, MultiPoint, MultiPolygon, Point, PointFeature, Polygon}
 import geotrellis.vectortile.{StrictLayer, VInt64, Value, VectorTile}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.sql._
@@ -37,7 +27,8 @@ import osmesa.analytics.Analytics
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, read, write}
 import osmesa.common.functions.osm._
-import osmesa.common.{AugmentedDiff, ProcessOSM}
+import osmesa.common.ProcessOSM
+import osmesa.common.model.AugmentedDiff
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.ForkJoinTaskSupport
