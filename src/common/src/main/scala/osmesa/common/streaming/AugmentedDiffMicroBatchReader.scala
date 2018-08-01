@@ -17,6 +17,7 @@ import osmesa.common.model.{
 }
 
 import scala.collection.JavaConverters._
+import scala.compat.java8.OptionConverters._
 
 case class AugmentedDiffStreamBatchTask(baseURI: URI,
                                         start: SequenceOffset,
@@ -120,13 +121,11 @@ class AugmentedDiffStreamBatchReader(baseURI: URI,
 class AugmentedDiffMicroBatchReader(options: DataSourceOptions,
                                     checkpointLocation: String)
     extends ReplicationStreamMicroBatchReader(options, checkpointLocation) {
-  private val baseURI = new URI(
-    // there's no reasonable default
-    // TODO throw somewhere (not here, since this will get called with empty options) if base_uri is unavailable
-    options
-      .get("base_uri")
-      .orElse("")
-  )
+
+  private def baseURI: URI =
+    options.get("base_uri").asScala.map(new URI(_)).getOrElse(
+        throw new RuntimeException(
+          "base_uri is a required option for augmented-diffs"))
 
   override def getCurrentOffset: SequenceOffset =
     AugmentedDiffSource.createOffsetForCurrentSequence(baseURI)
