@@ -3,13 +3,13 @@ package osmesa.common.streaming
 import java.io.File
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.time.{Instant, Duration => JavaDuration}
 
-import com.amazonaws.services.s3.model.{AmazonS3Exception, ListObjectsRequest}
-import com.softwaremill.macmemo.memoize
+import com.amazonaws.services.s3.model.AmazonS3Exception
 import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
-import org.apache.commons.io.{FilenameUtils, IOUtils}
+import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import osmesa.common.model.AugmentedDiffFeature
 
@@ -18,6 +18,9 @@ import scala.concurrent.duration.{Duration, _}
 object AugmentedDiffSource extends Logging {
   private lazy val s3: AmazonS3Client = S3Client.DEFAULT
   val Delay: Duration = 15.seconds
+
+  // zero-point for Overpass-style augmented diff replication sequences
+  val ReplicationStart: Instant = Instant.ofEpochSecond(1347432900)
 
   def getSequence(
     baseURI: URI,
@@ -64,19 +67,7 @@ object AugmentedDiffSource extends Logging {
   ): SequenceOffset =
     SequenceOffset(getCurrentSequence(baseURI))
 
-  @memoize(maxSize = 1, expiresAfter = 15 seconds)
   def getCurrentSequence(baseURI: URI): Int = {
-    // TODO generate/fetch the equivalent of state.yaml to avoid needing to list keys
-    val key = s3
-      .listKeys(
-        new ListObjectsRequest()
-          .withBucketName(baseURI.getHost)
-          .withPrefix(baseURI.getPath.drop(1))
-      )
-      .last
-
-    logDebug(s"current sequence: ${FilenameUtils.getBaseName(key)}")
-
-    FilenameUtils.getBaseName(key).toInt
+    JavaDuration.between(ReplicationStart, Instant.now()).toMinutes.intValue
   }
 }
