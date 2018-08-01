@@ -3,24 +3,29 @@ package osmesa.common.streaming
 import java.io.File
 import java.net.URI
 import java.nio.charset.StandardCharsets
-import java.time.{Instant, Duration => JavaDuration}
 
+import cats.implicits._
 import com.amazonaws.services.s3.model.AmazonS3Exception
+import com.softwaremill.macmemo.memoize
 import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
+import io.circe.generic.auto._
+import io.circe.{yaml, _}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
+import org.joda.time.DateTime
 import osmesa.common.model.AugmentedDiffFeature
 
 import scala.concurrent.duration.{Duration, _}
 
 object AugmentedDiffSource extends Logging {
-  private lazy val s3: AmazonS3Client = S3Client.DEFAULT
   val Delay: Duration = 15.seconds
 
-  // zero-point for Overpass-style augmented diff replication sequences
-  val ReplicationStart: Instant = Instant.ofEpochSecond(1347432900)
+  private lazy val s3: AmazonS3Client = S3Client.DEFAULT
+
+  private implicit val dateTimeDecoder: Decoder[DateTime] =
+    Decoder.instance(a => a.as[String].map(DateTime.parse))
 
   def getSequence(
     baseURI: URI,
@@ -67,9 +72,25 @@ object AugmentedDiffSource extends Logging {
   ): SequenceOffset =
     SequenceOffset(getCurrentSequence(baseURI))
 
+  @memoize(maxSize = 1, expiresAfter = 30 seconds)
   def getCurrentSequence(baseURI: URI): Int = {
-    // TODO generate/fetch the equivalent of state.yaml to avoid needing to list keys or predict whether augmented
-    // diffs have been published for this sequence
-    JavaDuration.between(ReplicationStart, Instant.now()).toMinutes.intValue
+    val bucket = baseURI.getHost
+    val prefix = new File(baseURI.getPath.drop(1)).toPath
+    val key = prefix.resolve("state.yaml").toString
+
+    val body = IOUtils
+      .toString(s3.readBytes(bucket, key), StandardCharsets.UTF_8.toString)
+
+    val state = yaml.parser
+      .parse(body)
+      .leftMap(err => err: Error)
+      .flatMap(_.as[AugmentedDiffState])
+      .valueOr(throw _)
+
+    logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
+
+    state.sequence
   }
+
+  case class AugmentedDiffState(last_run: DateTime, sequence: Int)
 }
