@@ -68,6 +68,8 @@ object AugmentedDiffSource extends Logging {
     SequenceOffset(getCurrentSequence(baseURI))
 
   def getCurrentSequence(baseURI: URI): Int = {
+    // TODO generate/fetch the equivalent of state.yaml to avoid needing to list keys or predict whether augmented
+    // diffs have been published for this sequence
     JavaDuration.between(ReplicationStart, Instant.now()).toMinutes.intValue
   }
 }
