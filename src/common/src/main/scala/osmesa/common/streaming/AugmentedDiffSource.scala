@@ -23,6 +23,7 @@ object AugmentedDiffSource extends Logging {
     baseURI: URI,
     sequence: Int
   ): Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)] = {
+    // TODO generate/fetch the equivalent of state.yaml to avoid needing to list keys
     val bucket = baseURI.getHost
     val prefix = new File(baseURI.getPath.drop(1)).toPath
     val key = prefix.resolve(s"$sequence.json").toString
