@@ -67,7 +67,7 @@ object ChangesetsSource extends Logging {
   ): SequenceOffset =
     SequenceOffset(getCurrentSequence(baseURI))
 
-  @memoize(maxSize = 1, expiresAfter = 15 seconds)
+  @memoize(maxSize = 1, expiresAfter = 30 seconds)
   def getCurrentSequence(baseURI: URI): Int = {
     val response =
       Http(baseURI.resolve("state.yaml").toString).asString
