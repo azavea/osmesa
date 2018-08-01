@@ -5,6 +5,7 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 
 import com.amazonaws.services.s3.model.{AmazonS3Exception, ListObjectsRequest}
+import com.softwaremill.macmemo.memoize
 import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
@@ -63,7 +64,7 @@ object AugmentedDiffSource extends Logging {
   ): SequenceOffset =
     SequenceOffset(getCurrentSequence(baseURI))
 
-  // TODO memoize this for 15s / 30s at a time
+  @memoize(maxSize = 1, expiresAfter = 15 seconds)
   def getCurrentSequence(baseURI: URI): Int = {
     val key = s3
       .listKeys(
