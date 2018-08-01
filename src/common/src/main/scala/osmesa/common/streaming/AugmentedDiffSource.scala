@@ -23,7 +23,6 @@ object AugmentedDiffSource extends Logging {
     baseURI: URI,
     sequence: Int
   ): Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)] = {
-    // TODO generate/fetch the equivalent of state.yaml to avoid needing to list keys
     val bucket = baseURI.getHost
     val prefix = new File(baseURI.getPath.drop(1)).toPath
     val key = prefix.resolve(s"$sequence.json").toString
@@ -67,6 +66,7 @@ object AugmentedDiffSource extends Logging {
 
   @memoize(maxSize = 1, expiresAfter = 15 seconds)
   def getCurrentSequence(baseURI: URI): Int = {
+    // TODO generate/fetch the equivalent of state.yaml to avoid needing to list keys
     val key = s3
       .listKeys(
         new ListObjectsRequest()
