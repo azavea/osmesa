@@ -5,6 +5,7 @@ import java.net.URI
 import java.util.zip.GZIPInputStream
 
 import cats.implicits._
+import com.softwaremill.macmemo.memoize
 import io.circe.generic.auto._
 import io.circe.{yaml, _}
 import org.apache.commons.io.IOUtils
@@ -18,32 +19,12 @@ import scala.concurrent.duration._
 import scala.xml.XML
 
 object ChangesetsSource extends Logging {
-  val Delay: Duration = 15.seconds
+  val Delay: Duration = 15 seconds
   // state.yaml uses a custom date format
   private val formatter = DateTimeFormat.forPattern("y-M-d H:m:s.SSSSSSSSS Z")
 
   private implicit val dateTimeDecoder: Decoder[DateTime] =
     Decoder.instance(a => a.as[String].map(DateTime.parse(_, formatter)))
-
-  case class ChangesetsState(last_run: DateTime, sequence: Int)
-
-  def getCurrentSequence(baseURI: URI): Int = {
-    val response =
-      Http(baseURI.resolve("state.yaml").toString).asString
-
-    val state = yaml.parser
-      .parse(response.body)
-      .leftMap(err => err: Error)
-      .flatMap(_.as[ChangesetsState])
-      .valueOr(throw _)
-
-    logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
-
-    state.sequence
-  }
-
-  private[streaming] def createOffsetForCurrentSequence(baseURI: URI): SequenceOffset =
-    SequenceOffset(getCurrentSequence(baseURI))
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Changeset] = {
     val s = f"$sequence%09d".toArray
@@ -80,4 +61,27 @@ object ChangesetsSource extends Logging {
       }
     }
   }
+
+  private[streaming] def createOffsetForCurrentSequence(
+    baseURI: URI
+  ): SequenceOffset =
+    SequenceOffset(getCurrentSequence(baseURI))
+
+  @memoize(maxSize = 1, expiresAfter = 30 seconds)
+  def getCurrentSequence(baseURI: URI): Int = {
+    val response =
+      Http(baseURI.resolve("state.yaml").toString).asString
+
+    val state = yaml.parser
+      .parse(response.body)
+      .leftMap(err => err: Error)
+      .flatMap(_.as[ChangesetsState])
+      .valueOr(throw _)
+
+    logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
+
+    state.sequence
+  }
+
+  case class ChangesetsState(last_run: DateTime, sequence: Int)
 }

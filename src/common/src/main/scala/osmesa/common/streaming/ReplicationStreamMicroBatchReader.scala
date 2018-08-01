@@ -7,7 +7,10 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.DataReader
-import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
+import org.apache.spark.sql.sources.v2.reader.streaming.{
+  MicroBatchReader,
+  Offset
+}
 
 import scala.compat.java8.OptionConverters._
 
@@ -19,8 +22,6 @@ abstract class ReplicationStreamBatchReader[T](baseURI: URI,
   protected var currentOffset: SequenceOffset = start
   protected var index: Int = -1
   protected var items: Vector[T] = _
-
-  protected def getSequence(baseURI: URI, sequence: Int): Seq[T]
 
   override def next(): Boolean = {
     index += 1
@@ -44,9 +45,12 @@ abstract class ReplicationStreamBatchReader[T](baseURI: URI,
   }
 
   override def close(): Unit = Unit
+
+  protected def getSequence(baseURI: URI, sequence: Int): Seq[T]
 }
 
-abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions, checkpointLocation: String)
+abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
+                                                 checkpointLocation: String)
     extends MicroBatchReader
     with Logging {
   val DefaultBatchSize: Int = 100
@@ -67,10 +71,8 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions, che
     .asScala
     .map(s => SequenceOffset(s.toInt))
 
-  protected def getCurrentOffset: SequenceOffset
-
-  override def setOffsetRange(start: Optional[Offset], end: Optional[Offset]): Unit = {
-    // TODO memoize this, valid for 30s at a time
+  override def setOffsetRange(start: Optional[Offset],
+                              end: Optional[Offset]): Unit = {
     val currentOffset = getCurrentOffset
 
     this.start = Some(
@@ -80,7 +82,8 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions, che
           this.start.getOrElse {
             currentOffset - 1
           }
-        })
+        }
+    )
 
     this.end = Some(
       end.asScala
@@ -91,11 +94,14 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions, che
           }
 
           if (currentOffset > next) {
-            SequenceOffset(math.min(currentOffset.sequence, next.sequence + batchSize))
+            SequenceOffset(
+              math.min(currentOffset.sequence, next.sequence + batchSize)
+            )
           } else {
             next
           }
-        })
+        }
+    )
   }
 
   override def getStartOffset: Offset = {
@@ -117,4 +123,6 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions, che
     SequenceOffset(json.toInt)
 
   override def stop(): Unit = Unit
+
+  protected def getCurrentOffset: SequenceOffset
 }

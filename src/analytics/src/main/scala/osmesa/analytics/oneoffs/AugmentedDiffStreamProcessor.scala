@@ -5,18 +5,14 @@ import java.sql.{Connection, DriverManager}
 
 import cats.implicits._
 import com.monovore.decline._
-import geotrellis.vector.io._
-import geotrellis.vector.io.json.JsonFeatureCollectionMap
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.encoders.RowEncoder
-import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
 import osmesa.analytics.Analytics
+import osmesa.common.ProcessOSM
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
-import osmesa.common.{AugmentedDiff, ProcessOSM}
+import osmesa.common.model.AugmentedDiff
 
 /*
  * Usage example:
@@ -39,119 +35,35 @@ object AugmentedDiffStreamProcessor extends CommandApp(
       "augmented-diff-source", short = "a", metavar = "uri", help = "Location of augmented diffs to process")
     val databaseUrlOpt = Opts.option[URI](
       "database-url", short = "d", metavar = "database URL", help = "Database URL")
+    val startSequenceOpt = Opts
+      .option[Int](
+      "start-sequence",
+      short = "s",
+      metavar = "sequence",
+      help = "Starting sequence. If absent, the current (remote) sequence will be used.")
+      .orNone
+    val endSequenceOpt = Opts
+      .option[Int]("end-sequence",
+      short = "e",
+      metavar = "sequence",
+      help = "Ending sequence. If absent, this will be an infinite stream.")
+      .orNone
 
-    (augmentedDiffSourceOpt, databaseUrlOpt).mapN { (augmentedDiffSource, databaseUri) =>
+    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUrlOpt)
+      .mapN { (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
       implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
       import ss.implicits._
 
-      // read augmented diffs as text for better geometry support (by reading from GeoJSON w/ GeoTrellis)
-      val diffs = ss.readStream.option("maxFilesPerTrigger", 1).textFile(augmentedDiffSource.toString)
+      val options = Map("base_uri" -> augmentedDiffSource.toString) ++
+        startSequence
+          .map(s => Map("start_sequence" -> s.toString))
+          .getOrElse(Map.empty[String, String]) ++
+        endSequence
+          .map(s => Map("end_sequence" -> s.toString))
+          .getOrElse(Map.empty[String, String])
 
-      implicit val augmentedDiffFeatureEncoder: Encoder[(Option[AugmentedDiffFeature], AugmentedDiffFeature)] =
-        Encoders.kryo[(Option[AugmentedDiffFeature], AugmentedDiffFeature)]
-
-      val AugmentedDiffSchema = StructType(
-        StructField("sequence", LongType) ::
-          StructField("_type", ByteType, nullable = false) ::
-          StructField("id", LongType, nullable = false) ::
-          StructField("prevGeom", BinaryType, nullable = true) ::
-          StructField("geom", BinaryType, nullable = true) ::
-          StructField("prevTags", MapType(StringType, StringType, valueContainsNull = false), nullable = true) ::
-          StructField("tags", MapType(StringType, StringType, valueContainsNull = false), nullable = false) ::
-          StructField("prevChangeset", LongType, nullable = true) ::
-          StructField("changeset", LongType, nullable = false) ::
-          StructField("prevUid", LongType, nullable = true) ::
-          StructField("uid", LongType, nullable = false) ::
-          StructField("prevUser", StringType, nullable = true) ::
-          StructField("user", StringType, nullable = false) ::
-          StructField("prevUpdated", TimestampType, nullable = true) ::
-          StructField("updated", TimestampType, nullable = false) ::
-          StructField("prevVisible", BooleanType, nullable = true) ::
-          StructField("visible", BooleanType, nullable = false) ::
-          StructField("prevVersion", IntegerType, nullable = true) ::
-          StructField("version", IntegerType, nullable = false) ::
-          StructField("prevMinorVersion", IntegerType, nullable = true) ::
-          StructField("minorVersion", IntegerType, nullable = false) ::
-          Nil)
-
-      val AugmentedDiffEncoder: Encoder[Row] = RowEncoder(AugmentedDiffSchema)
-
-      implicit val encoder: Encoder[Row] = AugmentedDiffEncoder
-
-      val geoms = diffs map {
-        line =>
-          val features = line
-            // Spark doesn't like RS-delimited JSON; perhaps Spray doesn't either
-            .replace("\u001e", "")
-            .parseGeoJson[JsonFeatureCollectionMap]
-            .getAll[AugmentedDiffFeature]
-
-          (features.get("old"), features("new"))
-      } map {
-        case (Some(prev), curr) =>
-          val _type = curr.data.elementType match {
-            case "node" => ProcessOSM.NodeType
-            case "way" => ProcessOSM.WayType
-            case "relation" => ProcessOSM.RelationType
-          }
-
-          val minorVersion = if (prev.data.version == curr.data.version) 1 else 0
-
-          // generate Rows directly for more control over DataFrame schema; toDF will infer these, but let's be
-          // explicit
-          new GenericRowWithSchema(Array(
-            curr.data.sequence.orNull,
-            _type,
-            prev.data.id,
-            prev.geom.toWKB(4326),
-            curr.geom.toWKB(4326),
-            prev.data.tags,
-            curr.data.tags,
-            prev.data.changeset,
-            curr.data.changeset,
-            prev.data.uid,
-            curr.data.uid,
-            prev.data.user,
-            curr.data.user,
-            prev.data.timestamp,
-            curr.data.timestamp,
-            prev.data.visible.getOrElse(true),
-            curr.data.visible.getOrElse(true),
-            prev.data.version,
-            curr.data.version,
-            -1, // previous minor version is unknown
-            minorVersion), AugmentedDiffSchema): Row
-        case (None, curr) =>
-          val _type = curr.data.elementType match {
-            case "node" => ProcessOSM.NodeType
-            case "way" => ProcessOSM.WayType
-            case "relation" => ProcessOSM.RelationType
-          }
-
-          new GenericRowWithSchema(Array(
-            curr.data.sequence.orNull,
-            _type,
-            curr.data.id,
-            null,
-            curr.geom.toWKB(4326),
-            null,
-            curr.data.tags,
-            null,
-            curr.data.changeset,
-            null,
-            curr.data.uid,
-            null,
-            curr.data.user,
-            null,
-            curr.data.timestamp,
-            null,
-            curr.data.visible.getOrElse(true),
-            null,
-            curr.data.version,
-            null,
-            0), AugmentedDiffSchema): Row
-      }
+      val geoms = ss.readStream.format("augmented-diffs").options(options).load
 
       // TODO update footprint MVTs
       // TODO update MVTs (possibly including data from changeset replication)

@@ -13,8 +13,9 @@ import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import osmesa.common.{AugmentedDiff, ProcessOSM}
+import osmesa.common.ProcessOSM
 import osmesa.common.functions.osm._
+import osmesa.common.model.AugmentedDiff
 
 /*
  * Usage example:
