@@ -17,7 +17,7 @@ import geotrellis.vectortile._
 import org.apache.commons.io.IOUtils
 import org.apache.log4j.Logger
 import osmesa.analytics.updater.Implicits._
-import osmesa.common.model.AugmentedDiff
+import osmesa.common.model.ElementWithSequence
 
 import scala.collection.mutable.ListBuffer
 import scala.io.Source
@@ -27,7 +27,7 @@ package object updater {
   private lazy val logger = Logger.getLogger(getClass)
   private lazy val s3: AmazonS3Client = S3Client.DEFAULT
 
-  type AugmentedDiffFeature = Feature[Geometry, AugmentedDiff]
+  type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
   type VTFeature = Feature[Geometry, VTProperties]
   type TypedVTFeature[T <: Geometry] = Feature[T, VTProperties]
   type VTProperties = Map[String, Value]

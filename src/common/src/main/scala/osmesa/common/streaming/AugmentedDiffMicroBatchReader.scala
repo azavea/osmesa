@@ -41,7 +41,7 @@ class AugmentedDiffStreamBatchReader(baseURI: URI, sequence: Int)
 
     items(index) match {
       case (Some(prev), curr) =>
-        val _type = curr.data.elementType match {
+        val _type = curr.data.`type` match {
           case "node"     => ProcessOSM.NodeType
           case "way"      => ProcessOSM.WayType
           case "relation" => ProcessOSM.RelationType
@@ -79,7 +79,7 @@ class AugmentedDiffStreamBatchReader(baseURI: URI, sequence: Int)
         ): Row
 
       case (None, curr) =>
-        val _type = curr.data.elementType match {
+        val _type = curr.data.`type` match {
           case "node"     => ProcessOSM.NodeType
           case "way"      => ProcessOSM.WayType
           case "relation" => ProcessOSM.RelationType
