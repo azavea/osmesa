@@ -70,8 +70,6 @@ object AugmentedDiffStreamProcessor extends CommandApp(
 
       // aggregations are triggered when an event with a later timestamp ("event time") is received
       // in practice, this means that aggregation doesn't occur until the *next* sequence is received
-      // the receiver is potentially responsible for "flushing" (with a textFile source, creating an empty file with a
-      // lexicographically lower filename appears to seed the "event time" when processing 1 file per trigger)
 
       val query = ProcessOSM.geocode(geoms)
         .withColumn("timestamp", to_timestamp('sequence * 60 + 1347432900))
