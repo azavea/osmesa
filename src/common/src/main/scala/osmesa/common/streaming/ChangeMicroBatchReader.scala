@@ -11,17 +11,17 @@ import osmesa.common.model.{ChangeSchema, Element}
 
 import scala.collection.JavaConverters._
 
-case class ChangesStreamBatchTask(baseURI: URI, sequence: Int)
+case class ChangeStreamBatchTask(baseURI: URI, sequence: Int)
     extends DataReaderFactory[Row] {
   override def createDataReader(): DataReader[Row] =
-    new ChangesStreamBatchReader(baseURI, sequence)
+    new ChangeStreamBatchReader(baseURI, sequence)
 }
 
-class ChangesStreamBatchReader(baseURI: URI, sequence: Int)
+class ChangeStreamBatchReader(baseURI: URI, sequence: Int)
     extends ReplicationStreamBatchReader[Element](baseURI, sequence) {
 
   override def getSequence(baseURI: URI, sequence: Int): Seq[Element] =
-    ChangesSource.getSequence(baseURI, sequence)
+    ChangeSource.getSequence(baseURI, sequence)
 
   override def get(): Row = {
     val change = items(index)
@@ -49,8 +49,8 @@ class ChangesStreamBatchReader(baseURI: URI, sequence: Int)
   }
 }
 
-class ChangesMicroBatchReader(options: DataSourceOptions,
-                              checkpointLocation: String)
+class ChangeMicroBatchReader(options: DataSourceOptions,
+                             checkpointLocation: String)
     extends ReplicationStreamMicroBatchReader(options, checkpointLocation) {
   private val baseURI = new URI(
     options
@@ -59,14 +59,14 @@ class ChangesMicroBatchReader(options: DataSourceOptions,
   )
 
   override def getCurrentSequence: Int =
-    ChangesSource.getCurrentSequence(baseURI)
+    ChangeSource.getCurrentSequence(baseURI)
 
   override def readSchema(): StructType = ChangeSchema
 
   override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =
     sequenceRange
       .map(
-        ChangesStreamBatchTask(baseURI, _)
+        ChangeStreamBatchTask(baseURI, _)
           .asInstanceOf[DataReaderFactory[Row]]
       )
       .asJava

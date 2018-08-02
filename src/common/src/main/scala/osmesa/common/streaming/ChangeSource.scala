@@ -16,7 +16,7 @@ import scalaj.http.Http
 import scala.concurrent.duration.{Duration, _}
 import scala.xml.XML
 
-object ChangesSource extends Logging {
+object ChangeSource extends Logging {
   val Delay: Duration = 15 seconds
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Element] = {
