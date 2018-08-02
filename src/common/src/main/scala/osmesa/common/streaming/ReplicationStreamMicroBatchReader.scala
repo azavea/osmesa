@@ -84,7 +84,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
               SequenceOffset(math.min(currentSequence, nextBatch))
             }
         }
-    ).map(s => SequenceOffset(math.max(s.sequence, begin.sequence + 1)))
+    ).map(s => SequenceOffset(math.max(s.sequence, begin.sequence)))
   }
 
   override def getStartOffset: Offset =
