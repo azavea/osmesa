@@ -20,16 +20,16 @@ import scala.collection.JavaConverters._
 import scala.compat.java8.OptionConverters._
 
 case class AugmentedDiffStreamBatchTask(baseURI: URI,
-                                        start: SequenceOffset,
-                                        end: SequenceOffset)
+                                        start: Int,
+                                        end: Int)
     extends DataReaderFactory[Row] {
   override def createDataReader(): DataReader[Row] =
     new AugmentedDiffStreamBatchReader(baseURI, start, end)
 }
 
 class AugmentedDiffStreamBatchReader(baseURI: URI,
-                                     start: SequenceOffset,
-                                     end: SequenceOffset)
+                                     start: Int,
+                                     end: Int)
     extends ReplicationStreamBatchReader[
       (Option[AugmentedDiffFeature], AugmentedDiffFeature)
     ](baseURI, start, end) {
@@ -133,8 +133,10 @@ class AugmentedDiffMicroBatchReader(options: DataSourceOptions,
   override def readSchema(): StructType = AugmentedDiffSchema
 
   override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =
-    List(
-      AugmentedDiffStreamBatchTask(baseURI, start.get, end.get)
-        .asInstanceOf[DataReaderFactory[Row]]
-    ).asJava
+    sequenceRange.map(
+        seq =>
+          AugmentedDiffStreamBatchTask(baseURI, seq, seq)
+            .asInstanceOf[DataReaderFactory[Row]]
+    )
+      .asJava
 }
