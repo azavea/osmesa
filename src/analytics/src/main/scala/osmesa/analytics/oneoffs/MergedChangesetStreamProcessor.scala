@@ -15,7 +15,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import osmesa.common.ProcessOSM
 import osmesa.common.functions.osm._
-import osmesa.common.model.AugmentedDiff
+import osmesa.common.model.ElementWithSequence
 
 /*
  * Usage example:
@@ -32,7 +32,7 @@ object MergedChangesetStreamProcessor
       name = "osmesa-merged-changeset-stream-processor",
       header = "Consume augmented diffs + changesets and join them",
       main = {
-        type AugmentedDiffFeature = Feature[Geometry, AugmentedDiff]
+        type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
 
         val augmentedDiffSourceOpt = Opts.option[URI]("augmented-diff-source",
                                                       short = "a",
@@ -127,7 +127,7 @@ object MergedChangesetStreamProcessor
               (features.get("old"), features("new"))
             } map {
               case (Some(prev), curr) =>
-                val _type = curr.data.elementType match {
+                val _type = curr.data.`type` match {
                   case "node"     => ProcessOSM.NodeType
                   case "way"      => ProcessOSM.WayType
                   case "relation" => ProcessOSM.RelationType
@@ -164,7 +164,7 @@ object MergedChangesetStreamProcessor
                   AugmentedDiffSchema
                 ): Row
               case (None, curr) =>
-                val _type = curr.data.elementType match {
+                val _type = curr.data.`type` match {
                   case "node"     => ProcessOSM.NodeType
                   case "way"      => ProcessOSM.WayType
                   case "relation" => ProcessOSM.RelationType
