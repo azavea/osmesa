@@ -58,8 +58,8 @@ class ChangesMicroBatchReader(options: DataSourceOptions,
       .orElse("https://planet.osm.org/replication/minute/")
   )
 
-  override def getCurrentOffset: SequenceOffset =
-    ChangesSource.createOffsetForCurrentSequence(baseURI)
+  override def getCurrentSequence: Int =
+    ChangesSource.getCurrentSequence(baseURI)
 
   override def readSchema(): StructType = ChangeSchema
 

@@ -61,14 +61,14 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
 
   override def setOffsetRange(start: Optional[Offset],
                               end: Optional[Offset]): Unit = {
-    val currentOffset = getCurrentOffset
+    val currentSequence = getCurrentSequence
 
     startOffset = Some(
       start.asScala
         .map(_.asInstanceOf[SequenceOffset])
         .getOrElse {
           startOffset.getOrElse {
-            currentOffset - 1
+            SequenceOffset(currentSequence - 1)
           }
         }
     )
@@ -82,7 +82,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
           // jump straight to the end, batching if necessary
           endSequence.map(s => SequenceOffset(math.min(s, nextBatch))).getOrElse {
             // jump to the current sequence, batching if necessary
-            SequenceOffset(math.min(currentOffset.sequence, nextBatch))
+            SequenceOffset(math.min(currentSequence, nextBatch))
           }
         }
     )
@@ -106,7 +106,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
 
   override def stop(): Unit = Unit
 
-  protected def getCurrentOffset: SequenceOffset
+  protected def getCurrentSequence: Int
 
   // return an inclusive range
   protected def sequenceRange: Range =

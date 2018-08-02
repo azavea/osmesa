@@ -62,11 +62,6 @@ object ChangesSource extends Logging {
     }
   }
 
-  private[streaming] def createOffsetForCurrentSequence(
-    baseURI: URI
-  ): SequenceOffset =
-    SequenceOffset(getCurrentSequence(baseURI))
-
   @memoize(maxSize = 1, expiresAfter = 30 seconds)
   def getCurrentSequence(baseURI: URI): Int = {
     val response =
