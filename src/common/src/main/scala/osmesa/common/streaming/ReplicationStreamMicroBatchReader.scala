@@ -14,8 +14,7 @@ import org.apache.spark.sql.sources.v2.reader.streaming.{
 
 import scala.compat.java8.OptionConverters._
 
-abstract class ReplicationStreamBatchReader[T](baseURI: URI,
-                                               sequence: Int)
+abstract class ReplicationStreamBatchReader[T](baseURI: URI, sequence: Int)
     extends DataReader[Row]
     with Logging {
   protected var index: Int = -1
@@ -63,27 +62,27 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                               end: Optional[Offset]): Unit = {
     val currentSequence = getCurrentSequence
 
-    startOffset = Some(
-      start.asScala
-        .map(_.asInstanceOf[SequenceOffset])
-        .getOrElse {
-          startOffset.getOrElse {
-            SequenceOffset(currentSequence - 1)
-          }
-        }
-    )
+    val begin = start.asScala.map(_.asInstanceOf[SequenceOffset]).getOrElse {
+      startOffset.getOrElse {
+        SequenceOffset(currentSequence - 1)
+      }
+    }
+
+    startOffset = Some(begin)
 
     endOffset = Some(
       end.asScala
         .map(_.asInstanceOf[SequenceOffset])
         .getOrElse {
-          val nextBatch = startOffset.get.sequence + batchSize
+          val nextBatch = begin.sequence + batchSize
 
           // jump straight to the end, batching if necessary
-          endSequence.map(s => SequenceOffset(math.min(s, nextBatch))).getOrElse {
-            // jump to the current sequence, batching if necessary
-            SequenceOffset(math.min(currentSequence, nextBatch))
-          }
+          endSequence
+            .map(s => SequenceOffset(math.min(s, nextBatch)))
+            .getOrElse {
+              // jump to the current sequence, batching if necessary
+              SequenceOffset(math.min(currentSequence, nextBatch))
+            }
         }
     )
   }
