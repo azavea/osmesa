@@ -3,6 +3,7 @@ package osmesa.common.streaming
 import java.net.URI
 import java.util.Optional
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.sources.v2.DataSourceOptions
@@ -40,14 +41,12 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                                                  checkpointLocation: String)
     extends MicroBatchReader
     with Logging {
-  val DefaultBatchSize: Int = 100
-
+  val DefaultBatchSize: Int = SparkEnv.get.conf.getInt("spark.sql.shuffle.partitions", 200)
   protected val batchSize: Int = options
     .get("batch_size")
     .asScala
     .map(s => s.toInt)
     .getOrElse(DefaultBatchSize)
-
   protected var startSequence: Option[Int] =
     options.get("start_sequence").asScala.map(_.toInt)
   protected var endSequence: Option[Int] =
