@@ -41,7 +41,8 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                                                  checkpointLocation: String)
     extends MicroBatchReader
     with Logging {
-  val DefaultBatchSize: Int = SparkEnv.get.conf.getInt("spark.sql.shuffle.partitions", 200)
+  val DefaultBatchSize: Int =
+    SparkEnv.get.conf.getInt("spark.sql.shuffle.partitions", 200)
   protected val batchSize: Int = options
     .get("batch_size")
     .asScala
@@ -83,7 +84,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
               SequenceOffset(math.min(currentSequence, nextBatch))
             }
         }
-    )
+    ).map(s => SequenceOffset(math.max(s.sequence, begin.sequence + 1)))
   }
 
   override def getStartOffset: Offset =
