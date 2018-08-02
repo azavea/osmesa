@@ -3,6 +3,7 @@ package osmesa.common.streaming
 import java.net.URI
 import java.util.Optional
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.sources.v2.DataSourceOptions
@@ -14,12 +15,9 @@ import org.apache.spark.sql.sources.v2.reader.streaming.{
 
 import scala.compat.java8.OptionConverters._
 
-abstract class ReplicationStreamBatchReader[T](baseURI: URI,
-                                               start: SequenceOffset,
-                                               end: SequenceOffset)
+abstract class ReplicationStreamBatchReader[T](baseURI: URI, sequence: Int)
     extends DataReader[Row]
     with Logging {
-  protected var currentOffset: SequenceOffset = start
   protected var index: Int = -1
   protected var items: Vector[T] = _
 
@@ -27,21 +25,11 @@ abstract class ReplicationStreamBatchReader[T](baseURI: URI,
     index += 1
 
     if (Option(items).isEmpty) {
-      // initialize changesets from the starting sequence
-      items = getSequence(baseURI, currentOffset.sequence).toVector
+      // initialize items from the starting sequence
+      items = getSequence(baseURI, sequence).toVector
     }
 
-    // fetch next batch of changesets if necessary
-    // this is a loop in case sequences contain no changesets
-    while (index >= items.length && currentOffset + 1 < end) {
-      // fetch next sequence
-      currentOffset += 1
-      items = getSequence(baseURI, currentOffset.sequence).toVector
-
-      index = 0
-    }
-
-    currentOffset < end && index < items.length
+    index < items.length
   }
 
   override def close(): Unit = Unit
@@ -53,68 +41,60 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                                                  checkpointLocation: String)
     extends MicroBatchReader
     with Logging {
-  val DefaultBatchSize: Int = 100
-
+  val DefaultBatchSize: Int = SparkEnv.get.conf.getInt("spark.sql.shuffle.partitions", 200)
   protected val batchSize: Int = options
     .get("batch_size")
     .asScala
     .map(s => s.toInt)
     .getOrElse(DefaultBatchSize)
+  protected var startSequence: Option[Int] =
+    options.get("start_sequence").asScala.map(_.toInt)
+  protected var endSequence: Option[Int] =
+    options.get("end_sequence").asScala.map(_.toInt)
 
-  protected var start: Option[SequenceOffset] = options
-    .get("start_sequence")
-    .asScala
-    .map(s => SequenceOffset(s.toInt))
-
-  protected var end: Option[SequenceOffset] = options
-    .get("end_sequence")
-    .asScala
-    .map(s => SequenceOffset(s.toInt))
+  // start offsets are exclusive, so start with the one before what's requested (if provided)
+  protected var startOffset: Option[SequenceOffset] =
+    startSequence.map(s => SequenceOffset(s - 1))
+  protected var endOffset: Option[SequenceOffset] = None
 
   override def setOffsetRange(start: Optional[Offset],
                               end: Optional[Offset]): Unit = {
-    val currentOffset = getCurrentOffset
+    val currentSequence = getCurrentSequence
 
-    this.start = Some(
-      start.asScala
-        .map(_.asInstanceOf[SequenceOffset])
-        .getOrElse {
-          this.start.getOrElse {
-            currentOffset - 1
-          }
-        }
-    )
+    val begin = start.asScala.map(_.asInstanceOf[SequenceOffset]).getOrElse {
+      startOffset.getOrElse {
+        SequenceOffset(currentSequence - 1)
+      }
+    }
 
-    this.end = Some(
+    startOffset = Some(begin)
+
+    endOffset = Some(
       end.asScala
         .map(_.asInstanceOf[SequenceOffset])
         .getOrElse {
-          val next = this.end.map(_ + 1).getOrElse {
-            this.start.get + 1
-          }
+          val nextBatch = begin.sequence + batchSize
 
-          if (currentOffset > next) {
-            SequenceOffset(
-              math.min(currentOffset.sequence, next.sequence + batchSize)
-            )
-          } else {
-            next
-          }
+          // jump straight to the end, batching if necessary
+          endSequence
+            .map(s => SequenceOffset(math.min(s, nextBatch)))
+            .getOrElse {
+              // jump to the current sequence, batching if necessary
+              SequenceOffset(math.min(currentSequence, nextBatch))
+            }
         }
     )
   }
 
-  override def getStartOffset: Offset = {
-    start.getOrElse {
+  override def getStartOffset: Offset =
+    startOffset.getOrElse {
       throw new IllegalStateException("start offset not set")
     }
-  }
 
-  override def getEndOffset: Offset = {
-    end.getOrElse {
+  override def getEndOffset: Offset =
+    endOffset.getOrElse {
       throw new IllegalStateException("end offset not set")
     }
-  }
 
   override def commit(end: Offset): Unit =
     logInfo(s"Commit: $end")
@@ -124,5 +104,9 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
 
   override def stop(): Unit = Unit
 
-  protected def getCurrentOffset: SequenceOffset
+  protected def getCurrentSequence: Int
+
+  // return an inclusive range
+  protected def sequenceRange: Range =
+    startOffset.get.sequence + 1 to endOffset.get.sequence
 }
