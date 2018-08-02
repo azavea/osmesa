@@ -1,3 +1,3 @@
 osmesa.common.streaming.AugmentedDiffProvider
 osmesa.common.streaming.ChangeProvider
-osmesa.common.streaming.ChangesetsProvider
+osmesa.common.streaming.ChangesetProvider

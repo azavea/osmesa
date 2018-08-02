@@ -18,7 +18,7 @@ import scalaj.http.Http
 import scala.concurrent.duration._
 import scala.xml.XML
 
-object ChangesetsSource extends Logging {
+object ChangesetSource extends Logging {
   val Delay: Duration = 15 seconds
   // state.yaml uses a custom date format
   private val formatter = DateTimeFormat.forPattern("y-M-d H:m:s.SSSSSSSSS Z")
@@ -70,7 +70,7 @@ object ChangesetsSource extends Logging {
     val state = yaml.parser
       .parse(response.body)
       .leftMap(err => err: Error)
-      .flatMap(_.as[ChangesetsState])
+      .flatMap(_.as[State])
       .valueOr(throw _)
 
     logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
@@ -78,5 +78,5 @@ object ChangesetsSource extends Logging {
     state.sequence
   }
 
-  case class ChangesetsState(last_run: DateTime, sequence: Int)
+  case class State(last_run: DateTime, sequence: Int)
 }
