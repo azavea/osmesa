@@ -20,9 +20,8 @@ import osmesa.common.model.AugmentedDiffFeature
 import scala.concurrent.duration.{Duration, _}
 
 object AugmentedDiffSource extends Logging {
-  val Delay: Duration = 15.seconds
-
   private lazy val s3: AmazonS3Client = S3Client.DEFAULT
+  val Delay: Duration = 15.seconds
 
   private implicit val dateTimeDecoder: Decoder[DateTime] =
     Decoder.instance(a => a.as[String].map(DateTime.parse))
@@ -79,7 +78,7 @@ object AugmentedDiffSource extends Logging {
     val state = yaml.parser
       .parse(body)
       .leftMap(err => err: Error)
-      .flatMap(_.as[AugmentedDiffState])
+      .flatMap(_.as[State])
       .valueOr(throw _)
 
     logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
@@ -87,5 +86,5 @@ object AugmentedDiffSource extends Logging {
     state.sequence
   }
 
-  case class AugmentedDiffState(last_run: DateTime, sequence: Int)
+  case class State(last_run: DateTime, sequence: Int)
 }
