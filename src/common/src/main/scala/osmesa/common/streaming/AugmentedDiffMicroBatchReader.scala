@@ -19,20 +19,17 @@ import osmesa.common.model.{
 import scala.collection.JavaConverters._
 import scala.compat.java8.OptionConverters._
 
-case class AugmentedDiffStreamBatchTask(baseURI: URI,
-                                        start: Int,
-                                        end: Int)
+case class AugmentedDiffStreamBatchTask(baseURI: URI, sequence: Int)
     extends DataReaderFactory[Row] {
   override def createDataReader(): DataReader[Row] =
-    new AugmentedDiffStreamBatchReader(baseURI, start, end)
+    new AugmentedDiffStreamBatchReader(baseURI, sequence)
 }
 
-class AugmentedDiffStreamBatchReader(baseURI: URI,
-                                     start: Int,
-                                     end: Int)
+class AugmentedDiffStreamBatchReader(baseURI: URI, sequence: Int)
     extends ReplicationStreamBatchReader[
       (Option[AugmentedDiffFeature], AugmentedDiffFeature)
-    ](baseURI, start, end) {
+    ](baseURI, sequence) {
+
   override def getSequence(
     baseURI: URI,
     sequence: Int
@@ -122,21 +119,27 @@ class AugmentedDiffMicroBatchReader(options: DataSourceOptions,
                                     checkpointLocation: String)
     extends ReplicationStreamMicroBatchReader(options, checkpointLocation) {
 
-  private def baseURI: URI =
-    options.get("base_uri").asScala.map(new URI(_)).getOrElse(
-        throw new RuntimeException(
-          "base_uri is a required option for augmented-diffs"))
-
   override def getCurrentOffset: SequenceOffset =
     AugmentedDiffSource.createOffsetForCurrentSequence(baseURI)
 
+  override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =
+    sequenceRange
+      .map(
+        AugmentedDiffStreamBatchTask(baseURI, _)
+          .asInstanceOf[DataReaderFactory[Row]]
+      )
+      .asJava
+
   override def readSchema(): StructType = AugmentedDiffSchema
 
-  override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =
-    sequenceRange.map(
-        seq =>
-          AugmentedDiffStreamBatchTask(baseURI, seq, seq)
-            .asInstanceOf[DataReaderFactory[Row]]
-    )
-      .asJava
+  private def baseURI: URI =
+    options
+      .get("base_uri")
+      .asScala
+      .map(new URI(_))
+      .getOrElse(
+        throw new RuntimeException(
+          "base_uri is a required option for augmented-diffs"
+        )
+      )
 }

@@ -11,18 +11,14 @@ import osmesa.common.model.{ChangeSchema, Element}
 
 import scala.collection.JavaConverters._
 
-case class ChangesStreamBatchTask(baseURI: URI,
-                                  start: Int,
-                                  end: Int)
+case class ChangesStreamBatchTask(baseURI: URI, sequence: Int)
     extends DataReaderFactory[Row] {
   override def createDataReader(): DataReader[Row] =
-    new ChangesStreamBatchReader(baseURI, start, end)
+    new ChangesStreamBatchReader(baseURI, sequence)
 }
 
-class ChangesStreamBatchReader(baseURI: URI,
-                               start: Int,
-                               end: Int)
-    extends ReplicationStreamBatchReader[Element](baseURI, start, end) {
+class ChangesStreamBatchReader(baseURI: URI, sequence: Int)
+    extends ReplicationStreamBatchReader[Element](baseURI, sequence) {
 
   override def getSequence(baseURI: URI, sequence: Int): Seq[Element] =
     ChangesSource.getSequence(baseURI, sequence)
@@ -35,7 +31,7 @@ class ChangesStreamBatchReader(baseURI: URI,
     )
 
     Row(
-      currentSequence,
+      sequence,
       change._type,
       change.id,
       change.tags,
@@ -68,10 +64,10 @@ class ChangesMicroBatchReader(options: DataSourceOptions,
   override def readSchema(): StructType = ChangeSchema
 
   override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =
-    sequenceRange.map(
-      seq =>
-        ChangesStreamBatchTask(baseURI, seq, seq)
+    sequenceRange
+      .map(
+        ChangesStreamBatchTask(baseURI, _)
           .asInstanceOf[DataReaderFactory[Row]]
-    )
+      )
       .asJava
 }

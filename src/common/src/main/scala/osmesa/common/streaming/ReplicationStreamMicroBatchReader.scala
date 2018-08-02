@@ -15,11 +15,9 @@ import org.apache.spark.sql.sources.v2.reader.streaming.{
 import scala.compat.java8.OptionConverters._
 
 abstract class ReplicationStreamBatchReader[T](baseURI: URI,
-                                               start: Int,
-                                               end: Int)
+                                               sequence: Int)
     extends DataReader[Row]
     with Logging {
-  protected var currentSequence: Int = start
   protected var index: Int = -1
   protected var items: Vector[T] = _
 
@@ -28,20 +26,10 @@ abstract class ReplicationStreamBatchReader[T](baseURI: URI,
 
     if (Option(items).isEmpty) {
       // initialize items from the starting sequence
-      items = getSequence(baseURI, currentSequence).toVector
+      items = getSequence(baseURI, sequence).toVector
     }
 
-    // fetch next batch of items if necessary
-    // this is a loop in case sequences contain no items
-    while (index >= items.length && currentSequence < end) {
-      // fetch next sequence
-      currentSequence += 1
-      items = getSequence(baseURI, currentSequence).toVector
-
-      index = 0
-    }
-
-    currentSequence <= end && index < items.length
+    index < items.length
   }
 
   override def close(): Unit = Unit
