@@ -11,8 +11,8 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Encoder, Row}
 import osmesa.common.ProcessOSM
 import osmesa.common.model.{
+  AugmentedDiff,
   AugmentedDiffEncoder,
-  AugmentedDiffFeature,
   AugmentedDiffSchema
 }
 
@@ -26,14 +26,9 @@ case class AugmentedDiffStreamBatchTask(baseURI: URI, sequence: Int)
 }
 
 class AugmentedDiffStreamBatchReader(baseURI: URI, sequence: Int)
-    extends ReplicationStreamBatchReader[
-      (Option[AugmentedDiffFeature], AugmentedDiffFeature)
-    ](baseURI, sequence) {
+    extends ReplicationStreamBatchReader[AugmentedDiff](baseURI, sequence) {
 
-  override def getSequence(
-    baseURI: URI,
-    sequence: Int
-  ): Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)] =
+  override def getSequence(baseURI: URI, sequence: Int): Seq[AugmentedDiff] =
     AugmentedDiffSource.getSequence(baseURI, sequence)
 
   override def get(): Row = {
@@ -130,8 +125,6 @@ class AugmentedDiffMicroBatchReader(options: DataSourceOptions,
       )
       .asJava
 
-  override def readSchema(): StructType = AugmentedDiffSchema
-
   private def baseURI: URI =
     options
       .get("base_uri")
@@ -142,4 +135,6 @@ class AugmentedDiffMicroBatchReader(options: DataSourceOptions,
           "base_uri is a required option for augmented-diffs"
         )
       )
+
+  override def readSchema(): StructType = AugmentedDiffSchema
 }

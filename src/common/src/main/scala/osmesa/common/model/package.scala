@@ -13,6 +13,7 @@ import org.apache.spark.sql.{Row, Encoder => SparkEncoder}
 import scala.util.Random
 
 package object model {
+  type AugmentedDiff = (Option[AugmentedDiffFeature], AugmentedDiffFeature)
   type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
 
   val AugmentedDiffSchema = StructType(

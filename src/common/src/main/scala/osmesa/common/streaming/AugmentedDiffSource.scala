@@ -15,7 +15,7 @@ import io.circe.{yaml, _}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
-import osmesa.common.model.AugmentedDiffFeature
+import osmesa.common.model.{AugmentedDiff, AugmentedDiffFeature}
 
 import scala.concurrent.duration.{Duration, _}
 
@@ -26,10 +26,7 @@ object AugmentedDiffSource extends Logging {
   private implicit val dateTimeDecoder: Decoder[DateTime] =
     Decoder.instance(a => a.as[String].map(DateTime.parse))
 
-  def getSequence(
-    baseURI: URI,
-    sequence: Int
-  ): Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)] = {
+  def getSequence(baseURI: URI, sequence: Int): Seq[AugmentedDiff] = {
     val bucket = baseURI.getHost
     val prefix = new File(baseURI.getPath.drop(1)).toPath
     val key = prefix.resolve(s"$sequence.json").toString
@@ -53,7 +50,7 @@ object AugmentedDiffSource extends Logging {
       case e: AmazonS3Exception if e.getStatusCode == 404 =>
         // sequence is missing; this is intentional, so compare with currentSequence for validity
         if (getCurrentSequence(baseURI) > sequence) {
-          Seq.empty[(Option[AugmentedDiffFeature], AugmentedDiffFeature)]
+          Seq.empty[AugmentedDiff]
         } else {
           logDebug(s"$sequence is not yet available, sleeping.")
           Thread.sleep(Delay.toMillis)
