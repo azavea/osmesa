@@ -58,7 +58,7 @@ class ChangeMicroBatchReader(options: DataSourceOptions,
       .orElse("https://planet.osm.org/replication/minute/")
   )
 
-  override def getCurrentSequence: Int =
+  override def getCurrentSequence: Option[Int] =
     ChangeSource.getCurrentSequence(baseURI)
 
   override def readSchema(): StructType = ChangeSchema

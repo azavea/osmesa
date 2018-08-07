@@ -63,19 +63,26 @@ object ChangesetSource extends Logging {
   }
 
   @memoize(maxSize = 1, expiresAfter = 30 seconds)
-  def getCurrentSequence(baseURI: URI): Int = {
-    val response =
-      Http(baseURI.resolve("state.yaml").toString).asString
+  def getCurrentSequence(baseURI: URI): Option[Int] = {
+    try {
+      val response =
+        Http(baseURI.resolve("state.yaml").toString).asString
 
-    val state = yaml.parser
-      .parse(response.body)
-      .leftMap(err => err: Error)
-      .flatMap(_.as[State])
-      .valueOr(throw _)
+      val state = yaml.parser
+        .parse(response.body)
+        .leftMap(err => err: Error)
+        .flatMap(_.as[State])
+        .valueOr(throw _)
 
-    logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
+      logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
 
-    state.sequence
+      Some(state.sequence)
+    } catch {
+      case err: Throwable =>
+        logError("Error fetching / parsing changeset state.", err)
+
+        None
+    }
   }
 
   case class State(last_run: DateTime, sequence: Int)
