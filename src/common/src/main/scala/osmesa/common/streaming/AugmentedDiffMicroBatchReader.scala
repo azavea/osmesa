@@ -114,7 +114,7 @@ class AugmentedDiffMicroBatchReader(options: DataSourceOptions,
                                     checkpointLocation: String)
     extends ReplicationStreamMicroBatchReader(options, checkpointLocation) {
 
-  override def getCurrentSequence: Int =
+  override def getCurrentSequence: Option[Int] =
     AugmentedDiffSource.getCurrentSequence(baseURI)
 
   override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =

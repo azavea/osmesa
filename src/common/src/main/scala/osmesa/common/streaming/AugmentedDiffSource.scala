@@ -48,13 +48,14 @@ object AugmentedDiffSource extends Logging {
         .toSeq
     } catch {
       case e: AmazonS3Exception if e.getStatusCode == 404 =>
-        // sequence is missing; this is intentional, so compare with currentSequence for validity
-        if (getCurrentSequence(baseURI) > sequence) {
-          Seq.empty[AugmentedDiff]
-        } else {
-          logDebug(s"$sequence is not yet available, sleeping.")
-          Thread.sleep(Delay.toMillis)
-          getSequence(baseURI, sequence)
+        getCurrentSequence(baseURI) match {
+          case Some(s) if s > sequence =>
+            // sequence is missing; this is intentional, so compare with currentSequence for validity
+            Seq.empty[AugmentedDiff]
+          case _ =>
+            logDebug(s"$sequence is not yet available, sleeping.")
+            Thread.sleep(Delay.toMillis)
+            getSequence(baseURI, sequence)
         }
       case _: Throwable =>
         logDebug(s"$sequence was unavailable, sleeping before retrying.")
@@ -64,23 +65,30 @@ object AugmentedDiffSource extends Logging {
   }
 
   @memoize(maxSize = 1, expiresAfter = 30 seconds)
-  def getCurrentSequence(baseURI: URI): Int = {
+  def getCurrentSequence(baseURI: URI): Option[Int] = {
     val bucket = baseURI.getHost
     val prefix = new File(baseURI.getPath.drop(1)).toPath
     val key = prefix.resolve("state.yaml").toString
 
-    val body = IOUtils
-      .toString(s3.readBytes(bucket, key), StandardCharsets.UTF_8.toString)
+    try {
+      val body = IOUtils
+        .toString(s3.readBytes(bucket, key), StandardCharsets.UTF_8.toString)
 
-    val state = yaml.parser
-      .parse(body)
-      .leftMap(err => err: Error)
-      .flatMap(_.as[State])
-      .valueOr(throw _)
+      val state = yaml.parser
+        .parse(body)
+        .leftMap(err => err: Error)
+        .flatMap(_.as[State])
+        .valueOr(throw _)
 
-    logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
+      logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
 
-    state.sequence
+      Some(state.sequence)
+    } catch {
+      case err: Throwable =>
+        logError("Error fetching / parsing changeset state.", err)
+
+        None
+    }
   }
 
   case class State(last_run: DateTime, sequence: Int)

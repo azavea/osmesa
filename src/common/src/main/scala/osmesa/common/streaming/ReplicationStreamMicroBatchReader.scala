@@ -59,32 +59,59 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   protected var endOffset: Option[SequenceOffset] = None
 
   override def setOffsetRange(start: Optional[Offset],
-                              end: Optional[Offset]): Unit = {
-    val currentSequence = getCurrentSequence
-
-    val begin = start.asScala.map(_.asInstanceOf[SequenceOffset]).getOrElse {
-      startOffset.getOrElse {
-        SequenceOffset(currentSequence - 1)
-      }
-    }
-
-    startOffset = Some(begin)
-
-    endOffset = Some(
-      end.asScala
-        .map(_.asInstanceOf[SequenceOffset])
-        .getOrElse {
-          val nextBatch = begin.sequence + batchSize
-
-          // jump straight to the end, batching if necessary
-          endSequence
-            .map(s => SequenceOffset(math.min(s, nextBatch)))
-            .getOrElse {
-              // jump to the current sequence, batching if necessary
-              SequenceOffset(math.min(currentSequence, nextBatch))
+                              stop: Optional[Offset]): Unit = {
+    getCurrentSequence match {
+      case Some(currentSequence) =>
+        val begin =
+          start.asScala.map(_.asInstanceOf[SequenceOffset]).getOrElse {
+            startOffset.getOrElse {
+              SequenceOffset(currentSequence - 1)
             }
-        }
-    ).map(s => SequenceOffset(math.max(s.sequence, begin.sequence)))
+          }
+
+        startOffset = Some(begin)
+
+        endOffset = Some(
+          stop.asScala
+            .map(_.asInstanceOf[SequenceOffset])
+            .getOrElse {
+              val nextBatch = begin.sequence + batchSize
+
+              // jump straight to the end, batching if necessary
+              endSequence
+                .map(s => SequenceOffset(math.min(s, nextBatch)))
+                .getOrElse {
+                  // jump to the current sequence, batching if necessary
+                  SequenceOffset(math.min(currentSequence, nextBatch))
+                }
+            }
+        ).map(s => SequenceOffset(math.max(s.sequence, begin.sequence)))
+      case _ =>
+        // remote state is currently unknown
+
+        // provided or current
+        startOffset = start.asScala
+          .map(_.asInstanceOf[SequenceOffset])
+          .map(Some(_))
+          .getOrElse(startOffset)
+
+        // provided or max(current start, current end) -- no batching to avoid over-reading
+        endOffset = stop.asScala
+          .map(_.asInstanceOf[SequenceOffset])
+          .map(Some(_))
+          .getOrElse {
+            (startOffset, endOffset) match {
+              case (Some(SequenceOffset(begin)), Some(SequenceOffset(end))) =>
+                Some(SequenceOffset(math.max(begin, end)))
+              case (begin @ Some(_), None) =>
+                begin
+              case (None, end @ Some(_)) =>
+                end
+              case _ =>
+                None
+            }
+          }
+    }
   }
 
   override def getStartOffset: Offset =
@@ -105,7 +132,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
 
   override def stop(): Unit = Unit
 
-  protected def getCurrentSequence: Int
+  protected def getCurrentSequence: Option[Int]
 
   // return an inclusive range
   protected def sequenceRange: Range =

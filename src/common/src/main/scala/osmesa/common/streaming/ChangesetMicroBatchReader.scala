@@ -54,7 +54,7 @@ class ChangesetMicroBatchReader(options: DataSourceOptions,
       .orElse("https://planet.osm.org/replication/changesets/")
   )
 
-  override def getCurrentSequence: Int =
+  override def getCurrentSequence: Option[Int] =
     ChangesetSource.getCurrentSequence(baseURI)
 
   override def readSchema(): StructType = ChangesetSchema
