@@ -2,15 +2,20 @@ package osmesa.common.streaming
 
 import org.apache.spark.sql.sources.v2.reader.streaming.Offset
 
-// TODO see if including a sub-sequence produces empty batches (to allow immediate flushing of watermarked data)
-case class SequenceOffset(sequence: Int)
+case class SequenceOffset(sequence: Int, subSequence: Long = 0)
     extends Offset
     with Ordered[SequenceOffset] {
-  override val json: String = sequence.toString
+  override val json: String = s"[$sequence,$subSequence]"
 
   def +(increment: Int): SequenceOffset = SequenceOffset(sequence + increment)
   def -(decrement: Int): SequenceOffset = SequenceOffset(sequence - decrement)
+  def next: SequenceOffset = SequenceOffset(sequence, subSequence + 1)
 
   override def compare(that: SequenceOffset): Int =
-    sequence.compare(that.sequence)
+    sequence.compare(that.sequence) match {
+      case 0 => subSequence.compare(that.subSequence)
+      case x => x
+    }
+
+  override def toString: String = s"<SequenceOffset: $sequence.$subSequence>"
 }
