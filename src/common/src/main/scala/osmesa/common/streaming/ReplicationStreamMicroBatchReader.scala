@@ -143,7 +143,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     val t = parse(json) match {
       case Left(failure) => throw failure
       case Right(list) =>
-        list.as[Seq[Int]].toOption.map(a => SequenceOffset(a.head, a.last))
+        list.as[Seq[Int]].toOption.map(a => SequenceOffset(a.head, a.last == 1))
     }
 
     t.getOrElse(
