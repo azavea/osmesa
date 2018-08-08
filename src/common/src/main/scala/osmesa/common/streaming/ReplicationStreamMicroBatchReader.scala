@@ -3,6 +3,8 @@ package osmesa.common.streaming
 import java.net.URI
 import java.util.Optional
 
+import cats.syntax.either._
+import io.circe.parser._
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Row
@@ -63,17 +65,21 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     getCurrentSequence match {
       case Some(currentSequence) =>
         val begin =
-          start.asScala.map(_.asInstanceOf[SequenceOffset]).getOrElse {
-            startOffset.getOrElse {
-              SequenceOffset(currentSequence - 1)
+          start.asScala
+            .map(_.asInstanceOf[SequenceOffset])
+            .map(_.next)
+            .getOrElse {
+              startOffset.map(_.next).getOrElse {
+                SequenceOffset(currentSequence - 1)
+              }
             }
-          }
 
         startOffset = Some(begin)
 
         endOffset = Some(
           stop.asScala
             .map(_.asInstanceOf[SequenceOffset])
+            .map(_.next)
             .getOrElse {
               val nextBatch = begin.sequence + batchSize
 
@@ -85,28 +91,34 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                   SequenceOffset(math.min(currentSequence, nextBatch))
                 }
             }
-        ).map(s => SequenceOffset(math.max(s.sequence, begin.sequence)))
+        ).map(s => Seq(s, begin).max)
       case _ =>
         // remote state is currently unknown
 
         // provided or current
         startOffset = start.asScala
           .map(_.asInstanceOf[SequenceOffset])
+          .map(_.next)
           .map(Some(_))
-          .getOrElse(startOffset)
+          .getOrElse(startOffset.map(_.next))
 
         // provided or max(current start, current end) -- no batching to avoid over-reading
         endOffset = stop.asScala
           .map(_.asInstanceOf[SequenceOffset])
+          .map(_.next)
           .map(Some(_))
           .getOrElse {
             (startOffset, endOffset) match {
-              case (Some(SequenceOffset(begin)), Some(SequenceOffset(end))) =>
-                Some(SequenceOffset(math.max(begin, end)))
-              case (begin @ Some(_), None) =>
-                begin
-              case (None, end @ Some(_)) =>
-                end
+              case (Some(begin), Some(end)) =>
+                if (begin > end) {
+                  Some(begin.next)
+                } else {
+                  Some(end.next)
+                }
+              case (Some(begin), None) =>
+                Some(begin.next)
+              case (None, Some(end)) =>
+                Some(end.next)
               case _ =>
                 None
             }
@@ -127,8 +139,17 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   override def commit(end: Offset): Unit =
     logInfo(s"Commit: $end")
 
-  override def deserializeOffset(json: String): Offset =
-    SequenceOffset(json.toInt)
+  override def deserializeOffset(json: String): Offset = {
+    val t = parse(json) match {
+      case Left(failure) => throw failure
+      case Right(list) =>
+        list.as[Seq[Int]].toOption.map(a => SequenceOffset(a.head, a.last))
+    }
+
+    t.getOrElse(
+      throw new RuntimeException(s"Could not parse serialized offset: ${json}")
+    )
+  }
 
   override def stop(): Unit = Unit
 
