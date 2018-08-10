@@ -7,7 +7,7 @@ import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
-import osmesa.common.model.AugmentedDiff
+import osmesa.common.model.ElementWithSequence
 
 /*
  * Usage example:
@@ -24,7 +24,7 @@ object AugmentedDiffStreamProcessor
       name = "osmesa-augmented-diff-stream-processor",
       header = "Update statistics from streaming augmented diffs",
       main = {
-        type AugmentedDiffFeature = Feature[Geometry, AugmentedDiff]
+        type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
 
         val augmentedDiffSourceOpt = Opts.option[URI](
           "augmented-diff-source",

@@ -26,7 +26,7 @@ import osmesa.analytics.Analytics
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, read, write}
 import osmesa.common.ProcessOSM
-import osmesa.common.model.AugmentedDiff
+import osmesa.common.model.ElementWithSequence
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.ForkJoinTaskSupport
@@ -46,7 +46,7 @@ object UserFootprintUpdater
       name = "osmesa-user-footprint-updater",
       header = "Consume minutely diffs + changesets and update user footprint MVTs",
       main = {
-        type AugmentedDiffFeature = Feature[Geometry, AugmentedDiff]
+        type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
         val rootURI = new File("").toURI
 
         val changeSourceOpt = Opts

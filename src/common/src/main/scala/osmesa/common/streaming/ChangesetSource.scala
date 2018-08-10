@@ -18,7 +18,7 @@ import scalaj.http.Http
 import scala.concurrent.duration._
 import scala.xml.XML
 
-object ChangesetsSource extends Logging {
+object ChangesetSource extends Logging {
   val Delay: Duration = 15 seconds
   // state.yaml uses a custom date format
   private val formatter = DateTimeFormat.forPattern("y-M-d H:m:s.SSSSSSSSS Z")
@@ -63,20 +63,27 @@ object ChangesetsSource extends Logging {
   }
 
   @memoize(maxSize = 1, expiresAfter = 30 seconds)
-  def getCurrentSequence(baseURI: URI): Int = {
-    val response =
-      Http(baseURI.resolve("state.yaml").toString).asString
+  def getCurrentSequence(baseURI: URI): Option[Int] = {
+    try {
+      val response =
+        Http(baseURI.resolve("state.yaml").toString).asString
 
-    val state = yaml.parser
-      .parse(response.body)
-      .leftMap(err => err: Error)
-      .flatMap(_.as[ChangesetsState])
-      .valueOr(throw _)
+      val state = yaml.parser
+        .parse(response.body)
+        .leftMap(err => err: Error)
+        .flatMap(_.as[State])
+        .valueOr(throw _)
 
-    logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
+      logDebug(s"$baseURI state: ${state.sequence} @ ${state.last_run}")
 
-    state.sequence
+      Some(state.sequence)
+    } catch {
+      case err: Throwable =>
+        logError("Error fetching / parsing changeset state.", err)
+
+        None
+    }
   }
 
-  case class ChangesetsState(last_run: DateTime, sequence: Int)
+  case class State(last_run: DateTime, sequence: Int)
 }

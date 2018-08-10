@@ -11,17 +11,17 @@ import osmesa.common.model.{Changeset, ChangesetSchema}
 
 import scala.collection.JavaConverters._
 
-case class ChangesetsStreamBatchTask(baseURI: URI, sequence: Int)
+case class ChangesetStreamBatchTask(baseURI: URI, sequence: Int)
     extends DataReaderFactory[Row] {
   override def createDataReader(): DataReader[Row] =
-    new ChangesetsStreamBatchReader(baseURI, sequence)
+    new ChangesetStreamBatchReader(baseURI, sequence)
 }
 
-class ChangesetsStreamBatchReader(baseURI: URI, sequence: Int)
+class ChangesetStreamBatchReader(baseURI: URI, sequence: Int)
     extends ReplicationStreamBatchReader[Changeset](baseURI, sequence) {
 
   override def getSequence(baseURI: URI, sequence: Int): Seq[Changeset] =
-    ChangesetsSource.getSequence(baseURI, sequence)
+    ChangesetSource.getSequence(baseURI, sequence)
 
   override def get(): Row = {
     val changeset = items(index)
@@ -45,8 +45,8 @@ class ChangesetsStreamBatchReader(baseURI: URI, sequence: Int)
   }
 }
 
-class ChangesetsMicroBatchReader(options: DataSourceOptions,
-                                 checkpointLocation: String)
+class ChangesetMicroBatchReader(options: DataSourceOptions,
+                                checkpointLocation: String)
     extends ReplicationStreamMicroBatchReader(options, checkpointLocation) {
   private val baseURI = new URI(
     options
@@ -54,15 +54,15 @@ class ChangesetsMicroBatchReader(options: DataSourceOptions,
       .orElse("https://planet.osm.org/replication/changesets/")
   )
 
-  override def getCurrentSequence: Int =
-    ChangesetsSource.getCurrentSequence(baseURI)
+  override def getCurrentSequence: Option[Int] =
+    ChangesetSource.getCurrentSequence(baseURI)
 
   override def readSchema(): StructType = ChangesetSchema
 
   override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] =
     sequenceRange
       .map(
-        ChangesetsStreamBatchTask(baseURI, _)
+        ChangesetStreamBatchTask(baseURI, _)
           .asInstanceOf[DataReaderFactory[Row]]
       )
       .asJava
