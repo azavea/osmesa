@@ -16,7 +16,7 @@ import scalaj.http.Http
 import scala.concurrent.duration.{Duration, _}
 import scala.xml.XML
 
-object ChangesSource extends Logging {
+object ChangeSource extends Logging {
   val Delay: Duration = 15 seconds
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Element] = {
@@ -63,18 +63,25 @@ object ChangesSource extends Logging {
   }
 
   @memoize(maxSize = 1, expiresAfter = 30 seconds)
-  def getCurrentSequence(baseURI: URI): Int = {
-    val response =
-      Http(baseURI.resolve("state.txt").toString).asString
+  def getCurrentSequence(baseURI: URI): Option[Int] = {
+    try {
+      val response =
+        Http(baseURI.resolve("state.txt").toString).asString
 
-    val state = new Properties
-    state.load(new StringReader(response.body))
+      val state = new Properties
+      state.load(new StringReader(response.body))
 
-    val sequence = state.getProperty("sequenceNumber").toInt
-    val timestamp = DateTime.parse(state.getProperty("timestamp"))
+      val sequence = state.getProperty("sequenceNumber").toInt
+      val timestamp = DateTime.parse(state.getProperty("timestamp"))
 
-    logDebug(s"$baseURI state: $sequence @ $timestamp")
+      logDebug(s"$baseURI state: $sequence @ $timestamp")
 
-    sequence
+      Some(sequence)
+    } catch {
+      case err: Throwable =>
+        logError("Error fetching / parsing changeset state.", err)
+
+        None
+    }
   }
 }

@@ -2,13 +2,18 @@ package osmesa.common.streaming
 
 import org.apache.spark.sql.sources.v2.reader.streaming.Offset
 
-// TODO should this include the offset within an individual sequence, since MicroBatches are read one-by-one and
-// sequences typically correspond to multiple records
-case class SequenceOffset(sequence: Int) extends Offset with Ordered[SequenceOffset] {
-  override val json: String = sequence.toString
+case class SequenceOffset(sequence: Int, pending: Boolean = false)
+    extends Offset
+    with Ordered[SequenceOffset] {
+  override val json: String = s"[$sequence,${pending.compare(false)}]"
 
   def +(increment: Int): SequenceOffset = SequenceOffset(sequence + increment)
   def -(decrement: Int): SequenceOffset = SequenceOffset(sequence - decrement)
+  def next: SequenceOffset = SequenceOffset(sequence, pending = true)
 
-  override def compare(that: SequenceOffset): Int = this.sequence - that.sequence
+  override def compare(that: SequenceOffset): Int =
+    sequence.compare(that.sequence) match {
+      case 0 => pending.compare(that.pending)
+      case x => x
+    }
 }

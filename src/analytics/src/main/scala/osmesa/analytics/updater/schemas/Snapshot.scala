@@ -20,7 +20,7 @@ class Snapshot(
   private def makeFeature(feature: AugmentedDiffFeature): Option[VTFeature] = {
     val id = feature.data.id
 
-    val elementId = feature.data.elementType match {
+    val elementId = feature.data.`type` match {
       case "node"     => s"n$id"
       case "way"      => s"w$id"
       case "relation" => s"r$id"
