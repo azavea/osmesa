@@ -142,6 +142,8 @@ object UserFootprintUpdater
 
             val TiledGeometryEncoder: Encoder[Row] = RowEncoder(TiledGeometrySchema)
             type KeyedTile = (Int, String, Int, Int, Int, Raster[Tile])
+            type KeyedSequencesAndTiles = (String, Int, Int, Int, Seq[(Int, Raster[Tile])])
+
             implicit def encodeTile(tile: Tile): (Array[Byte], Int, Int, CellType) =
               (tile.toBytes, tile.cols, tile.rows, tile.cellType)
             implicit def decodeTile(tile: (Array[Byte], Int, Int, CellType)): Tile =
@@ -150,7 +152,8 @@ object UserFootprintUpdater
                                      tile._3,
                                      tile._4.asInstanceOf[IntCells with NoDataHandling])
 
-            implicit val tupleEncoder: Encoder[KeyedTile] = Encoders.kryo[KeyedTile]
+            implicit val keyedTileEncoder: Encoder[KeyedTile] = Encoders.kryo[KeyedTile]
+            implicit val keyedSequencesAndTilesEncoder: Encoder[KeyedSequencesAndTiles] = Encoders.kryo[KeyedSequencesAndTiles]
 
             val tiledNodes = changedNodes
               .withColumnRenamed("user", "key")
@@ -306,10 +309,97 @@ object UserFootprintUpdater
 
                     (sequence, k, z, x, y, Raster.tupToRaster(newTile, targetExtent))
                 }
+            } groupByKey {
+              case (_, k, z, x, y, _) => (k, z, x, y)
+            } mapGroups {
+              case ((k, z, x, y), tiles: Iterator[(Int, String, Int, Int, Int, Raster[Tile])]) =>
+                (k, z, x, y, tiles.map(x => (x._1, x._6)).toSeq)
             } mapPartitions {
-              rows =>
-                val features = rows.map {
-                  case (sequence, k, zoom, x, y, raster) =>
+              rows: Iterator[(String, Int, Int, Int, Seq[(Int, Raster[Tile])])]=>
+                val data = rows.toList
+                val parRows = data.par
+                val taskSupport = new ForkJoinTaskSupport(new ForkJoinPool(concurrentUploads))
+
+                // increase the number of concurrent uploads
+                parRows.tasksupport = taskSupport
+
+                val layerName = "user_footprint"
+
+                val urls = data.map {
+                  case (key, z, x, y, sequences) =>
+                    val sk = SpatialKey(x, y)
+                    val extent = sequences.toList.head._2.extent
+                    val filename =
+                      s"${URLEncoder.encode(key, StandardCharsets.UTF_8.toString)}/${path(z, sk)}"
+
+                    (tileSource.resolve(filename), extent)
+                }
+
+                val parUrls = urls.par
+                parUrls.tasksupport = taskSupport
+
+                val mvts = parUrls.map {
+                  case (uri, extent) =>
+                    (uri,
+                     read(uri).map(bytes =>
+                       VectorTile.fromBytes(
+                         IOUtils.toByteArray(new GZIPInputStream(new ByteArrayInputStream(bytes))),
+                         extent)))
+                } filter {
+                  case (_, mvt) => mvt.isDefined
+                } map {
+                  case (uri, mvt) => uri -> mvt.get
+                } toMap
+
+                // TODO extract
+                def getCommittedSequences(tile: VectorTile): Seq[Int] = {
+                  // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
+                  // single sequence may appear in different batches depending on when changeset metadata arrives
+                  tile.layers
+                    .get("sequences")
+                    .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
+                    .getOrElse(Seq.empty[Int])
+                }
+
+                val uncommittedSequences = data.map {
+                  case (key, z, x, y, sequences) =>
+                    val sk = SpatialKey(x, y)
+                    val filename =
+                      s"${URLEncoder.encode(key, StandardCharsets.UTF_8.toString)}/${path(z, sk)}"
+                    val uri = tileSource.resolve(filename)
+
+                    (key, z, x, y, sequences filter {
+                      case (sequence, _) =>
+                        !mvts.get(uri).map(getCommittedSequences).exists(_.contains(sequence))
+                    })
+                } filter {
+                  case (_, _, _, _, sequences) => sequences.nonEmpty
+                }
+
+                val parUncommittedSequences = uncommittedSequences.par
+                parUncommittedSequences.tasksupport = taskSupport
+
+                val modifiedTiles = parUncommittedSequences
+                  .map {
+                    // merge tiles with different sequences together
+                    case (k, z, x, y, groups: Seq[(Int, Raster[Tile])]) =>
+                      val data = groups.toList
+                      val sequences = groups.map(_._1)
+                      val rasters = data.map(_._2)
+                      val LayoutScheme = ZoomedLayoutScheme(WebMercator)
+                      val targetExtent =
+                        SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+
+                      val newTile = rasters.head.tile.prototype(Cols, Rows)
+
+                      rasters.foreach { raster =>
+                        newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
+                      }
+
+                      (k, z, x, y, Raster.tupToRaster(newTile, targetExtent), sequences)
+                  } map {
+                  // convert into features
+                  case (k, z, x, y, raster, sequences) =>
                     val sk = SpatialKey(x, y)
                     val rasterExtent =
                       RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
@@ -326,128 +416,97 @@ object UserFootprintUpdater
                       }
                     }
 
-                    (sequence, k, zoom, sk, raster.extent, features)
-                }
-
-                val parFeatures = features.toTraversable.par
-                val taskSupport = new ForkJoinTaskSupport(new ForkJoinPool(concurrentUploads))
-
-                // increase the number of concurrent uploads
-                parFeatures.tasksupport = taskSupport
-
-                val layerName = "user_footprint"
-
-                val modifiedTiles = parFeatures.map {
-                  case (sequence, key, zoom, sk, extent, feats) =>
+                    (k, z, sk, raster.extent, features, sequences)
+                } map {
+                  // update tiles
+                  case (k, z, sk, extent, feats, sequences) =>
                     val filename =
-                      s"${URLEncoder.encode(key, StandardCharsets.UTF_8.toString)}/${path(zoom, sk)}"
+                      s"${URLEncoder.encode(k, StandardCharsets.UTF_8.toString)}/${path(z, sk)}"
                     val uri = tileSource.resolve(filename)
 
-                    // TODO there's a race condition in here: since sequences are part of the key, multiple sequences
-                    // may be applied simultaneously, so the last write will win
-                    // solution? drop rows containing those sequences and include sequences in the aggregation
-                    read(uri) match {
-                      case Some(bytes) =>
+                    mvts.get(uri) match {
+                      case Some(tile) =>
                         // update existing tiles
-                        // NOTE the tiles are unaware of sequence numbers, so encountering the same diffs will
-                        // increment values where they should be skipped
-                        val tile = VectorTile.fromBytes(
-                          IOUtils.toByteArray(new GZIPInputStream(new ByteArrayInputStream(bytes))),
-                          extent)
 
                         // load the target layer
                         val layer = tile.layers(layerName)
 
-                        // check a secondary layer to see whether the current sequence has already been applied
-                        // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
-                        // single sequence may appear in different batches depending on when changeset metadata arrives
-                        val committedSequences =
-                          tile.layers
-                            .get("sequences")
-                            .map(_.features.flatMap(f =>
-                              f.data.values.map(valueToLong).map(_.intValue)))
-                            .getOrElse(Seq.empty[Int])
+                        val newFeaturesById: Map[Long, Feature[Geometry, (Long, Int)]] =
+                          feats
+                            .groupBy(_.data._1)
+                            .mapValues(_.head)
+                        val featureIds: Set[Long] = newFeaturesById.keySet
 
-                        if (committedSequences.contains(sequence)) {
-                          println(s"Skipping $uri; $sequence has already been applied.")
-                        } else {
-                          val newFeaturesById: Map[Long, Feature[Geometry, (Long, Int)]] =
-                            feats
-                              .groupBy(_.data._1)
-                              .mapValues(_.head)
-                          val featureIds: Set[Long] = newFeaturesById.keySet
+                        val existingFeatures: Set[Long] =
+                          layer.features.map(f => f.data("id"): Long).toSet
 
-                          val existingFeatures: Set[Long] =
-                            layer.features.map(f => f.data("id"): Long).toSet
+                        val unmodifiedFeatures =
+                          layer.features.filterNot(f => featureIds.contains(f.data("id")))
 
-                          val unmodifiedFeatures =
-                            layer.features.filterNot(f => featureIds.contains(f.data("id")))
+                        val modifiedFeatures =
+                          layer.features.filter(f => featureIds.contains(f.data("id")))
 
-                          val modifiedFeatures =
-                            layer.features.filter(f => featureIds.contains(f.data("id")))
+                        val replacementFeatures: Seq[Feature[Geometry, Map[String, Value]]] =
+                          modifiedFeatures.map { f =>
+                            f.mapData { d =>
+                              val prevDensity: Long = d("density")
+                              d.updated("density",
+                                        VInt64(prevDensity + newFeaturesById(d("id")).data._2))
+                            }
+                          }
 
-                          val replacementFeatures: Seq[Feature[Geometry, Map[String, Value]]] =
-                            modifiedFeatures.map { f =>
-                              f.mapData { d =>
-                                val prevDensity: Long = d("density")
-                                d.updated("density",
-                                          VInt64(prevDensity + newFeaturesById(d("id")).data._2))
+                        val newFeatures: Seq[Feature[Geometry, Map[String, Value]]] =
+                          feats
+                            .filterNot(f => existingFeatures.contains(f.data._1))
+                            .map { f =>
+                              f.mapData {
+                                case (id, density) =>
+                                  Map("id" -> VInt64(id), "density" -> VInt64(density))
                               }
                             }
 
-                          val newFeatures: Seq[Feature[Geometry, Map[String, Value]]] =
-                            feats
-                              .filterNot(f => existingFeatures.contains(f.data._1))
-                              .map { f =>
-                                f.mapData {
-                                  case (id, density) =>
-                                    Map("id" -> VInt64(id), "density" -> VInt64(density))
-                                }
-                              }
+                        unmodifiedFeatures ++ replacementFeatures ++ newFeatures match {
+                          case updatedFeatures
+                              if (replacementFeatures.length + newFeatures.length) > 0 =>
+                            val updatedLayer = makeLayer(layerName, extent, updatedFeatures)
 
-                          unmodifiedFeatures ++ replacementFeatures ++ newFeatures match {
-                            case updatedFeatures
-                                if (replacementFeatures.length + newFeatures.length) > 0 =>
-                              val updatedLayer = makeLayer(layerName, extent, updatedFeatures)
+                            val updatedSequences =
+                              (getCommittedSequences(tile) ++ sequences).zipWithIndex.map {
+                                case (seq, idx) =>
+                                  idx.toString -> VInt64(seq)
+                              }.toMap
 
-                              val updatedSequences =
-                                (committedSequences :+ sequence).zipWithIndex.map {
-                                  case (seq, idx) =>
-                                    idx.toString -> VInt64(seq)
-                                }.toMap
+                            val sequenceFeature = PointFeature(extent.center, updatedSequences)
 
-                              val sequenceFeature = PointFeature(extent.center, updatedSequences)
+                            val sequenceLayer =
+                              makeLayer("sequences", extent, Seq(sequenceFeature))
 
-                              val sequenceLayer =
-                                makeLayer("sequences", extent, Seq(sequenceFeature))
+                            // merge all available layers into a new tile
+                            val newTile =
+                              VectorTile(
+                                tile.layers
+                                  .updated(layerName, updatedLayer)
+                                  // update a second layer with a feature corresponding to committed sequences
+                                  .updated("sequences", sequenceLayer),
+                                extent
+                              )
 
-                              // merge all available layers into a new tile
-                              val newTile =
-                                VectorTile(
-                                  tile.layers
-                                    .updated(layerName, updatedLayer)
-                                    // update a second layer with a feature corresponding to committed sequences
-                                    .updated("sequences", sequenceLayer),
-                                  extent
-                                )
+                            val byteStream = new ByteArrayOutputStream()
 
-                              val byteStream = new ByteArrayOutputStream()
-
+                            try {
+                              val gzipStream = new GZIPOutputStream(byteStream)
                               try {
-                                val gzipStream = new GZIPOutputStream(byteStream)
-                                try {
-                                  gzipStream.write(newTile.toBytes)
-                                } finally {
-                                  gzipStream.close()
-                                }
+                                gzipStream.write(newTile.toBytes)
                               } finally {
-                                byteStream.close()
+                                gzipStream.close()
                               }
+                            } finally {
+                              byteStream.close()
+                            }
 
-                              write(uri, byteStream.toByteArray, Some("gzip"))
-                            case _ =>
-                              println(s"No changes to $uri; THIS SHOULD NOT HAVE HAPPENED.")
-                          }
+                            write(uri, byteStream.toByteArray, Some("gzip"))
+                          case _ =>
+                            println(s"No changes to $uri; THIS SHOULD NOT HAVE HAPPENED.")
                         }
                       case None =>
                         // create tile
@@ -463,8 +522,13 @@ object UserFootprintUpdater
 
                         // create a second layer w/ a feature corresponding to committed sequences (in the absence of
                         // available tile / layer metadata)
-                        val sequenceFeature =
-                          PointFeature(extent.center, Map("0" -> VInt64(sequence)))
+                        val updatedSequences =
+                          sequences.zipWithIndex.map {
+                            case (seq, idx) =>
+                              idx.toString -> VInt64(seq)
+                          }.toMap
+
+                        val sequenceFeature = PointFeature(extent.center, updatedSequences)
                         val sequenceLayer = makeLayer("sequences", extent, Seq(sequenceFeature))
 
                         val vt =
@@ -486,7 +550,7 @@ object UserFootprintUpdater
                         write(uri, byteStream.toByteArray, Some("gzip"))
                     }
 
-                    (key, zoom, sk.col, sk.row, feats.size)
+                    (k, z, sk.col, sk.row, feats.size)
                 }
 
                 taskSupport.environment.shutdown()
