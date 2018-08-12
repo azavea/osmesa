@@ -46,7 +46,11 @@ package object updater {
   def read(uri: URI): Option[Array[Byte]] = {
     uri.getScheme match {
       case "s3" =>
-        Try(IOUtils.toByteArray(s3.getObject(uri.getHost, uri.getPath.drop(1)).getObjectContent)) match {
+        Try(
+          IOUtils.toByteArray(
+            s3.getObject(uri.getHost,
+                         URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString))
+              .getObjectContent)) match {
           case Success(bytes) => Some(bytes)
           case Failure(e) =>
             e match {
@@ -73,7 +77,10 @@ package object updater {
   def readFeatures(uri: URI): Option[Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)]] = {
     val lines: Option[Seq[String]] = uri.getScheme match {
       case "s3" =>
-        Try(IOUtils.toString(s3.getObject(uri.getHost, uri.getPath.drop(1)).getObjectContent)) match {
+        Try(
+          IOUtils.toString(
+            s3.getObject(uri.getHost,
+                         URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString)).getObjectContent)) match {
           case Success(content) => Some(content.split("\n"))
           case Failure(e) =>
             e match {
