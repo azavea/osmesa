@@ -17,6 +17,8 @@ import osmesa.common.ProcessOSM
  *   --class osmesa.analytics.oneoffs.ChangeStreamProcessor \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --database-url $DATABASE_URL
+ *
+ * This class prints the change stream out to console for debugging
  */
 object ChangeStreamProcessor extends CommandApp(
   name = "osmesa-diff-stream-processor",
