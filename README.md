@@ -2,9 +2,10 @@
 
 [![Join the chat at https://gitter.im/osmesa/Lobby](https://badges.gitter.im/osmesa/Lobby.svg)](https://gitter.im/osmesa/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-This project is a collection of tools for working with OpenStreetMap (OSM). It is built to enable
-large scale batch analytic jobs to run on the latest OSM data, as well as streaming jobs which
-operate on updated with minutely replication files.
+This project is a collection of tools for working with OpenStreetMap (OSM).
+It is built to enable large scale batch analytic jobs to run on the latest
+OSM data, as well as streaming jobs which are updated with minutely
+replication files.
 
 
 ### Getting Started
@@ -15,14 +16,16 @@ significant degree of domain-specific knowledge is necessary to
 profitably work with OSM data. Prospective users would do well to study
 the OSM data-model and to develop an intuitive sense for how the various
 pieces of the project hang together to enable an open-source, globe-scale
-map of the world.
+map of the world. Additionally, this library leans heavily upon spark
+SQL to define transformations in both the batch and streaming contexts.
 
 If you're already fairly comfortable with OSM's model, running one of
 the diagnostic (console printing/debugging) Spark Streaming applications
 provided in the analytics subproject is probably the quickest way to
-explore Spark SQL and its usage within this library. To run the change
-stream processor from the beginning of (OSM) time and until cluster
-failure or user termination, try this:
+start playing with the code. To run the [change
+ stream processor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangeStreamProcessor.scala)
+application from the beginning of (OSM) time and until cluster failure
+or user termination, try this:
 
 ```bash
 # head into the 'src' directory
@@ -53,7 +56,7 @@ configuration.
 
 ## Statistics
 
-Summary statistics aggregated at the user and hashtag level that are
+Summary statistics aggregated at the changeset level that are
 supported by OSMesa:
 
 - Number of added buildings
@@ -71,9 +74,11 @@ supported by OSMesa:
 
 #### SQL Tables
 
-Statistics calculation, whether batch or streaming, updates a few tables
-that jointly can be used to discover user or hashtag stats. These are
-the schemas of the tables being updated.
+Statistics calculation, in the streaming context, updates a few tables
+that jointly can be used to discover user or hashtag stats. Because
+batch processing produces ORCfiles, manual insertion of statistics is
+necessary prior to streaming updates being applicable. These are
+the schemas of the tables being via streaming updated:
 
 - [changesets](src/analytics/sql/changesets.sql)
 - [changesets_countries](src/analytics/sql/changesets_countries.sql)
@@ -83,10 +88,10 @@ the schemas of the tables being updated.
 - [users](src/analytics/sql/users.sql)
 
 
-These tables are fairly normalized and thus not the most efficient for
+These tables are normalized and thus not the most efficient for
 directly serving statistics. If that's your goal, it might be useful
 to create materialized views for any further aggregation. A couple example
-queries that can serve as views are provided:
+queries (fairly large/complex) that can serve as views are provided:
 [hashtag_statistics](src/analytics/sql/materialized_views/hashtag_statistics.sql)
 and [user_statistics](src/analytics/sql/materialized_views/user_statistics.sql)
 
@@ -99,7 +104,7 @@ will produce an ORCfile with statistics aggregated by changeset
 
 - [AugmentedDiffStreamProcessor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/AugmentedDiffStreamProcessor.scala)
 updates the tables `changesets`, `users`, and `changesets_countries`
-- [ChangeSetStreamProcessor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangeSetStreamProcessor.scala)
+- [ChangesetStreamProcessor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangesetStreamProcessor.scala)
 updates the tables `changesets`, `changesets_hashtags`, `users`, and `hashtags`
 - [ChangeStreamProcessor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangeStreamProcessor.scala)
 prints out changes to the console (primarily for debugging)
