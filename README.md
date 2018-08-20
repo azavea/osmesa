@@ -20,9 +20,10 @@ map of the world.
 If you're already fairly comfortable with OSM's model, running one of
 the diagnostic (console printing/debugging) Spark Streaming applications
 provided in the analytics subproject is probably the quickest way to
-explore Spark SQL and its usage within this library. To run the change
-stream processor from the beginning of (OSM) time and until cluster
-failure or user termination, try this:
+explore Spark SQL and its usage within this library. To run the
+[change stream processor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangeStreamProcessor.scala)
+application from the beginning of (OSM) time and until cluster failure
+or user termination, try this:
 
 ```bash
 # head into the 'src' directory
