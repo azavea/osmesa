@@ -9,6 +9,38 @@ operate on updated with minutely replication files.
 
 ### Getting Started
 
+This library is a toolkit meant to make the munging and manipulation of
+OSM data a simpler affair than it would otherwise be. Nevertheless, a
+significant degree of domain-specific knowledge is necessary to
+profitably work with OSM data. Prospective users would do well to study
+the OSM data-model and to develop an intuitive sense for how the various
+pieces of the project hang together to enable an open-source, globe-scale
+map of the world.
+
+If you're already fairly comfortable with OSM's model, running one of
+the diagnostic (console printing/debugging) Spark Streaming applications
+provided in the analytics subproject is probably the quickest way to
+explore Spark SQL and its usage within this library. To run the change
+stream processor from the beginning of (OSM) time and until cluster
+failure or user termination, try this:
+
+```bash
+# head into the 'src' directory
+cd src
+
+# build the jar we'll be submitting to spark
+sbt "project analytics" assembly
+
+# submit the streaming application to spark for process management
+spark-submit \
+  --class osmesa.analytics.oneoffs.ChangeStreamProcessor \
+  ./analytics/target/scala-2.11/osmesa-analytics.jar \
+  --start-sequence 1
+```
+
+
+### Deployment
+
 Utilities are provided in the [deployment directory](deployment) to bring
 up cluster and enable you to push the OSMesa jar to that cluster. The
 spawned EMR cluster comes with Apache Zeppelin enabled, which allows
