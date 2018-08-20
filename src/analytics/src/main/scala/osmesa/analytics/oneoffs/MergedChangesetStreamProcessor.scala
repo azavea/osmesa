@@ -27,12 +27,13 @@ object MergedChangesetStreamProcessor extends CommandApp(
   main = {
     type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
 
-    val augmentedDiffSourceOpt = Opts.option[URI](
-      "augmented-diff-source",
-      short = "a",
-      metavar = "uri",
-      help = "Location of augmented diffs to process"
-    )
+    val augmentedDiffSourceOpt =
+      Opts.option[URI](
+        "augmented-diff-source",
+        short = "a",
+        metavar = "uri",
+        help = "Location of augmented diffs to process"
+      )
     val changesetSourceOpt =
       Opts.option[URI](
         "changeset-source",

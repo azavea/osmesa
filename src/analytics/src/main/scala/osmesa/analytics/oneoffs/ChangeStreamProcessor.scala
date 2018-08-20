@@ -13,10 +13,11 @@ import osmesa.common.ProcessOSM
  *
  * sbt "project analytics" assembly
  *
+ * # Running an infinite stream from the beginning of time
  * spark-submit \
  *   --class osmesa.analytics.oneoffs.ChangeStreamProcessor \
- *   ingest/target/scala-2.11/osmesa-analytics.jar \
- *   --database-url $DATABASE_URL
+ *   ./analytics/target/scala-2.11/osmesa-analytics.jar \
+ *   --start-sequence 1
  *
  * This class prints the change stream out to console for debugging
  */
