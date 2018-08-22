@@ -1,5 +1,0 @@
-package osmesa
-
-object Constants {
-
-}

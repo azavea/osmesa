@@ -11,7 +11,7 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
 import osmesa.common.model.{Actions, Element}
-import scalaj.http.Http
+import scalaj.http.{Http, HttpOptions}
 
 import scala.concurrent.duration.{Duration, _}
 import scala.xml.XML
@@ -20,15 +20,16 @@ object ChangeSource extends Logging {
   val Delay: Duration = 15 seconds
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Element] = {
+    println(s"this URI: $baseURI this sequence: $sequence")
     val s = f"$sequence%09d".toArray
     val path =
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osc.gz"
 
-    logDebug(s"Fetching sequence $sequence")
-    val response = Http(baseURI.resolve(path).toString).asBytes
+    logInfo(s"Fetching sequence $sequence")
+    val response = Http(baseURI.resolve(path).toString).option(HttpOptions.allowUnsafeSSL).asBytes
 
     if (response.code === 404) {
-      logDebug(s"$sequence is not yet available, sleeping.")
+      logInfo(s"$sequence is not yet available, sleeping.")
       Thread.sleep(Delay.toMillis)
       getSequence(baseURI, sequence)
     } else {
@@ -66,7 +67,7 @@ object ChangeSource extends Logging {
   def getCurrentSequence(baseURI: URI): Option[Int] = {
     try {
       val response =
-        Http(baseURI.resolve("state.txt").toString).asString
+        Http(baseURI.resolve("state.txt").toString).option(HttpOptions.allowUnsafeSSL).asString
 
       val state = new Properties
       state.load(new StringReader(response.body))
@@ -79,7 +80,8 @@ object ChangeSource extends Logging {
       Some(sequence)
     } catch {
       case err: Throwable =>
-        logError("Error fetching / parsing changeset state.", err)
+        logError("Error fetching or parsing changeset state.", err)
+        logError(baseURI.toString)
 
         None
     }
