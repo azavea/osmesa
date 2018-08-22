@@ -12,13 +12,17 @@ import osmesa.common.ProcessOSM
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
 
+
 object ChangesetStats extends CommandApp(
   name = "changeset-stats",
   header = "Changeset statistics",
   main = {
-    val historyOpt = Opts.option[String]("history", help = "Location of the History ORC file to process.")
-    val changesetsOpt = Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process.")
-    val outputOpt = Opts.option[URI](long = "output", help = "Output URI prefix; trailing / must be included")
+    val historyOpt =
+      Opts.option[String]("history", help = "Location of the History ORC file to process.")
+    val changesetsOpt =
+      Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process.")
+    val outputOpt =
+      Opts.option[URI](long = "output", help = "Output URI prefix; trailing / must be included")
 
     (historyOpt, changesetsOpt, outputOpt).mapN { (historySource, changesetSource, output) =>
       implicit val spark: SparkSession = Analytics.sparkSession("ChangesetStats")

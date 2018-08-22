@@ -31,26 +31,36 @@ object AugmentedDiffStreamProcessor extends CommandApp(
   main = {
     type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
 
-    val augmentedDiffSourceOpt = Opts.option[URI](
-      "augmented-diff-source", short = "a", metavar = "uri", help = "Location of augmented diffs to process")
-    val databaseUrlOpt = Opts.option[URI](
-      "database-url", short = "d", metavar = "database URL", help = "Database URL")
-    val startSequenceOpt = Opts
-      .option[Int](
-      "start-sequence",
-      short = "s",
-      metavar = "sequence",
-      help = "Starting sequence. If absent, the current (remote) sequence will be used.")
-      .orNone
-    val endSequenceOpt = Opts
-      .option[Int]("end-sequence",
-      short = "e",
-      metavar = "sequence",
-      help = "Ending sequence. If absent, this will be an infinite stream.")
-      .orNone
+    val augmentedDiffSourceOpt =
+      Opts.option[URI](
+        "augmented-diff-source",
+        short = "a",
+        metavar = "uri",
+        help = "Location of augmented diffs to process"
+      )
+    val databaseUrlOpt =
+      Opts.option[URI](
+        "database-url",
+        short = "d",
+        metavar = "database URL",
+        help = "Database URL"
+      )
+    val startSequenceOpt =
+      Opts.option[Int](
+        "start-sequence",
+        short = "s",
+        metavar = "sequence",
+        help = "Starting sequence. If absent, the current (remote) sequence will be used."
+      ).orNone
+    val endSequenceOpt =
+      Opts.option[Int]("end-sequence",
+        short = "e",
+        metavar = "sequence",
+        help = "Ending sequence. If absent, this will be an infinite stream."
+      ).orNone
 
-    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUrlOpt)
-      .mapN { (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
+    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUrlOpt).mapN {
+      (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
       implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
       import ss.implicits._

@@ -21,161 +21,147 @@ import osmesa.common.model.ElementWithSequence
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --augmented-diff-source s3://somewhere/diffs/ \
  */
-object MergedChangesetStreamProcessor
-    extends CommandApp(
-      name = "osmesa-merged-changeset-stream-processor",
-      header = "Consume augmented diffs + changesets and join them",
-      main = {
-        type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
+object MergedChangesetStreamProcessor extends CommandApp(
+  name = "osmesa-merged-changeset-stream-processor",
+  header = "Consume augmented diffs + changesets and join them",
+  main = {
+    type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
 
-        val augmentedDiffSourceOpt = Opts.option[URI](
-          "augmented-diff-source",
-          short = "a",
-          metavar = "uri",
-          help = "Location of augmented diffs to process"
-        )
-        val changesetSourceOpt =
-          Opts
-            .option[URI](
-              "changeset-source",
-              short = "c",
-              metavar = "uri",
-              help = "Location of changesets to process"
-            )
-            .withDefault(
-              new URI("https://planet.osm.org/replication/changesets/")
-            )
-        val startSequenceOpt = Opts
-          .option[Int](
-            "start-sequence",
-            short = "s",
-            metavar = "sequence",
-            help =
-              "Starting sequence. If absent, the current (remote) sequence will be used."
+    val augmentedDiffSourceOpt =
+      Opts.option[URI](
+        "augmented-diff-source",
+        short = "a",
+        metavar = "uri",
+        help = "Location of augmented diffs to process"
+      )
+    val changesetSourceOpt =
+      Opts.option[URI](
+        "changeset-source",
+        short = "c",
+        metavar = "uri",
+        help = "Location of changesets to process"
+      ).withDefault(new URI("https://planet.osm.org/replication/changesets/"))
+    val startSequenceOpt =
+      Opts.option[Int](
+        "start-sequence",
+        short = "s",
+        metavar = "sequence",
+        help = "Starting sequence. If absent, the current (remote) sequence will be used."
+      ).orNone
+    val endSequenceOpt =
+      Opts.option[Int](
+        "end-sequence",
+        short = "e",
+        metavar = "sequence",
+        help = "Ending sequence. If absent, this will be an infinite stream."
+      ).orNone
+    val diffStartSequenceOpt =
+      Opts.option[Int](
+        "diff-start-sequence",
+        short = "S",
+        metavar = "sequence",
+        help = "Starting augmented diff sequence. If absent, the current (remote) sequence will be used."
+      ).orNone
+    val diffEndSequenceOpt =
+      Opts.option[Int](
+        "diff-end-sequence",
+        short = "E",
+        metavar = "sequence",
+        help = "Ending augmented diff sequence. If absent, this will be an infinite stream."
+      ).orNone
+
+    (augmentedDiffSourceOpt,
+     changesetSourceOpt,
+     startSequenceOpt,
+     endSequenceOpt,
+     diffStartSequenceOpt,
+     diffEndSequenceOpt).mapN {
+      (augmentedDiffSource,
+       changesetSource,
+       startSequence,
+       endSequence,
+       diffStartSequence,
+       diffEndSequence) =>
+        /* Settings compatible for both local and EMR execution */
+        val conf = new SparkConf()
+          .setIfMissing("spark.master", "local[*]")
+          .setAppName("merged-changeset-stream-processor")
+          .set(
+            "spark.serializer",
+            classOf[org.apache.spark.serializer.KryoSerializer].getName
           )
-          .orNone
-        val endSequenceOpt = Opts
-          .option[Int](
-            "end-sequence",
-            short = "e",
-            metavar = "sequence",
-            help =
-              "Ending sequence. If absent, this will be an infinite stream."
+          .set(
+            "spark.kryo.registrator",
+            classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName
           )
-          .orNone
-        val diffStartSequenceOpt = Opts
-          .option[Int](
-            "diff-start-sequence",
-            short = "S",
-            metavar = "sequence",
-            help =
-              "Starting augmented diff sequence. If absent, the current (remote) sequence will be used."
+
+        implicit val ss: SparkSession = SparkSession.builder
+          .config(conf)
+          .enableHiveSupport
+          .getOrCreate
+
+        import ss.implicits._
+
+        val augmentedDiffOptions = Map(
+          "base_uri" -> augmentedDiffSource.toString
+        ) ++
+          diffStartSequence
+            .map(s => Map("start_sequence" -> s.toString))
+            .getOrElse(Map.empty[String, String]) ++
+          diffEndSequence
+            .map(s => Map("end_sequence" -> s.toString))
+            .getOrElse(Map.empty[String, String])
+
+        val geoms = ss.readStream
+          .format("augmented-diffs")
+          .options(augmentedDiffOptions)
+          .load
+
+        val changesetOptions = Map("base_uri" -> changesetSource.toString) ++
+          startSequence
+            .map(s => Map("start_sequence" -> s.toString))
+            .getOrElse(Map.empty[String, String]) ++
+          endSequence
+            .map(s => Map("end_sequence" -> s.toString))
+            .getOrElse(Map.empty[String, String])
+
+        val changesets =
+          ss.readStream
+            .format("changesets")
+            .options(changesetOptions)
+            .load
+
+        val changesetsWithWatermark = changesets
+        // changesets can remain open for 24 hours; buy some extra time
+        // TODO can projecting into the future (created_at + 24 hours) and coalescing closed_at reduce the number
+        // of changesets being tracked?
+          .withWatermark("created_at", "25 hours")
+          .select(
+            'id as 'changeset,
+            'tags.getField("created_by") as 'editor,
+            hashtags('tags) as 'hashtags
           )
-          .orNone
-        val diffEndSequenceOpt = Opts
-          .option[Int](
-            "diff-end-sequence",
-            short = "E",
-            metavar = "sequence",
-            help =
-              "Ending augmented diff sequence. If absent, this will be an infinite stream."
+
+        val geomsWithWatermark = geoms
+          .withColumn(
+            "timestamp",
+            to_timestamp('sequence * 60 + 1347432900)
           )
-          .orNone
+          // geoms are standalone; no need to wait for anything
+          .withWatermark("timestamp", "0 seconds")
+          .select('timestamp, 'changeset, '_type, 'id, 'version,
+            'minorVersion, 'updated)
 
-        (
-          augmentedDiffSourceOpt,
-          changesetSourceOpt,
-          startSequenceOpt,
-          endSequenceOpt,
-          diffStartSequenceOpt,
-          diffEndSequenceOpt
-        ).mapN {
-          (augmentedDiffSource,
-           changesetSource,
-           startSequence,
-           endSequence,
-           diffStartSequence,
-           diffEndSequence) =>
-            /* Settings compatible for both local and EMR execution */
-            val conf = new SparkConf()
-              .setIfMissing("spark.master", "local[*]")
-              .setAppName("merged-changeset-stream-processor")
-              .set(
-                "spark.serializer",
-                classOf[org.apache.spark.serializer.KryoSerializer].getName
-              )
-              .set(
-                "spark.kryo.registrator",
-                classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName
-              )
+        val query = geomsWithWatermark
+          .join(changesetsWithWatermark, Seq("changeset"))
+          .writeStream
+          .queryName("merge features w/ changeset metadata")
+          .format("console")
+          .start
 
-            implicit val ss: SparkSession = SparkSession.builder
-              .config(conf)
-              .enableHiveSupport
-              .getOrCreate
+        query.awaitTermination()
 
-            import ss.implicits._
-
-            val augmentedDiffOptions = Map(
-              "base_uri" -> augmentedDiffSource.toString
-            ) ++
-              diffStartSequence
-                .map(s => Map("start_sequence" -> s.toString))
-                .getOrElse(Map.empty[String, String]) ++
-              diffEndSequence
-                .map(s => Map("end_sequence" -> s.toString))
-                .getOrElse(Map.empty[String, String])
-
-            val geoms = ss.readStream
-              .format("augmented-diffs")
-              .options(augmentedDiffOptions)
-              .load
-
-            val changesetOptions = Map("base_uri" -> changesetSource.toString) ++
-              startSequence
-                .map(s => Map("start_sequence" -> s.toString))
-                .getOrElse(Map.empty[String, String]) ++
-              endSequence
-                .map(s => Map("end_sequence" -> s.toString))
-                .getOrElse(Map.empty[String, String])
-
-            val changesets =
-              ss.readStream
-                .format("changesets")
-                .options(changesetOptions)
-                .load
-
-            val changesetsWithWatermark = changesets
-            // changesets can remain open for 24 hours; buy some extra time
-            // TODO can projecting into the future (created_at + 24 hours) and coalescing closed_at reduce the number
-            // of changesets being tracked?
-              .withWatermark("created_at", "25 hours")
-              .select(
-                'id as 'changeset,
-                'tags.getField("created_by") as 'editor,
-                hashtags('tags) as 'hashtags
-              )
-
-            val geomsWithWatermark = geoms
-              .withColumn(
-                "timestamp",
-                to_timestamp('sequence * 60 + 1347432900)
-              )
-              // geoms are standalone; no need to wait for anything
-              .withWatermark("timestamp", "0 seconds")
-              .select('timestamp, 'changeset, '_type, 'id, 'version,
-                'minorVersion, 'updated)
-
-            val query = geomsWithWatermark
-              .join(changesetsWithWatermark, Seq("changeset"))
-              .writeStream
-              .queryName("merge features w/ changeset metadata")
-              .format("console")
-              .start
-
-            query.awaitTermination()
-
-            ss.stop()
-        }
-      }
-    )
+        ss.stop()
+    }
+  }
+)

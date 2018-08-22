@@ -13,7 +13,7 @@ import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
 import osmesa.common.model.Changeset
-import scalaj.http.Http
+import scalaj.http.{Http, HttpOptions}
 
 import scala.concurrent.duration._
 import scala.xml.XML
@@ -32,7 +32,7 @@ object ChangesetSource extends Logging {
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osm.gz"
 
     logDebug(s"Fetching sequence $sequence")
-    val response = Http(baseURI.resolve(path).toString).asBytes
+    val response = Http(baseURI.resolve(path).toString).option(HttpOptions.allowUnsafeSSL).asBytes
 
     if (response.code === 404) {
       logDebug(s"$sequence is not yet available, sleeping.")
@@ -66,7 +66,7 @@ object ChangesetSource extends Logging {
   def getCurrentSequence(baseURI: URI): Option[Int] = {
     try {
       val response =
-        Http(baseURI.resolve("state.yaml").toString).asString
+        Http(baseURI.resolve("state.yaml").toString).option(HttpOptions.allowUnsafeSSL).asString
 
       val state = yaml.parser
         .parse(response.body)
