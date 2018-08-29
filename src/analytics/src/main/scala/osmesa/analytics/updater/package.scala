@@ -1,9 +1,10 @@
 package osmesa.analytics
 
-import java.io.ByteArrayInputStream
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.net.{URI, URLDecoder}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
+import java.util.zip.GZIPOutputStream
 
 import com.amazonaws.services.s3.model.{AmazonS3Exception, ObjectMetadata}
 import geotrellis.proj4.{LatLng, WebMercator}
@@ -116,7 +117,7 @@ package object updater {
     }
   }
 
-  def write(uri: URI, bytes: Array[Byte], encoding: Option[String] = None): Any = {
+  def write(uri: URI, bytes: Array[Byte], encoding: Option[String] = None): Any =
     uri.getScheme match {
       case "s3" =>
         Try(
@@ -136,6 +137,29 @@ package object updater {
       case "file" =>
         Files.write(Paths.get(uri), bytes)
     }
+
+  /**
+    * Write a vector tile to a URI.
+    *
+    * @param vectorTile Vector tile to serialize.
+    * @param uri URI to write to.
+    * @return
+    */
+  def write(vectorTile: VectorTile, uri: URI): Any = {
+    val byteStream = new ByteArrayOutputStream()
+
+    try {
+      val gzipStream = new GZIPOutputStream(byteStream)
+      try {
+        gzipStream.write(vectorTile.toBytes)
+      } finally {
+        gzipStream.close()
+      }
+    } finally {
+      byteStream.close()
+    }
+
+    write(uri, byteStream.toByteArray, Some("gzip"))
   }
 
   def tile(features: Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)],
@@ -238,7 +262,7 @@ package object updater {
 
                   // merge all available layers into a new tile
                   val newTile =
-                    VectorTile(tile.layers.updated(schemaType.layerName, updatedLayer), extent)
+                    VectorTile(tile.layers.updated(updatedLayer._1, updatedLayer._2), extent)
 
                   process(sk, newTile)
                 case _ =>
@@ -277,10 +301,10 @@ package object updater {
     (points, multiPoints, lines, multiLines, polygons, multiPolygons)
   }
 
-  def makeLayer(name: String, extent: Extent, features: Seq[VTFeature]): Layer = {
+  def makeLayer(name: String, extent: Extent, features: Seq[VTFeature]): (String, Layer) = {
     val (points, multiPoints, lines, multiLines, polygons, multiPolygons) = segregate(features)
 
-    StrictLayer(
+    name -> StrictLayer(
       name = name,
       tileWidth = 4096,
       version = 2,
