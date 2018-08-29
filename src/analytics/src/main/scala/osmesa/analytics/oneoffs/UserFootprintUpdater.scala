@@ -205,7 +205,7 @@ object Footprints extends Logging {
 
   def makeUrls(tileSource: URI, tiles: Seq[TileCoordinates with Key]): Seq[(URI, Extent)] =
     tiles.map { tile =>
-      val sk = SpatialKey(tile.col, tile.row)
+      val sk = SpatialKey(tile.x, tile.y)
 
       (makeURI(tileSource, tile.key, tile.zoom, sk),
        sk.extent(LayoutScheme.levelForZoom(tile.zoom).layout))
@@ -237,10 +237,10 @@ object Footprints extends Logging {
       tiles: Seq[TileCoordinates with Key with RasterWithSequenceTileSeq],
       mvts: GenMap[URI, VectorTile]): Seq[(String, Int, Int, Int, Seq[Raster with Sequence])] =
     tiles.map { tile =>
-      val sk = SpatialKey(tile.col, tile.row)
+      val sk = SpatialKey(tile.x, tile.y)
       val uri = makeURI(tileSource, tile.key, tile.zoom, sk)
 
-      (tile.key, tile.zoom, tile.col, tile.row, tile.tiles filter { t =>
+      (tile.key, tile.zoom, tile.x, tile.y, tile.tiles filter { t =>
         !mvts.get(uri).map(getCommittedSequences).exists(_.contains(t.sequence))
       })
     } filter {
@@ -302,7 +302,7 @@ object Footprints extends Logging {
     import tiles.sparkSession.implicits._
 
     tiles
-      .groupByKey(tile => (tile.key, tile.zoom, tile.col, tile.row))
+      .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
       .mapGroups {
         case ((k, z, x, y), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
           RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
@@ -349,8 +349,8 @@ object Footprints extends Logging {
                 RasterTileWithKeyAndSequence(tile.sequence,
                                              tile.key,
                                              zoom,
-                                             tile.col / factor,
-                                             tile.row / factor,
+                                             tile.x / factor,
+                                             tile.y / factor,
                                              GTRaster.tupToRaster(parent, tile.raster.extent)))
             }
           }
@@ -371,7 +371,7 @@ object Footprints extends Logging {
     import tiles.sparkSession.implicits._
 
     tiles
-      .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.col, tile.row))
+      .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
       .mapGroups {
         case ((sequence, k, z, x, y), tiles: Iterator[RasterTile with Key with Sequence]) =>
           tiles.map(_.raster).toList match {
@@ -403,7 +403,7 @@ object Footprints extends Logging {
     import geometryTiles.sparkSession.implicits._
 
     geometryTiles
-      .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.col, tile.row))
+      .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
       .mapGroups {
         case ((sequence, k, z, x, y), rows) =>
           val tiles = rows.toList
