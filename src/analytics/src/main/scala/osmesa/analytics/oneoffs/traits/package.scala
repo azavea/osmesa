@@ -11,6 +11,8 @@ import geotrellis.raster.{
 import geotrellis.vector.io._
 import geotrellis.vector.{Extent, Point, Geometry => GTGeometry}
 
+// this is a placeholder package until such point at which much of this is moved to core (with case classes in an impl
+// package)
 package object traits {
   trait Geometry {
     def geom: GTGeometry
@@ -24,8 +26,8 @@ package object traits {
 
   trait TileCoordinates {
     def zoom: Int
-    def col: Int
-    def row: Int
+    def x: Int
+    def y: Int
   }
 
   trait GeometryTile extends SerializedGeometry with TileCoordinates
@@ -74,8 +76,8 @@ package object traits {
   case class TileCoordinatesWithKeyAndSequence(sequence: Int,
                                                key: String,
                                                zoom: Int,
-                                               col: Int,
-                                               row: Int)
+                                               x: Int,
+                                               y: Int)
       extends TileCoordinates
       with Key
       with Sequence
@@ -83,8 +85,8 @@ package object traits {
   case class GeometryTileWithKeyAndSequence(sequence: Int,
                                             key: String,
                                             zoom: Int,
-                                            col: Int,
-                                            row: Int,
+                                            x: Int,
+                                            y: Int,
                                             wkb: Array[Byte])
       extends GeometryTile
       with Key
@@ -93,8 +95,8 @@ package object traits {
   case class RasterTileWithKeyAndSequence(sequence: Int,
                                           key: String,
                                           zoom: Int,
-                                          col: Int,
-                                          row: Int,
+                                          x: Int,
+                                          y: Int,
                                           tileBytes: Array[Byte],
                                           tileCols: Int,
                                           tileRows: Int,
@@ -118,8 +120,8 @@ package object traits {
 
   case class RasterWithSequenceTileSeqWithTileCoordinatesAndKey(tiles: Seq[RasterWithSequence],
                                                                 zoom: Int,
-                                                                col: Int,
-                                                                row: Int,
+                                                                x: Int,
+                                                                y: Int,
                                                                 key: String)
       extends RasterWithSequenceTileSeq
       with TileCoordinates
@@ -146,7 +148,7 @@ package object traits {
     )
   }
 
-  case class CountWithTileCoordinatesAndKey(count: Long, zoom: Int, col: Int, row: Int, key: String)
+  case class CountWithTileCoordinatesAndKey(count: Long, zoom: Int, x: Int, y: Int, key: String)
       extends Count
       with TileCoordinates
       with Key
