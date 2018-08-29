@@ -153,6 +153,18 @@ package object traits {
       with TileCoordinates
       with Key
 
+  object RasterWithSequenceTileSeqWithTileCoordinatesAndKey {
+    def apply(tiles: Seq[Raster with Sequence], zoom: Int, x: Int, y: Int, key: String)(
+        implicit d: DummyImplicit): RasterWithSequenceTileSeqWithTileCoordinatesAndKey =
+      RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
+        // potentially unsafe cast assuming multiple implementations of Raster with Sequence
+        tiles.map(_.asInstanceOf[RasterWithSequence]),
+        zoom,
+        x,
+        y,
+        key)
+  }
+
   object RasterTileWithKeyAndSequence {
     def apply(sequence: Int,
               key: String,

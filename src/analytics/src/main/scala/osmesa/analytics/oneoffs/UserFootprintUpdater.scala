@@ -69,9 +69,9 @@ object Footprints extends Logging {
           // TODO in the future, allow tiles to contain layers for multiple keys; this has knock-on effects
           val urls = makeUrls(tileSource, tiles)
           val mvts = loadMVTs(urls)
-          val uncommittedSequences = getUncommittedSequences(tileSource, tiles, mvts)
+          val uncommitted = getUncommittedTiles(tileSource, tiles, mvts)
 
-          updateTiles(tileSource, mvts, uncommittedSequences.merge.vectorize).iterator
+          updateTiles(tileSource, mvts, uncommitted.merge.vectorize).iterator
         } finally {
           taskSupport.environment.shutdown()
         }
@@ -189,20 +189,6 @@ object Footprints extends Logging {
     makeLayer(SequenceLayerName, extent, Seq(sequenceFeature))
   }
 
-  def makeURI(tileSource: URI, key: String, zoom: Int, sk: SpatialKey): URI = {
-    val filename =
-      s"${URLEncoder.encode(key, StandardCharsets.UTF_8.toString)}/${path(zoom, sk)}"
-    tileSource.resolve(filename)
-  }
-
-  def getCommittedSequences(tile: VectorTile): Seq[Int] =
-    // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
-    // single sequence may appear in different batches depending on when changeset metadata arrives
-    tile.layers
-      .get(SequenceLayerName)
-      .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
-      .getOrElse(Seq.empty[Int])
-
   def makeUrls(tileSource: URI, tiles: Seq[TileCoordinates with Key]): Seq[(URI, Extent)] =
     tiles.map { tile =>
       val sk = SpatialKey(tile.x, tile.y)
@@ -232,20 +218,38 @@ object Footprints extends Logging {
     } toMap
   }
 
-  def getUncommittedSequences(
+  def getUncommittedTiles(
       tileSource: URI,
       tiles: Seq[TileCoordinates with Key with RasterWithSequenceTileSeq],
-      mvts: GenMap[URI, VectorTile]): Seq[(String, Int, Int, Int, Seq[Raster with Sequence])] =
-    tiles.map { tile =>
-      val sk = SpatialKey(tile.x, tile.y)
-      val uri = makeURI(tileSource, tile.key, tile.zoom, sk)
+      mvts: GenMap[URI, VectorTile]): Seq[TileCoordinates with Key with RasterWithSequenceTileSeq] =
+    tiles
+      .map(tile => {
+        val sk = SpatialKey(tile.x, tile.y)
+        val uri = makeURI(tileSource, tile.key, tile.zoom, sk)
 
-      (tile.key, tile.zoom, tile.x, tile.y, tile.tiles filter { t =>
-        !mvts.get(uri).map(getCommittedSequences).exists(_.contains(t.sequence))
+        RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
+          tile.tiles.filter(t =>
+            !mvts.get(uri).map(getCommittedSequences).exists(_.contains(t.sequence))),
+          tile.zoom,
+          tile.x,
+          tile.y,
+          tile.key)
       })
-    } filter {
-      case (_, _, _, _, sequences) => sequences.nonEmpty
-    }
+      .filter(tileSeq => tileSeq.tiles.nonEmpty)
+
+  def makeURI(tileSource: URI, key: String, zoom: Int, sk: SpatialKey): URI = {
+    val filename =
+      s"${URLEncoder.encode(key, StandardCharsets.UTF_8.toString)}/${path(zoom, sk)}"
+    tileSource.resolve(filename)
+  }
+
+  def getCommittedSequences(tile: VectorTile): Seq[Int] =
+    // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
+    // single sequence may appear in different batches depending on when changeset metadata arrives
+    tile.layers
+      .get(SequenceLayerName)
+      .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
+      .getOrElse(Seq.empty[Int])
 
   def vectorize(tiles: Seq[(String, Int, Int, Int, GTRaster[Tile], List[Int])])
     : Seq[(String, Int, SpatialKey, Extent, ArrayBuffer[PointFeature[(Long, Int)]], List[Int])] =
@@ -271,24 +275,24 @@ object Footprints extends Logging {
         (k, z, sk, raster.extent, features, sequences)
     }
 
-  def merge(uncommitted: Seq[(String, Int, Int, Int, Seq[Raster with Sequence])])
+  def merge(uncommitted: Seq[TileCoordinates with Key with RasterWithSequenceTileSeq])
     : Seq[(String, Int, Int, Int, GTRaster[Tile], List[Int])] =
     uncommitted
       .map {
         // merge tiles with different sequences together
-        case (k, z, x, y, groups: Seq[Raster with Sequence]) =>
-          val data = groups.toList
+        tile =>
+          val data = tile.tiles.toList
           val sequences = data.map(_.sequence)
           val rasters = data.map(_.raster)
           val targetExtent =
-            SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+            SpatialKey(tile.x, tile.y).extent(LayoutScheme.levelForZoom(tile.zoom).layout)
 
           val newTile = rasters.head.tile.prototype(Cols, Rows)
 
           rasters.foreach { raster => newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
           }
 
-          (k, z, x, y, GTRaster.tupToRaster(newTile, targetExtent), sequences)
+          (tile.key, tile.zoom, tile.x, tile.y, GTRaster.tupToRaster(newTile, targetExtent), sequences)
       }
 
   /**
@@ -304,7 +308,7 @@ object Footprints extends Logging {
     tiles
       .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
       .mapGroups {
-        case ((k, z, x, y), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
+        case ((k, z, x, y), tiles: Iterator[RasterTile with Key with Sequence]) =>
           RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
             tiles
               .map(x => RasterWithSequence(x.raster, x.sequence))
@@ -500,8 +504,8 @@ object Footprints extends Logging {
         Footprints.rasterize(geometryTiles, cols, rows)
     }
 
-    implicit class MergeExtension(
-        uncommitted: Seq[(String, Int, Int, Int, Seq[Raster with Sequence])]) {
+    implicit class ExtendedTileCoordinatesWithKeyAndRasterWithSequenceTileSeq(
+        uncommitted: Seq[TileCoordinates with Key with RasterWithSequenceTileSeq]) {
       def merge: Seq[(String, Int, Int, Int, GTRaster[Tile], List[Int])] =
         Footprints.merge(uncommitted)
     }
