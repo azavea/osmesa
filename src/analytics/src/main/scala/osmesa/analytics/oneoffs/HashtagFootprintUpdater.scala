@@ -446,7 +446,7 @@ object HashtagFootprintUpdater extends CommandApp(
                         // TODO update a second layer w/ features corresponding to sequences seen (in the absence of
                         // tile / layer metadata)
                         val newTile =
-                          VectorTile(tile.layers.updated(layerName, updatedLayer), extent)
+                          VectorTile(tile.layers.updated(updatedLayer._1, updatedLayer._2), extent)
 
                         val byteStream = new ByteArrayOutputStream()
 
