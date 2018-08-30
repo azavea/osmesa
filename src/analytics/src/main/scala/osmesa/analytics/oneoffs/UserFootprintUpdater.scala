@@ -20,11 +20,11 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
-import osmesa.analytics.oneoffs.traits._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, read, write}
 import osmesa.common.ProcessOSM
-import osmesa.common.model.ElementWithSequence
+import osmesa.common.model._
+import osmesa.common.model.impl._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.{ForkJoinTaskSupport, TaskSupport}
@@ -292,7 +292,12 @@ object Footprints extends Logging {
           rasters.foreach { raster => newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
           }
 
-          (tile.key, tile.zoom, tile.x, tile.y, GTRaster.tupToRaster(newTile, targetExtent), sequences)
+          (tile.key,
+           tile.zoom,
+           tile.x,
+           tile.y,
+           GTRaster.tupToRaster(newTile, targetExtent),
+           sequences)
       }
 
   /**
