@@ -548,25 +548,50 @@ object ProcessOSM {
 
           buildBuilding(id, version, updated, types, roles, geoms) match {
             case Some(components) =>
-              components.map {
-                case ("", wkb) =>
-                  // no role
-                  new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
-                    validUntil, wkb), TaggedVersionedElementSchema): Row
-                case (role, wkb) =>
-                  new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion,
-                    updated, validUntil, wkb), TaggedVersionedElementSchema): Row
+              components.groupBy { case (role, _) => role } map {
+                case (role, pieces) =>
+                  val tags = role match {
+                    case "" => Map.empty[String, String]
+                    case _  => Map("role" -> role)
+                  }
+
+                  val wkb = if (pieces.length == 1) {
+                    pieces.head._2
+                  } else {
+                    MultiPolygon(pieces.map(_._2.readWKB.as[Polygon].get)).toWKB(4326)
+                  }
+
+                  new GenericRowWithSchema(
+                    Array(changeset, id, tags, version, minorVersion, updated, validUntil, wkb),
+                    TaggedVersionedElementSchema
+                  ): Row
               }
             case None =>
               // no geometry
-              Seq(new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
-                validUntil, null), TaggedVersionedElementSchema): Row)
+              Seq(
+                new GenericRowWithSchema(
+                  Array(
+                    changeset,
+                    id,
+                    Map(),
+                    version,
+                    minorVersion,
+                    updated,
+                    validUntil,
+                    null
+                  ),
+                  TaggedVersionedElementSchema
+                ): Row
+              )
           }
       }
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
-      .join(relations.select('id, 'version, 'tags as 'originalTags, 'visible), Seq("id", "version"))
+      .join(
+        relations.select('id, 'version, 'tags as 'originalTags, 'visible),
+        Seq("id", "version")
+      )
       .select(
         lit(RelationType) as '_type,
         'id,
@@ -688,14 +713,23 @@ object ProcessOSM {
 
           buildRoute(id, version, updated, types, roles, geoms) match {
             case Some(components) =>
-              components.map {
-                case ("", wkb) =>
-                  // no role
-                  new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
-                    validUntil, wkb), TaggedVersionedElementSchema): Row
-                case (role, wkb) =>
-                  new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion,
-                    updated, validUntil, wkb), TaggedVersionedElementSchema): Row
+              components.groupBy { case (role, _) => role } map {
+                case (role, pieces) =>
+                  val tags = role match {
+                    case "" => Map.empty[String, String]
+                    case _  => Map("role" -> role)
+                  }
+
+                  val wkb = if (pieces.length == 1) {
+                    pieces.head._2
+                  } else {
+                    MultiLine(pieces.map(_._2.readWKB.as[Line].get)).toWKB(4326)
+                  }
+
+                  new GenericRowWithSchema(
+                    Array(changeset, id, tags, version, minorVersion, updated, validUntil, wkb),
+                    TaggedVersionedElementSchema
+                  ): Row
               }
             case None =>
               // no geometry
