@@ -496,9 +496,12 @@ object ProcessOSM {
 
     val relations = preprocessRelations(_relations)
 
-    reconstructBuildingRelationGeometries(relations,geoms)
-      .union(reconstructMultiPolygonRelationGeometries(relations, geoms.where('_type === WayType)))
-      .union(reconstructRouteRelationGeometries(relations, geoms.where('_type === WayType)))
+    val wayGeoms = geoms.where('_type === WayType).cache
+
+    val mps = reconstructMultiPolygonRelationGeometries(relations, wayGeoms).cache
+
+    mps.union(reconstructBuildingRelationGeometries(relations, geoms.union(mps.withColumn("geometryChanged", lit(true)))))
+      .union(reconstructRouteRelationGeometries(relations, wayGeoms))
   }
 
   def reconstructBuildingRelationGeometries(_relations: DataFrame,
