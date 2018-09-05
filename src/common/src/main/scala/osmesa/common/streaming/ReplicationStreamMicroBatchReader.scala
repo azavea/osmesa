@@ -10,34 +10,10 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.DataReader
-import org.apache.spark.sql.sources.v2.reader.streaming.{
-  MicroBatchReader,
-  Offset
-}
+import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
 
 import scala.compat.java8.OptionConverters._
 
-abstract class ReplicationStreamBatchReader[T](baseURI: URI, sequence: Int)
-    extends DataReader[Row]
-    with Logging {
-  protected var index: Int = -1
-  protected var items: Vector[T] = _
-
-  override def next(): Boolean = {
-    index += 1
-
-    if (Option(items).isEmpty) {
-      // initialize items from the starting sequence
-      items = getSequence(baseURI, sequence).toVector
-    }
-
-    index < items.length
-  }
-
-  override def close(): Unit = Unit
-
-  protected def getSequence(baseURI: URI, sequence: Int): Seq[T]
-}
 
 abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                                                  checkpointLocation: String)
@@ -45,13 +21,13 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     with Logging {
   val DefaultBatchSize: Int =
     SparkEnv.get.conf.getInt("spark.sql.shuffle.partitions", 200)
-  protected val batchSize: Int = options
-    .get("batch_size")
-    .asScala
-    .map(s => s.toInt)
-    .getOrElse(DefaultBatchSize)
+
+  protected val batchSize: Int =
+    options.getInt("batch_size", DefaultBatchSize)
+
   protected var startSequence: Option[Int] =
     options.get("start_sequence").asScala.map(_.toInt)
+
   protected var endSequence: Option[Int] =
     options.get("end_sequence").asScala.map(_.toInt)
 
