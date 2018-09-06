@@ -1,6 +1,7 @@
 package osmesa.common.model
 
 import java.sql.Timestamp
+import scala.util.Try
 
 import org.joda.time.DateTime
 
@@ -37,10 +38,11 @@ object Changeset {
 
   def fromXML(node: scala.xml.Node): Changeset = {
     val id = (node \@ "id").toLong
-    val commentsCount = (node \@ "comments_count").toInt
+    // Old changesets lack the appropriate field
+    val commentsCount = Try((node \@ "comments_count").toInt).toOption.getOrElse(0)
     val uid = (node \@ "uid").toLong
     val user = node \@ "user"
-    val numChanges = (node \@ "num_changes").toInt
+    val numChanges = Try((node \@ "num_changes").toInt).toOption.getOrElse(0)
     val open = (node \@ "open").toBoolean
     val closedAt = node \@ "closed_at"
     val createdAt = node \@ "created_at"
