@@ -37,6 +37,18 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "database URL",
         help = "Database URL"
       )
+    val databaseUserOpt =
+      Opts.option[String]("database-user",
+        short = "u",
+        metavar = "database user",
+        help = "Database user"
+      ).orNone
+    val databasePassOpt =
+      Opts.option[String]("database-pass",
+        short = "p",
+        metavar = "database password",
+        help = "Database password"
+      ).orNone
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",
@@ -51,9 +63,11 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "sequence",
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
+    val ignoreHttpsOpt =
+      Opts.flag("ignore-https", help = "Whether to be ignore HTTPS certs.").orFalse
 
-    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt).mapN {
-      (changesetSource, databaseUri, startSequence, endSequence) =>
+    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt, databaseUserOpt, databasePassOpt, ignoreHttpsOpt).mapN {
+      (changesetSource, databaseUri, startSequence, endSequence, databaseUser, databasePass, ignoreHttps) =>
         implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 
         import ss.implicits._
@@ -61,8 +75,15 @@ object ChangesetStreamProcessor extends CommandApp(
         val options = Map(
           "base_uri"  -> changesetSource.toString,
           "db_uri"    -> databaseUri.toString,
-          "proc_name" -> "ChangesetStream"
+          "proc_name" -> "ChangesetStream",
+          "ignore_https" -> ignoreHttps.toString
         ) ++
+          databaseUser
+            .map(usr => Map("db_user" -> usr))
+            .getOrElse(Map.empty[String, String]) ++
+          databasePass
+            .map(pw => Map("db_pass" -> pw))
+            .getOrElse(Map.empty[String, String]) ++
           startSequence
             .map(s => Map("start_sequence" -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
@@ -187,7 +208,11 @@ object ChangesetStreamProcessor extends CommandApp(
               this.partitionId = partitionId
               this.version = version
 
-              connection = DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
+              connection = (databaseUser, databasePass).mapN { (usr, pass) =>
+                DriverManager.getConnection(s"jdbc:${databaseUri.toString}", usr, pass)
+              }.getOrElse {
+                DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
+              }
 
               true
             }

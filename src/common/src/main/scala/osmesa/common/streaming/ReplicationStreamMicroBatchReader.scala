@@ -4,7 +4,7 @@ import java.net.URI
 import java.util.Optional
 import java.sql._
 
-import cats.syntax.either._
+import cats.implicits._
 import io.circe.parser._
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
@@ -21,14 +21,18 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     extends MicroBatchReader
     with Logging {
 
-  private def recoverSequence(dbUri: URI, procName: String): Option[Int] = {
+  private def recoverSequence(dbUri: URI, procName: String, user: Option[String], password: Option[String]): Option[Int] = {
     var sequence: Option[Int] = None
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
     var conn: Connection = null.asInstanceOf[Connection]
     try {
-      conn = DriverManager.getConnection(s"jdbc:${dbUri.toString}", "postgres", "")
-      println(s"the conn: $conn")
+      conn = (user, password).mapN { case (usr, pass) =>
+        DriverManager.getConnection(s"jdbc:${dbUri.toString}", usr, pass)
+      }.getOrElse {
+        DriverManager.getConnection(s"jdbc:${dbUri.toString}")
+      }
+
       val preppedStatement = conn.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
       preppedStatement.setString(1, procName)
       val rs = preppedStatement.executeQuery()
@@ -43,12 +47,16 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     }
   }
 
-  private def checkpointSequence(dbUri: URI, sequence: Int): Unit = {
+  private def checkpointSequence(dbUri: URI, sequence: Int, user: Option[String], password: Option[String]): Unit = {
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
     var conn: Connection = null.asInstanceOf[Connection]
     try {
-      conn = DriverManager.getConnection(s"jdbc:${dbUri.toString}", "postgres", "")
+      conn = (user, password).mapN { case (usr, pass) =>
+        DriverManager.getConnection(s"jdbc:${dbUri.toString}", usr, pass)
+      }.getOrElse {
+        DriverManager.getConnection(s"jdbc:${dbUri.toString}")
+      }
       val upsertSequence =
         conn.prepareStatement(
           """
@@ -76,13 +84,25 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   protected val databaseUri: Option[URI] =
     options.get("db_uri").asScala.map(new URI(_))
 
+  protected val databaseUser: Option[String] =
+    options.get("db_user").asScala
+
+  protected val databasePass: Option[String] =
+    options.get("db_pass").asScala
+
+  protected val ignoreHttps: Boolean =
+    options.getBoolean("ignore_https", false)
+
   protected val procName: String = options.get("proc_name").asScala
     .getOrElse(throw new IllegalStateException("Process name required to recover sequence"))
 
-  protected var startSequence: Option[Int] =
-    databaseUri.flatMap { uri =>
-      recoverSequence(uri, procName) orElse options.get("start_sequence").asScala.map(_.toInt)
+  protected var startSequence: Option[Int] = {
+    val start = databaseUri.flatMap { uri =>
+      recoverSequence(uri, procName, databaseUser, databasePass) orElse options.get("start_sequence").asScala.map(_.toInt)
     }
+    logInfo(s"Starting with sequence: $start")
+    start
+  }
 
   protected var endSequence: Option[Int] =
     options.get("end_sequence").asScala.map(_.toInt)
@@ -170,7 +190,11 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     }
 
   override def commit(end: Offset): Unit = {
-    databaseUri.foreach { checkpointSequence(_, end.asInstanceOf[SequenceOffset].sequence) }
+    databaseUri.foreach {
+      val offset = end.asInstanceOf[SequenceOffset]
+      logInfo(s"Saving ending sequence of: ${offset.sequence}")
+      checkpointSequence(_, offset.sequence, databaseUser, databasePass)
+    }
     logInfo(s"Commit: $end")
   }
 
