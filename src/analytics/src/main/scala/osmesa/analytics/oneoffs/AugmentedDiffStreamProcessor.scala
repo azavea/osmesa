@@ -38,9 +38,9 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         metavar = "uri",
         help = "Location of augmented diffs to process"
       )
-    val databaseUrlOpt =
+    val databaseUriOpt =
       Opts.option[URI](
-        "database-url",
+        "database-uri",
         short = "d",
         metavar = "database URL",
         help = "Database URL"
@@ -59,13 +59,17 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUrlOpt).mapN {
+    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt).mapN {
       (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
       implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
       import ss.implicits._
 
-      val options = Map("base_uri" -> augmentedDiffSource.toString) ++
+      val options = Map(
+        "base_uri"  -> augmentedDiffSource.toString,
+        "db_uri"    -> databaseUri.toString,
+        "proc_name" -> "AugmentedDiffStream"
+      ) ++
         startSequence
           .map(s => Map("start_sequence" -> s.toString))
           .getOrElse(Map.empty[String, String]) ++
