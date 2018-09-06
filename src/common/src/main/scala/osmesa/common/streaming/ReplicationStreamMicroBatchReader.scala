@@ -21,24 +21,49 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     extends MicroBatchReader
     with Logging {
 
-  def recoverSequence(dbUri: URI, procName: String): Option[Int] = {
+  private def recoverSequence(dbUri: URI, procName: String): Option[Int] = {
     var sequence: Option[Int] = None
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
     var conn: Connection = null.asInstanceOf[Connection]
     try {
-      conn = DriverManager.getConnection(s"jdbc:${dbUri.toString}")
-      val preppedStatement = conn.prepareStatement("SELECT sequence FROM ?")
+      conn = DriverManager.getConnection(s"jdbc:${dbUri.toString}", "postgres", "")
+      println(s"the conn: $conn")
+      val preppedStatement = conn.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
       preppedStatement.setString(1, procName)
       val rs = preppedStatement.executeQuery()
-      sequence = Some(rs.getInt("sequence"))
+      sequence = if (rs.next()) Some(rs.getInt("sequence")) else None
     } finally {
       conn.close()
     }
 
     sequence match {
       case Some(0) => None
-      case otherwise => otherwise
+      case elsewise => elsewise
+    }
+  }
+
+  private def checkpointSequence(dbUri: URI, sequence: Int): Unit = {
+    // Odersky endorses the following.
+    // https://issues.scala-lang.org/browse/SI-4437
+    var conn: Connection = null.asInstanceOf[Connection]
+    try {
+      conn = DriverManager.getConnection(s"jdbc:${dbUri.toString}", "postgres", "")
+      val upsertSequence =
+        conn.prepareStatement(
+          """
+            |INSERT INTO checkpoints (proc_name, sequence)
+            |VALUES (?, ?)
+            |ON CONFLICT (proc_name)
+            |DO UPDATE SET sequence = ?
+          """.stripMargin
+        )
+      upsertSequence.setString(1, procName)
+      upsertSequence.setInt(2, sequence)
+      upsertSequence.setInt(3, sequence)
+      upsertSequence.execute()
+    } finally {
+      conn.close()
     }
   }
 
@@ -144,8 +169,10 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
       throw new IllegalStateException("end offset not set")
     }
 
-  override def commit(end: Offset): Unit =
+  override def commit(end: Offset): Unit = {
+    databaseUri.foreach { checkpointSequence(_, end.asInstanceOf[SequenceOffset].sequence) }
     logInfo(s"Commit: $end")
+  }
 
   override def deserializeOffset(json: String): Offset = {
     val t = parse(json) match {
