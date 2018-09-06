@@ -46,8 +46,15 @@ object ChangeStreamProcessor extends CommandApp(
         metavar = "sequence",
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
+    val databaseUriOpt =
+      Opts.option[URI](
+        "database-uri",
+        short = "d",
+        metavar = "database URL",
+        help = "Database URL"
+      ).orNone
 
-    (changesetSourceOpt, startSequenceOpt, endSequenceOpt).mapN { (changesetSource, startSequence, endSequence) =>
+    (changesetSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt).mapN { (changesetSource, startSequence, endSequence, databaseUri) =>
       implicit val ss: SparkSession =
         Analytics.sparkSession("ChangeStreamProcessor")
 
@@ -57,6 +64,9 @@ object ChangeStreamProcessor extends CommandApp(
         "base_uri"  -> changesetSource.toString,
         "proc_name" -> "ChangeStream"
       ) ++
+        databaseUri
+          .map(db => Map("db_uri" -> db.toString))
+          .getOrElse(Map.empty[String, String]) ++
         startSequence
           .map(s => Map("start_sequence" -> s.toString))
           .getOrElse(Map.empty[String, String]) ++
