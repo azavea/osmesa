@@ -53,7 +53,10 @@ object ChangeStreamProcessor extends CommandApp(
 
       import ss.implicits._
 
-      val options = Map("base_uri" -> changesetSource.toString) ++
+      val options = Map(
+        "base_uri"  -> changesetSource.toString,
+        "proc_name" -> "ChangeStream"
+      ) ++
         startSequence
           .map(s => Map("start_sequence" -> s.toString))
           .getOrElse(Map.empty[String, String]) ++

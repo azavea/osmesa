@@ -30,9 +30,9 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "uri",
         help = "Location of changesets to process"
       ).withDefault(new URI("https://planet.osm.org/replication/changesets/"))
-    val databaseUrlOpt =
+    val databaseUriOpt =
       Opts.option[URI](
-        "database-url",
+        "database-uri",
         short = "d",
         metavar = "database URL",
         help = "Database URL"
@@ -52,13 +52,17 @@ object ChangesetStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (changesetSourceOpt, databaseUrlOpt, startSequenceOpt, endSequenceOpt).mapN {
+    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt).mapN {
       (changesetSource, databaseUri, startSequence, endSequence) =>
         implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 
         import ss.implicits._
 
-        val options = Map("base_uri" -> changesetSource.toString) ++
+        val options = Map(
+          "base_uri"  -> changesetSource.toString,
+          "db_uri"    -> databaseUri.toString,
+          "proc_name" -> "ChangesetStream"
+        ) ++
           startSequence
             .map(s => Map("start_sequence" -> s.toString))
             .getOrElse(Map.empty[String, String]) ++

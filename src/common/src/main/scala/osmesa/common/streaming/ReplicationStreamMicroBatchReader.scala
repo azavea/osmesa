@@ -2,6 +2,7 @@ package osmesa.common.streaming
 
 import java.net.URI
 import java.util.Optional
+import java.sql._
 
 import cats.syntax.either._
 import io.circe.parser._
@@ -19,14 +20,44 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                                                  checkpointLocation: String)
     extends MicroBatchReader
     with Logging {
+
+  def recoverSequence(dbUri: URI, procName: String): Option[Int] = {
+    var sequence: Option[Int] = None
+    // Odersky endorses the following.
+    // https://issues.scala-lang.org/browse/SI-4437
+    var conn: Connection = null.asInstanceOf[Connection]
+    try {
+      conn = DriverManager.getConnection(s"jdbc:${dbUri.toString}")
+      val preppedStatement = conn.prepareStatement("SELECT sequence FROM ?")
+      preppedStatement.setString(1, procName)
+      val rs = preppedStatement.executeQuery()
+      sequence = Some(rs.getInt("sequence"))
+    } finally {
+      conn.close()
+    }
+
+    sequence match {
+      case Some(0) => None
+      case otherwise => otherwise
+    }
+  }
+
   val DefaultBatchSize: Int =
     SparkEnv.get.conf.getInt("spark.sql.shuffle.partitions", 200)
 
   protected val batchSize: Int =
     options.getInt("batch_size", DefaultBatchSize)
 
+  protected val databaseUri: Option[URI] =
+    options.get("db_uri").asScala.map(new URI(_))
+
+  protected val procName: String = options.get("proc_name").asScala
+    .getOrElse(throw new IllegalStateException("Process name required to recover sequence"))
+
   protected var startSequence: Option[Int] =
-    options.get("start_sequence").asScala.map(_.toInt)
+    databaseUri.flatMap { uri =>
+      recoverSequence(uri, procName) orElse options.get("start_sequence").asScala.map(_.toInt)
+    }
 
   protected var endSequence: Option[Int] =
     options.get("end_sequence").asScala.map(_.toInt)
@@ -34,6 +65,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   // start offsets are exclusive, so start with the one before what's requested (if provided)
   protected var startOffset: Option[SequenceOffset] =
     startSequence.map(s => SequenceOffset(s - 1))
+
   protected var endOffset: Option[SequenceOffset] = None
 
   override def setOffsetRange(start: Optional[Offset],
