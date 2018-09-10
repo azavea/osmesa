@@ -41,8 +41,9 @@ object Footprints extends Logging {
               baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] =
     (baseZoom to 0 by -8).foldLeft(base)((acc, z) => acc.downsample(z).merge)
 
-  def updateFootprints(tileSource: URI, nodes: DataFrame)(
-      implicit concurrentUploads: Option[Int]): Dataset[Count with TileCoordinates with Key] = {
+  def updateFootprints(tileSource: URI, nodes: DataFrame)(implicit concurrentUploads: Option[Int] =
+                                                            None)
+    : Dataset[Count with TileCoordinates with Key] = {
     import nodes.sparkSession.implicits._
 
     val points = nodes
