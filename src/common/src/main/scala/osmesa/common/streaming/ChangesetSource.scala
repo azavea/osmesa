@@ -26,18 +26,20 @@ object ChangesetSource extends Logging {
   private implicit val dateTimeDecoder: Decoder[DateTime] =
     Decoder.instance(a => a.as[String].map(DateTime.parse(_, formatter)))
 
-  def getSequence(baseURI: URI, sequence: Int): Seq[Changeset] = {
+  def getSequence(baseURI: URI, sequence: Int, ignoreHttps: Boolean): Seq[Changeset] = {
     val s = f"$sequence%09d".toArray
     val path =
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osm.gz"
 
     logDebug(s"Fetching sequence $sequence")
-    val response = Http(baseURI.resolve(path).toString).option(HttpOptions.allowUnsafeSSL).asBytes
+    val response =
+      if (ignoreHttps) Http(baseURI.resolve(path).toString).option(HttpOptions.allowUnsafeSSL).asBytes
+      else Http(baseURI.resolve(path).toString).asBytes
 
     if (response.code === 404) {
       logDebug(s"$sequence is not yet available, sleeping.")
       Thread.sleep(Delay.toMillis)
-      getSequence(baseURI, sequence)
+      getSequence(baseURI, sequence, ignoreHttps)
     } else {
       // NOTE: if diff bodies get really large, switch to a SAX parser to help with the memory footprint
       val bais = new ByteArrayInputStream(response.body)
@@ -54,7 +56,7 @@ object ChangesetSource extends Logging {
         case e: IOException =>
           logWarning(s"Error reading changeset s$sequence", e)
           Thread.sleep(Delay.toMillis)
-          getSequence(baseURI, sequence)
+          getSequence(baseURI, sequence, ignoreHttps)
       } finally {
         gzis.close()
         bais.close()
@@ -63,10 +65,11 @@ object ChangesetSource extends Logging {
   }
 
   @memoize(maxSize = 1, expiresAfter = 30 seconds)
-  def getCurrentSequence(baseURI: URI): Option[Int] = {
+  def getCurrentSequence(baseURI: URI, ignoreHttps: Boolean): Option[Int] = {
     try {
       val response =
-        Http(baseURI.resolve("state.yaml").toString).option(HttpOptions.allowUnsafeSSL).asString
+        if (ignoreHttps) Http(baseURI.resolve("state.yaml").toString).option(HttpOptions.allowUnsafeSSL).asString
+        else Http(baseURI.resolve("state.yaml").toString).asString
 
       val state = yaml.parser
         .parse(response.body)
