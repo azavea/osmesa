@@ -93,64 +93,83 @@ object Footprints extends Logging {
             // update existing tiles
 
             // load the target layer
-            val layer = tile.layers(key)
+            val layers = tile.layers.get(key) match {
+              case Some(layer) =>
+                // TODO feature construction / updating is very similar to osmesa.analytics.updater.schemas.*; see if the 2
+                // can be merged
 
-            // TODO feature construction / updating is very similar to osmesa.analytics.updater.schemas.*; see if the 2
-            // can be merged
+                val newFeaturesById: Map[Long, Feature[GTGeometry, (Long, Int)]] =
+                  feats
+                    .groupBy(_.data._1)
+                    .mapValues(_.head)
+                val featureIds: Set[Long] = newFeaturesById.keySet
 
-            val newFeaturesById: Map[Long, Feature[GTGeometry, (Long, Int)]] =
-              feats
-                .groupBy(_.data._1)
-                .mapValues(_.head)
-            val featureIds: Set[Long] = newFeaturesById.keySet
+                val existingFeatures: Set[Long] =
+                  layer.features.map(f => f.data("id"): Long).toSet
 
-            val existingFeatures: Set[Long] =
-              layer.features.map(f => f.data("id"): Long).toSet
+                val unmodifiedFeatures =
+                  layer.features.filterNot(f => featureIds.contains(f.data("id")))
 
-            val unmodifiedFeatures =
-              layer.features.filterNot(f => featureIds.contains(f.data("id")))
+                val modifiedFeatures =
+                  layer.features.filter(f => featureIds.contains(f.data("id")))
 
-            val modifiedFeatures =
-              layer.features.filter(f => featureIds.contains(f.data("id")))
-
-            val replacementFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
-              modifiedFeatures.map { f =>
-                f.mapData { d =>
-                  val prevDensity: Long = d("density")
-                  d.updated("density", VInt64(prevDensity + newFeaturesById(d("id")).data._2))
-                }
-              }
-
-            val newFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
-              feats
-                .filterNot(f => existingFeatures.contains(f.data._1))
-                .map { f =>
-                  f.mapData {
-                    case (id, density) =>
-                      Map("id" -> VInt64(id), "density" -> VInt64(density))
+                val replacementFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
+                  modifiedFeatures.map { f =>
+                    f.mapData { d =>
+                      val prevDensity: Long = d("density")
+                      d.updated("density", VInt64(prevDensity + newFeaturesById(d("id")).data._2))
+                    }
                   }
+
+                val newFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
+                  feats
+                    .filterNot(f => existingFeatures.contains(f.data._1))
+                    .map { f =>
+                      f.mapData {
+                        case (id, density) =>
+                          Map("id" -> VInt64(id), "density" -> VInt64(density))
+                      }
+                    }
+
+                unmodifiedFeatures ++ replacementFeatures ++ newFeatures match {
+                  case updatedFeatures if (replacementFeatures.length + newFeatures.length) > 0 =>
+                    val updatedLayer = makeLayer(key, extent, updatedFeatures)
+                    val sequenceLayer =
+                      makeSequenceLayer(getCommittedSequences(tile) ++ sequences, extent)
+
+                    Some(updatedLayer, sequenceLayer)
+                  case _ =>
+                    logError(s"No changes to $uri; THIS SHOULD NOT HAVE HAPPENED.")
+                    None
                 }
+              case None =>
+                val vtFeatures =
+                  feats.map(f =>
+                    f.mapData {
+                      case (id, density) =>
+                        Map("id" -> VInt64(id), "density" -> VInt64(density))
+                  })
 
-            unmodifiedFeatures ++ replacementFeatures ++ newFeatures match {
-              case updatedFeatures if (replacementFeatures.length + newFeatures.length) > 0 =>
-                val updatedLayer = makeLayer(key, extent, updatedFeatures)
-                val sequenceLayer =
-                  makeSequenceLayer(getCommittedSequences(tile) ++ sequences, extent)
+                Some(makeLayer(key, extent, vtFeatures), makeSequenceLayer(sequences, extent))
+            }
 
+            layers match {
+              case Some((dataLayer, sequenceLayer)) =>
                 // merge all available layers into a new tile
                 val newTile =
                   VectorTile(
                     tile.layers
-                      .updated(updatedLayer._1, updatedLayer._2)
+                      .updated(dataLayer._1, dataLayer._2)
                       // update a second layer with a feature corresponding to committed sequences
                       .updated(sequenceLayer._1, sequenceLayer._2),
                     extent
                   )
 
                 write(newTile, uri)
-              case _ =>
-                logError(s"No changes to $uri; THIS SHOULD NOT HAVE HAPPENED.")
+
+              case None => // no new data
             }
+
           case None =>
             // create tile
             val vtFeatures =
@@ -183,14 +202,6 @@ object Footprints extends Logging {
 
     makeLayer(SequenceLayerName, extent, Seq(sequenceFeature))
   }
-
-  def getCommittedSequences(tile: VectorTile): Seq[Int] =
-    // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
-    // single sequence may appear in different batches depending on when changeset metadata arrives
-    tile.layers
-      .get(SequenceLayerName)
-      .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
-      .getOrElse(Seq.empty[Int])
 
   def makeUrls(tileSource: URI, tiles: Seq[TileCoordinates with Key]): Seq[(URI, Extent)] =
     tiles.map { tile =>
@@ -245,6 +256,14 @@ object Footprints extends Logging {
           tile.key)
       })
       .filter(tileSeq => tileSeq.tiles.nonEmpty)
+
+  def getCommittedSequences(tile: VectorTile): Seq[Int] =
+    // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
+    // single sequence may appear in different batches depending on when changeset metadata arrives
+    tile.layers
+      .get(SequenceLayerName)
+      .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
+      .getOrElse(Seq.empty[Int])
 
   def vectorize(tiles: Seq[(String, Int, Int, Int, GTRaster[Tile], List[Int])])
     : Seq[(String, Int, SpatialKey, Extent, ArrayBuffer[PointFeature[(Long, Int)]], List[Int])] =
