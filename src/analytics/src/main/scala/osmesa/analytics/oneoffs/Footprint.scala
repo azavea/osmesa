@@ -138,7 +138,7 @@ object Footprint extends Logging {
       .repartition('key)
 
     val stats = Footprints.createFootprints(nodes, outputURI)
-    println(stats.show)
+    stats.write.mode(SaveMode.Overwrite).csv("/tmp/footprints/")
 
     spark.stop()
   }
