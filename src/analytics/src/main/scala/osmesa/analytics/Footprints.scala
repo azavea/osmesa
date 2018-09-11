@@ -24,7 +24,7 @@ import osmesa.common.model.impl._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.{ForkJoinTaskSupport, TaskSupport}
-import scala.collection.{GenMap, GenSeq}
+import scala.collection.{GenIterable, GenMap}
 import scala.concurrent.forkjoin.ForkJoinPool
 
 object Footprints extends Logging {
@@ -49,10 +49,7 @@ object Footprints extends Logging {
     val pyramid = points.tile(baseZoom).rasterize(Cols * 4, Rows * 4).pyramid(baseZoom)
 
     pyramid
-      .mapPartitions { rows: Iterator[RasterTile with Key] =>
-        // materialize the iterator so that its contents can be used multiple times
-        val tiles = rows.toList
-
+      .mapPartitions { tiles: Iterator[RasterTile with Key] =>
         // increase the number of concurrent network-bound tasks
         implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
           new ForkJoinPool(concurrentUploads.getOrElse(DefaultUploadConcurrency)))
@@ -69,11 +66,11 @@ object Footprints extends Logging {
   def updateTiles(
       tileSource: URI,
       mvts: GenMap[URI, VectorTile],
-      tiles: Seq[
+      tiles: TraversableOnce[
         (String, Int, SpatialKey, Extent, ArrayBuffer[PointFeature[(Long, Int)]], List[Int])])(
-      implicit taskSupport: TaskSupport): GenSeq[Count with TileCoordinates with Key] = {
+      implicit taskSupport: TaskSupport): GenIterable[Count with TileCoordinates with Key] = {
     // parallelize tiles to facilitate greater upload parallelism
-    val parTiles = tiles.par
+    val parTiles = tiles.toIterable.par
     parTiles.tasksupport = taskSupport
 
     parTiles.map {
@@ -651,8 +648,8 @@ object Footprints extends Logging {
         Footprints.merge(uncommitted)
     }
 
-    implicit class ExtendedRasterTileWithKeySeq(tiles: Seq[RasterTile with Key]) {
-      def vectorize: Seq[
+    implicit class ExtendedRasterTileWithKeySeq(tiles: TraversableOnce[RasterTile with Key]) {
+      def vectorize: TraversableOnce[
         (String, Int, SpatialKey, Extent, ArrayBuffer[PointFeature[(Long, Int)]], List[Int])] =
         tiles.map { tile =>
           // convert into features
