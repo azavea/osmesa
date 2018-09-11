@@ -16,7 +16,7 @@ import geotrellis.vector.io.json.JsonFeatureCollectionMap
 import geotrellis.vector.{Extent, Feature, Geometry, Line, MultiLine, MultiPoint, MultiPolygon, Point, Polygon}
 import geotrellis.vectortile._
 import org.apache.commons.io.IOUtils
-import org.apache.log4j.Logger
+import org.apache.spark.internal.Logging
 import osmesa.analytics.updater.Implicits._
 import osmesa.common.model.ElementWithSequence
 
@@ -24,8 +24,7 @@ import scala.collection.mutable.ListBuffer
 import scala.io.Source
 import scala.util.{Failure, Success, Try}
 
-package object updater {
-  private lazy val logger = Logger.getLogger(getClass)
+package object updater extends Logging {
   private lazy val s3: AmazonS3Client = S3Client.DEFAULT
 
   type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
@@ -57,9 +56,9 @@ package object updater {
             e match {
               case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" =>
               case ex: AmazonS3Exception =>
-                logger.warn(s"Could not read $uri: ${ex.getMessage}")
+                logWarning(s"Could not read $uri: ${ex.getMessage}")
               case _ =>
-                logger.warn(s"Could not read $uri: $e")
+                logWarning(s"Could not read $uri: $e")
             }
 
             None
@@ -87,9 +86,9 @@ package object updater {
             e match {
               case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" =>
               case ex: AmazonS3Exception =>
-                logger.warn(s"Could not read $uri: ${ex.getMessage}")
+                logWarning(s"Could not read $uri: ${ex.getMessage}")
               case _ =>
-                logger.warn(s"Could not read $uri: $e")
+                logWarning(s"Could not read $uri: $e")
             }
 
             None
@@ -129,9 +128,9 @@ package object updater {
           case Failure(e) =>
             e match {
               case ex: AmazonS3Exception =>
-                logger.warn(s"Could not write $uri: ${ex.getMessage}")
+                logWarning(s"Could not write $uri: ${ex.getMessage}")
               case _ =>
-                logger.warn(s"Could not write $uri: $e")
+                logWarning(s"Could not write $uri: $e")
             }
         }
       case "file" =>
@@ -238,7 +237,7 @@ package object updater {
               // load the target layer
               val layer = tile.layers(schemaType.layerName)
 
-              logger.debug(
+              logDebug(
                 s"Inspecting ${layer.features.size.formatted("%,d")} features in layer '${schemaType.layerName}'")
 
               // fetch unmodified features
@@ -252,7 +251,7 @@ package object updater {
               val newFeatures = schema.newFeatures
 
               if (newFeatures.nonEmpty) {
-                logger.info(s"Writing ${unmodifiedFeatures.length
+                logInfo(s"Writing ${unmodifiedFeatures.length
                   .formatted("%,d")} + ${newFeatures.length.formatted("%,d")} feature(s)")
               }
 
@@ -266,7 +265,7 @@ package object updater {
 
                   process(sk, newTile)
                 case _ =>
-                  logger.info(s"No changes to $uri; skipping")
+                  logInfo(s"No changes to $uri; skipping")
               }
             case None =>
           }
