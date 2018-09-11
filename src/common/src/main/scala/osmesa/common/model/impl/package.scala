@@ -11,6 +11,10 @@ import geotrellis.raster.{
 import geotrellis.vector.Extent
 
 package object impl {
+  case class CoordinatesWithKey(key: String, lat: Option[BigDecimal], lon: Option[BigDecimal])
+      extends Coordinates
+      with Key
+
   case class CoordinatesWithKeyAndSequence(sequence: Int,
                                            key: String,
                                            lat: Option[BigDecimal],
@@ -28,6 +32,10 @@ package object impl {
       with Key
       with Sequence
 
+  case class GeometryTileWithKey(key: String, zoom: Int, x: Int, y: Int, wkb: Array[Byte])
+      extends GeometryTile
+      with Key
+
   case class GeometryTileWithKeyAndSequence(sequence: Int,
                                             key: String,
                                             zoom: Int,
@@ -37,6 +45,30 @@ package object impl {
       extends GeometryTile
       with Key
       with Sequence
+
+  case class RasterTileWithKey(key: String,
+                               zoom: Int,
+                               x: Int,
+                               y: Int,
+                               tileBytes: Array[Byte],
+                               tileCols: Int,
+                               tileRows: Int,
+                               tileCellType: String,
+                               xmin: Double,
+                               ymin: Double,
+                               xmax: Double,
+                               ymax: Double)
+      extends RasterTile
+      with Key {
+    lazy val raster: GTRaster[Tile] = GTRaster.tupToRaster(
+      IntArrayTile.fromBytes(
+        tileBytes,
+        tileCols,
+        tileRows,
+        CellType.fromName(tileCellType).asInstanceOf[IntCells with NoDataHandling]),
+      Extent(xmin, ymin, xmax, ymax)
+    )
+  }
 
   case class RasterTileWithKeyAndSequence(sequence: Int,
                                           key: String,
@@ -109,6 +141,28 @@ package object impl {
         x,
         y,
         key)
+  }
+
+  object RasterTileWithKey {
+    def apply(key: String,
+              zoom: Int,
+              col: Int,
+              row: Int,
+              raster: GTRaster[Tile]): RasterTileWithKey =
+      RasterTileWithKey(
+        key,
+        zoom,
+        col,
+        row,
+        raster.tile.toBytes,
+        raster.tile.cols,
+        raster.tile.rows,
+        raster.tile.cellType.name,
+        raster.extent.xmin,
+        raster.extent.ymin,
+        raster.extent.xmax,
+        raster.extent.ymax
+      )
   }
 
   object RasterTileWithKeyAndSequence {
