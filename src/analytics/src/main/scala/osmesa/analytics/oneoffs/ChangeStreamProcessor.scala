@@ -65,11 +65,9 @@ object ChangeStreamProcessor extends CommandApp(
         metavar = "database password",
         help = "Database password"
       ).orNone
-    val ignoreHttpsOpt =
-      Opts.flag("ignore-https", help = "Whether to be ignore HTTPS certs.").orFalse
 
-    (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, databaseUserOpt, databasePassOpt, ignoreHttpsOpt).mapN {
-      (changeSource, startSequence, endSequence, databaseUri, databaseUser, databasePass, ignoreHttps) =>
+    (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, databaseUserOpt, databasePassOpt).mapN {
+      (changeSource, startSequence, endSequence, databaseUri, databaseUser, databasePass) =>
         implicit val ss: SparkSession =
           Analytics.sparkSession("ChangeStreamProcessor")
 
@@ -77,8 +75,7 @@ object ChangeStreamProcessor extends CommandApp(
 
         val options = Map(
           "base_uri"  -> changeSource.toString,
-          "proc_name" -> "ChangeStream",
-          "ignore_https" -> ignoreHttps.toString
+          "proc_name" -> "ChangeStream"
         ) ++
           databaseUri
             .map(db => Map("db_uri" -> db.toString))

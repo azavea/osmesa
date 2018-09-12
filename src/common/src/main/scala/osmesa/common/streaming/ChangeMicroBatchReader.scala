@@ -21,7 +21,7 @@ class ChangeStreamBatchReader(baseURI: URI, sequence: Int)
     extends ReplicationStreamBatchReader[Element](baseURI, sequence) {
 
   override def getSequence(baseURI: URI, sequence: Int): Seq[Element] =
-    ChangeSource.getSequence(baseURI, sequence, false)
+    ChangeSource.getSequence(baseURI, sequence)
 
   override def get(): Row = {
     val change = items(index)
@@ -59,7 +59,7 @@ class ChangeMicroBatchReader(options: DataSourceOptions,
   )
 
   override def getCurrentSequence: Option[Int] =
-    ChangeSource.getCurrentSequence(baseURI, ignoreHttps)
+    ChangeSource.getCurrentSequence(baseURI)
 
   override def readSchema(): StructType = ChangeSchema
 
