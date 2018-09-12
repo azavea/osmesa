@@ -21,7 +21,7 @@ class ChangesetStreamBatchReader(baseURI: URI, sequence: Int)
     extends ReplicationStreamBatchReader[Changeset](baseURI, sequence) {
 
   override def getSequence(baseURI: URI, sequence: Int): Seq[Changeset] =
-    ChangesetSource.getSequence(baseURI, sequence, false)
+    ChangesetSource.getSequence(baseURI, sequence)
 
   override def get(): Row = {
     val changeset = items(index)
@@ -55,7 +55,7 @@ class ChangesetMicroBatchReader(options: DataSourceOptions,
   )
 
   override def getCurrentSequence: Option[Int] =
-    ChangesetSource.getCurrentSequence(baseURI, ignoreHttps)
+    ChangesetSource.getCurrentSequence(baseURI)
 
   override def readSchema(): StructType = ChangesetSchema
 

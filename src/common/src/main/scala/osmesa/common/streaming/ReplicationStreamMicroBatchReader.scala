@@ -25,20 +25,20 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     var sequence: Option[Int] = None
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
-    var conn: Connection = null.asInstanceOf[Connection]
+    var connection = null.asInstanceOf[Connection]
     try {
-      conn = (user, password).mapN { case (usr, pass) =>
+      connection = (user, password).mapN { case (usr, pass) =>
         DriverManager.getConnection(s"jdbc:${dbUri.toString}", usr, pass)
       }.getOrElse {
         DriverManager.getConnection(s"jdbc:${dbUri.toString}")
       }
 
-      val preppedStatement = conn.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
+      val preppedStatement = connection.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
       preppedStatement.setString(1, procName)
       val rs = preppedStatement.executeQuery()
       sequence = if (rs.next()) Some(rs.getInt("sequence")) else None
     } finally {
-      conn.close()
+      connection.close()
     }
 
     sequence match {
@@ -50,15 +50,15 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   private def checkpointSequence(dbUri: URI, sequence: Int, user: Option[String], password: Option[String]): Unit = {
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
-    var conn: Connection = null.asInstanceOf[Connection]
+    var connnection = null.asInstanceOf[Connection]
     try {
-      conn = (user, password).mapN { case (usr, pass) =>
+      connection = (user, password).mapN { case (usr, pass) =>
         DriverManager.getConnection(s"jdbc:${dbUri.toString}", usr, pass)
       }.getOrElse {
         DriverManager.getConnection(s"jdbc:${dbUri.toString}")
       }
       val upsertSequence =
-        conn.prepareStatement(
+        connection.prepareStatement(
           """
             |INSERT INTO checkpoints (proc_name, sequence)
             |VALUES (?, ?)
@@ -71,7 +71,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
       upsertSequence.setInt(3, sequence)
       upsertSequence.execute()
     } finally {
-      conn.close()
+      connection.close()
     }
   }
 
@@ -89,9 +89,6 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
 
   protected val databasePass: Option[String] =
     options.get("db_pass").asScala
-
-  protected val ignoreHttps: Boolean =
-    options.getBoolean("ignore_https", false)
 
   protected val procName: String = options.get("proc_name").asScala
     .getOrElse(throw new IllegalStateException("Process name required to recover sequence"))

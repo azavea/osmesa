@@ -63,11 +63,9 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "sequence",
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
-    val ignoreHttpsOpt =
-      Opts.flag("ignore-https", help = "Whether to be ignore HTTPS certs.").orFalse
 
-    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt, databaseUserOpt, databasePassOpt, ignoreHttpsOpt).mapN {
-      (changesetSource, databaseUri, startSequence, endSequence, databaseUser, databasePass, ignoreHttps) =>
+    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt, databaseUserOpt, databasePassOpt).mapN {
+      (changesetSource, databaseUri, startSequence, endSequence, databaseUser, databasePass) =>
         implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 
         import ss.implicits._
@@ -75,8 +73,7 @@ object ChangesetStreamProcessor extends CommandApp(
         val options = Map(
           "base_uri"  -> changesetSource.toString,
           "db_uri"    -> databaseUri.toString,
-          "proc_name" -> "ChangesetStream",
-          "ignore_https" -> ignoreHttps.toString
+          "proc_name" -> "ChangesetStream"
         ) ++
           databaseUser
             .map(usr => Map("db_user" -> usr))
