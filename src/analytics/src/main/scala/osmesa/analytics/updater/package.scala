@@ -1,9 +1,10 @@
 package osmesa.analytics
 
-import java.io.ByteArrayInputStream
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.net.{URI, URLDecoder}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
+import java.util.zip.GZIPOutputStream
 
 import com.amazonaws.services.s3.model.{AmazonS3Exception, ObjectMetadata}
 import geotrellis.proj4.{LatLng, WebMercator}
@@ -15,7 +16,7 @@ import geotrellis.vector.io.json.JsonFeatureCollectionMap
 import geotrellis.vector.{Extent, Feature, Geometry, Line, MultiLine, MultiPoint, MultiPolygon, Point, Polygon}
 import geotrellis.vectortile._
 import org.apache.commons.io.IOUtils
-import org.apache.log4j.Logger
+import org.apache.spark.internal.Logging
 import osmesa.analytics.updater.Implicits._
 import osmesa.common.model.ElementWithSequence
 
@@ -23,8 +24,7 @@ import scala.collection.mutable.ListBuffer
 import scala.io.Source
 import scala.util.{Failure, Success, Try}
 
-package object updater {
-  private lazy val logger = Logger.getLogger(getClass)
+package object updater extends Logging {
   private lazy val s3: AmazonS3Client = S3Client.DEFAULT
 
   type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
@@ -46,15 +46,19 @@ package object updater {
   def read(uri: URI): Option[Array[Byte]] = {
     uri.getScheme match {
       case "s3" =>
-        Try(IOUtils.toByteArray(s3.getObject(uri.getHost, uri.getPath.drop(1)).getObjectContent)) match {
+        Try(
+          IOUtils.toByteArray(
+            s3.getObject(uri.getHost,
+                         URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString))
+              .getObjectContent)) match {
           case Success(bytes) => Some(bytes)
           case Failure(e) =>
             e match {
               case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" =>
               case ex: AmazonS3Exception =>
-                logger.warn(s"Could not read $uri: ${ex.getMessage}")
+                logWarning(s"Could not read $uri: ${ex.getMessage}")
               case _ =>
-                logger.warn(s"Could not read $uri: $e")
+                logWarning(s"Could not read $uri: $e")
             }
 
             None
@@ -73,15 +77,18 @@ package object updater {
   def readFeatures(uri: URI): Option[Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)]] = {
     val lines: Option[Seq[String]] = uri.getScheme match {
       case "s3" =>
-        Try(IOUtils.toString(s3.getObject(uri.getHost, uri.getPath.drop(1)).getObjectContent)) match {
+        Try(
+          IOUtils.toString(
+            s3.getObject(uri.getHost,
+                         URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString)).getObjectContent)) match {
           case Success(content) => Some(content.split("\n"))
           case Failure(e) =>
             e match {
               case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" =>
               case ex: AmazonS3Exception =>
-                logger.warn(s"Could not read $uri: ${ex.getMessage}")
+                logWarning(s"Could not read $uri: ${ex.getMessage}")
               case _ =>
-                logger.warn(s"Could not read $uri: $e")
+                logWarning(s"Could not read $uri: $e")
             }
 
             None
@@ -109,7 +116,7 @@ package object updater {
     }
   }
 
-  def write(uri: URI, bytes: Array[Byte], encoding: Option[String] = None): Any = {
+  def write(uri: URI, bytes: Array[Byte], encoding: Option[String] = None): Any =
     uri.getScheme match {
       case "s3" =>
         Try(
@@ -121,14 +128,37 @@ package object updater {
           case Failure(e) =>
             e match {
               case ex: AmazonS3Exception =>
-                logger.warn(s"Could not write $uri: ${ex.getMessage}")
+                logWarning(s"Could not write $uri: ${ex.getMessage}")
               case _ =>
-                logger.warn(s"Could not write $uri: $e")
+                logWarning(s"Could not write $uri: $e")
             }
         }
       case "file" =>
         Files.write(Paths.get(uri), bytes)
     }
+
+  /**
+    * Write a vector tile to a URI.
+    *
+    * @param vectorTile Vector tile to serialize.
+    * @param uri URI to write to.
+    * @return
+    */
+  def write(vectorTile: VectorTile, uri: URI): Any = {
+    val byteStream = new ByteArrayOutputStream()
+
+    try {
+      val gzipStream = new GZIPOutputStream(byteStream)
+      try {
+        gzipStream.write(vectorTile.toBytes)
+      } finally {
+        gzipStream.close()
+      }
+    } finally {
+      byteStream.close()
+    }
+
+    write(uri, byteStream.toByteArray, Some("gzip"))
   }
 
   def tile(features: Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)],
@@ -207,7 +237,7 @@ package object updater {
               // load the target layer
               val layer = tile.layers(schemaType.layerName)
 
-              logger.debug(
+              logDebug(
                 s"Inspecting ${layer.features.size.formatted("%,d")} features in layer '${schemaType.layerName}'")
 
               // fetch unmodified features
@@ -221,7 +251,7 @@ package object updater {
               val newFeatures = schema.newFeatures
 
               if (newFeatures.nonEmpty) {
-                logger.info(s"Writing ${unmodifiedFeatures.length
+                logInfo(s"Writing ${unmodifiedFeatures.length
                   .formatted("%,d")} + ${newFeatures.length.formatted("%,d")} feature(s)")
               }
 
@@ -231,11 +261,11 @@ package object updater {
 
                   // merge all available layers into a new tile
                   val newTile =
-                    VectorTile(tile.layers.updated(schemaType.layerName, updatedLayer), extent)
+                    VectorTile(tile.layers.updated(updatedLayer._1, updatedLayer._2), extent)
 
                   process(sk, newTile)
                 case _ =>
-                  logger.info(s"No changes to $uri; skipping")
+                  logInfo(s"No changes to $uri; skipping")
               }
             case None =>
           }
@@ -270,10 +300,10 @@ package object updater {
     (points, multiPoints, lines, multiLines, polygons, multiPolygons)
   }
 
-  def makeLayer(name: String, extent: Extent, features: Seq[VTFeature]): Layer = {
+  def makeLayer(name: String, extent: Extent, features: Seq[VTFeature]): (String, Layer) = {
     val (points, multiPoints, lines, multiLines, polygons, multiPolygons) = segregate(features)
 
-    StrictLayer(
+    name -> StrictLayer(
       name = name,
       tileWidth = 4096,
       version = 2,
