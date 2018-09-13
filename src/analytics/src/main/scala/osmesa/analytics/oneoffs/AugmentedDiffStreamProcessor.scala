@@ -180,18 +180,18 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |) SELECT * FROM data
               |ON CONFLICT (id) DO UPDATE
               |SET
-              |  roads_added = c.roads_added + EXCLUDED.roads_added,
-              |  roads_modified = c.roads_modified + EXCLUDED.roads_modified,
-              |  waterways_added = c.waterways_added + EXCLUDED.waterways_added,
-              |  waterways_modified = c.waterways_modified + EXCLUDED.waterways_modified,
-              |  buildings_added = c.buildings_added + EXCLUDED.buildings_added,
-              |  buildings_modified = c.buildings_modified + EXCLUDED.buildings_modified,
-              |  pois_added = c.pois_added + EXCLUDED.pois_added,
-              |  pois_modified = c.pois_modified + EXCLUDED.pois_modified,
-              |  road_km_added = c.road_km_added + EXCLUDED.road_km_added,
-              |  road_km_modified = c.road_km_modified + EXCLUDED.road_km_modified,
-              |  waterway_km_added = c.waterway_km_added + EXCLUDED.waterway_km_added,
-              |  waterway_km_modified = c.waterway_km_modified + EXCLUDED.waterway_km_modified,
+              |  roads_added = c.roads_added + coalesce(EXCLUDED.roads_added, 0),
+              |  roads_modified = c.roads_modified + coalesce(EXCLUDED.roads_modified, 0),
+              |  waterways_added = c.waterways_added + coalesce(EXCLUDED.waterways_added, 0),
+              |  waterways_modified = c.waterways_modified + coalesce(EXCLUDED.waterways_modified, 0),
+              |  buildings_added = c.buildings_added + coalesce(EXCLUDED.buildings_added, 0),
+              |  buildings_modified = c.buildings_modified + coalesce(EXCLUDED.buildings_modified, 0),
+              |  pois_added = c.pois_added + coalesce(EXCLUDED.pois_added, 0),
+              |  pois_modified = c.pois_modified + coalesce(EXCLUDED.pois_modified, 0),
+              |  road_km_added = c.road_km_added + coalesce(EXCLUDED.road_km_added, 0),
+              |  road_km_modified = c.road_km_modified + coalesce(EXCLUDED.road_km_modified, 0),
+              |  waterway_km_added = c.waterway_km_added + coalesce(EXCLUDED.waterway_km_added, 0),
+              |  waterway_km_modified = c.waterway_km_modified + coalesce(EXCLUDED.waterway_km_modified, 0),
               |  augmented_diffs = coalesce(c.augmented_diffs, ARRAY[]::integer[]) || EXCLUDED.augmented_diffs,
               |  updated_at = current_timestamp
               |WHERE c.id = EXCLUDED.id
