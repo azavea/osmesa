@@ -49,11 +49,11 @@ WITH country_counts AS (
          GROUP BY ch.changeset_id, hashtags.hashtag
        ), chgset_ht_counts AS (
         SELECT chg.user_id,
-           hashtag_counts.hashtag,
-           count(*) AS cnt
-          FROM (hashtag_counts
-            JOIN changesets chg ON ((chg.id = hashtag_counts.changeset_id)))
-         GROUP BY chg.user_id, hashtag_counts.hashtag
+            hashtag_counts.hashtag,
+            count(*) AS cnt
+            FROM (changesets chg
+            JOIN hashtag_counts ON ((chg.id = hashtag_counts.changeset_id)))
+            GROUP BY chg.user_id, hashtag_counts.hashtag
        ), usr_hashtag_counts AS (
         SELECT chgset_ht_counts.user_id,
            json_agg(json_build_object('tag', chgset_ht_counts.hashtag, 'count', chgset_ht_counts.cnt)) AS hashtag_json
@@ -105,10 +105,11 @@ WITH country_counts AS (
      usr_editor_counts.editor_json AS editors,
      usr_day_counts.day_json AS edit_times,
      usr_country_counts.country_json AS country_list,
-     usr_hashtag_counts.hashtag_json AS hashtags,
+     coalesce(usr_hashtag_counts.hashtag_json, '[]') AS hashtags,
      agg_stats.updated_at
     FROM ((((agg_stats
-      JOIN usr_country_counts ON ((agg_stats.id = usr_country_counts.user_id)))
-      JOIN usr_hashtag_counts ON ((agg_stats.id = usr_hashtag_counts.user_id)))
-      JOIN usr_day_counts ON ((agg_stats.id = usr_day_counts.user_id)))
-      JOIN usr_editor_counts ON ((agg_stats.id = usr_editor_counts.user_id)));
+      LEFT JOIN usr_country_counts ON ((agg_stats.id = usr_country_counts.user_id)))
+      LEFT JOIN usr_hashtag_counts ON ((agg_stats.id = usr_hashtag_counts.user_id)))
+      LEFT JOIN usr_day_counts ON ((agg_stats.id = usr_day_counts.user_id)))
+      LEFT JOIN usr_editor_counts ON ((agg_stats.id = usr_editor_counts.user_id)));
+
