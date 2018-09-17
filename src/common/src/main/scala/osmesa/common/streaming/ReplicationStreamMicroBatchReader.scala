@@ -50,7 +50,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   private def checkpointSequence(dbUri: URI, sequence: Int, user: Option[String], password: Option[String]): Unit = {
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
-    var connnection = null.asInstanceOf[Connection]
+    var connection = null.asInstanceOf[Connection]
     try {
       connection = (user, password).mapN { case (usr, pass) =>
         DriverManager.getConnection(s"jdbc:${dbUri.toString}", usr, pass)
