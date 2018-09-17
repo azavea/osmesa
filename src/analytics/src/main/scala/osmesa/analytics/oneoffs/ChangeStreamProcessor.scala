@@ -25,7 +25,7 @@ object ChangeStreamProcessor extends CommandApp(
   name = "osmesa-diff-stream-processor",
   header = "display diffs from a change stream",
   main = {
-    val changesetSourceOpt =
+    val changeSourceOpt =
       Opts.option[URI](
         "change-source",
         short = "c",
@@ -46,38 +46,70 @@ object ChangeStreamProcessor extends CommandApp(
         metavar = "sequence",
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
+    val databaseUriOpt =
+      Opts.option[URI](
+        "database-uri",
+        short = "d",
+        metavar = "database URL",
+        help = "Database URL"
+      ).orNone
+    val databaseUserOpt =
+      Opts.option[String]("database-user",
+        short = "u",
+        metavar = "database user",
+        help = "Database user"
+      ).orNone
+    val databasePassOpt =
+      Opts.option[String]("database-pass",
+        short = "p",
+        metavar = "database password",
+        help = "Database password"
+      ).orNone
 
-    (changesetSourceOpt, startSequenceOpt, endSequenceOpt).mapN { (changesetSource, startSequence, endSequence) =>
-      implicit val ss: SparkSession =
-        Analytics.sparkSession("ChangeStreamProcessor")
+    (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, databaseUserOpt, databasePassOpt).mapN {
+      (changeSource, startSequence, endSequence, databaseUri, databaseUser, databasePass) =>
+        implicit val ss: SparkSession =
+          Analytics.sparkSession("ChangeStreamProcessor")
 
-      import ss.implicits._
+        import ss.implicits._
 
-      val options = Map("base_uri" -> changesetSource.toString) ++
-        startSequence
-          .map(s => Map("start_sequence" -> s.toString))
-          .getOrElse(Map.empty[String, String]) ++
-        endSequence
-          .map(s => Map("end_sequence" -> s.toString))
-          .getOrElse(Map.empty[String, String])
+        val options = Map(
+          "base_uri"  -> changeSource.toString,
+          "proc_name" -> "ChangeStream"
+        ) ++
+          databaseUri
+            .map(db => Map("db_uri" -> db.toString))
+            .getOrElse(Map.empty[String, String]) ++
+          databaseUser
+            .map(usr => Map("db_user" -> usr.toString))
+            .getOrElse(Map.empty[String, String]) ++
+          databasePass
+            .map(pw => Map("db_pass" -> pw.toString))
+            .getOrElse(Map.empty[String, String]) ++
+          startSequence
+            .map(s => Map("start_sequence" -> s.toString))
+            .getOrElse(Map.empty[String, String]) ++
+          endSequence
+            .map(s => Map("end_sequence" -> s.toString))
+            .getOrElse(Map.empty[String, String])
 
-      val changes =
-        ss.readStream
-          .format("changes")
-          .options(options)
-          .load
+        val changes =
+          ss.readStream
+            .format("changes")
+            .options(options)
+            .load
 
-      val changeProcessor = changes
-        .select('id, 'version, 'lat, 'lon, 'visible)
-        .where('_type === ProcessOSM.NodeType and !'visible)
-        .writeStream
-        .queryName("display change data")
-        .format("console")
-        .start
+        val changeProcessor = changes
+          .select('id, 'version, 'lat, 'lon, 'visible)
+          .where('_type === ProcessOSM.NodeType and !'visible)
+          .writeStream
+          .queryName("display change data")
+          .format("console")
+          .start
 
-      changeProcessor.awaitTermination()
+        changeProcessor.awaitTermination()
 
-      ss.stop()
+        ss.stop()
     }
   }
 )
