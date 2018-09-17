@@ -30,13 +30,25 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "uri",
         help = "Location of changesets to process"
       ).withDefault(new URI("https://planet.osm.org/replication/changesets/"))
-    val databaseUrlOpt =
+    val databaseUriOpt =
       Opts.option[URI](
-        "database-url",
+        "database-uri",
         short = "d",
         metavar = "database URL",
         help = "Database URL"
       )
+    val databaseUserOpt =
+      Opts.option[String]("database-user",
+        short = "u",
+        metavar = "database user",
+        help = "Database user"
+      ).orNone
+    val databasePassOpt =
+      Opts.option[String]("database-pass",
+        short = "p",
+        metavar = "database password",
+        help = "Database password"
+      ).orNone
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",
@@ -52,13 +64,23 @@ object ChangesetStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (changesetSourceOpt, databaseUrlOpt, startSequenceOpt, endSequenceOpt).mapN {
-      (changesetSource, databaseUri, startSequence, endSequence) =>
+    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt, databaseUserOpt, databasePassOpt).mapN {
+      (changesetSource, databaseUri, startSequence, endSequence, databaseUser, databasePass) =>
         implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 
         import ss.implicits._
 
-        val options = Map("base_uri" -> changesetSource.toString) ++
+        val options = Map(
+          "base_uri"  -> changesetSource.toString,
+          "db_uri"    -> databaseUri.toString,
+          "proc_name" -> "ChangesetStream"
+        ) ++
+          databaseUser
+            .map(usr => Map("db_user" -> usr))
+            .getOrElse(Map.empty[String, String]) ++
+          databasePass
+            .map(pw => Map("db_pass" -> pw))
+            .getOrElse(Map.empty[String, String]) ++
           startSequence
             .map(s => Map("start_sequence" -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
@@ -183,7 +205,11 @@ object ChangesetStreamProcessor extends CommandApp(
               this.partitionId = partitionId
               this.version = version
 
-              connection = DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
+              connection = (databaseUser, databasePass).mapN { (usr, pass) =>
+                DriverManager.getConnection(s"jdbc:${databaseUri.toString}", usr, pass)
+              }.getOrElse {
+                DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
+              }
 
               true
             }

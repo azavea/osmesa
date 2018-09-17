@@ -32,7 +32,8 @@ object ChangesetSource extends Logging {
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osm.gz"
 
     logDebug(s"Fetching sequence $sequence")
-    val response = Http(baseURI.resolve(path).toString).option(HttpOptions.allowUnsafeSSL).asBytes
+    val response =
+      Http(baseURI.resolve(path).toString).asBytes
 
     if (response.code === 404) {
       logDebug(s"$sequence is not yet available, sleeping.")
@@ -66,8 +67,9 @@ object ChangesetSource extends Logging {
   def getCurrentSequence(baseURI: URI): Option[Int] = {
     try {
       val response =
-        Http(baseURI.resolve("state.yaml").toString).option(HttpOptions.allowUnsafeSSL).asString
+        Http(baseURI.resolve("state.yaml").toString).asString
 
+      println(response.body)
       val state = yaml.parser
         .parse(response.body)
         .leftMap(err => err: Error)

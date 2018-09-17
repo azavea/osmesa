@@ -23,7 +23,7 @@ import osmesa.common.model.ElementWithSequence
  *   --class osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --augmented-diff-source s3://somewhere/diffs/ \
- *   --database-url $DATABASE_URL
+ *   --database-uri $DATABASE_URL
  */
 object AugmentedDiffStreamProcessor extends CommandApp(
   name = "osmesa-augmented-diff-stream-processor",
@@ -38,13 +38,25 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         metavar = "uri",
         help = "Location of augmented diffs to process"
       )
-    val databaseUrlOpt =
+    val databaseUriOpt =
       Opts.option[URI](
-        "database-url",
+        "database-uri",
         short = "d",
         metavar = "database URL",
         help = "Database URL"
       )
+    val databaseUserOpt =
+      Opts.option[String]("database-user",
+        short = "u",
+        metavar = "database user",
+        help = "Database user"
+      ).orNone
+    val databasePassOpt =
+      Opts.option[String]("database-pass",
+        short = "p",
+        metavar = "database password",
+        help = "Database password"
+      ).orNone
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",
@@ -59,13 +71,23 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUrlOpt).mapN {
-      (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
+    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, databaseUserOpt, databasePassOpt).mapN {
+      (augmentedDiffSource, startSequence, endSequence, databaseUri, databaseUser, databasePass) =>
       implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
       import ss.implicits._
 
-      val options = Map("base_uri" -> augmentedDiffSource.toString) ++
+      val options = Map(
+        "base_uri"  -> augmentedDiffSource.toString,
+        "db_uri"    -> databaseUri.toString,
+        "proc_name" -> "AugmentedDiffStream"
+      ) ++
+        databaseUser
+          .map(usr => Map("db_user" -> usr))
+          .getOrElse(Map.empty[String, String]) ++
+        databasePass
+          .map(pw => Map("db_pass" -> pw))
+          .getOrElse(Map.empty[String, String]) ++
         startSequence
           .map(s => Map("start_sequence" -> s.toString))
           .getOrElse(Map.empty[String, String]) ++
@@ -251,7 +273,11 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             this.partitionId = partitionId
             this.version = version
 
-            connection = DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
+            connection = (databaseUser, databasePass).mapN { (usr, pass) =>
+              DriverManager.getConnection(s"jdbc:${databaseUri.toString}", usr, pass)
+            }.getOrElse {
+              DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
+            }
 
             true
           }

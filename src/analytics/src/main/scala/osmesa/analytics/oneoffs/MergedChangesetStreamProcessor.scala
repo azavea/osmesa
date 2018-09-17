@@ -103,7 +103,8 @@ object MergedChangesetStreamProcessor extends CommandApp(
         import ss.implicits._
 
         val augmentedDiffOptions = Map(
-          "base_uri" -> augmentedDiffSource.toString
+          "base_uri"  -> augmentedDiffSource.toString,
+          "proc_name" -> "MergedChangesetStream"
         ) ++
           diffStartSequence
             .map(s => Map("start_sequence" -> s.toString))

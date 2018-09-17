@@ -26,7 +26,8 @@ object ChangeSource extends Logging {
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osc.gz"
 
     logInfo(s"Fetching sequence $sequence")
-    val response = Http(baseURI.resolve(path).toString).option(HttpOptions.allowUnsafeSSL).asBytes
+    val response =
+      Http(baseURI.resolve(path).toString).asBytes
 
     if (response.code === 404) {
       logInfo(s"$sequence is not yet available, sleeping.")
@@ -67,7 +68,7 @@ object ChangeSource extends Logging {
   def getCurrentSequence(baseURI: URI): Option[Int] = {
     try {
       val response =
-        Http(baseURI.resolve("state.txt").toString).option(HttpOptions.allowUnsafeSSL).asString
+        Http(baseURI.resolve("state.txt").toString).asString
 
       val state = new Properties
       state.load(new StringReader(response.body))
