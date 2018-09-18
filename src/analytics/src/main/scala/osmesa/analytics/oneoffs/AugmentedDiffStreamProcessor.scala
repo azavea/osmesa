@@ -43,8 +43,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         "database-uri",
         short = "d",
         metavar = "database URL",
-        help = "Database URL"
-      )
+        help = "Database URL (default: $DATABASE_URL environment variable)"
+      ).withDefault(sys.env.get("DATABASE_URL"))
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",

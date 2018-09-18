@@ -51,8 +51,8 @@ object ChangeStreamProcessor extends CommandApp(
         "database-uri",
         short = "d",
         metavar = "database URL",
-        help = "Database URL"
-      ).orNone
+        help = "Database URL (default: $DATABASE_URL environment variable)"
+      ).withDefault(sys.env.get("DATABASE_URL"))
 
     (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt).mapN {
       (changeSource, startSequence, endSequence, databaseUri) =>
