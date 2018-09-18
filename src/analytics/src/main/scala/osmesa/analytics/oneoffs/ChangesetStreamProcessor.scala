@@ -7,6 +7,7 @@ import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
+import osmesa.common.util.DBUtils
 import osmesa.common.functions.osm._
 
 
@@ -30,13 +31,15 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "uri",
         help = "Location of changesets to process"
       ).withDefault(new URI("https://planet.osm.org/replication/changesets/"))
+    val databaseUriEnv =
+      Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
     val databaseUriOpt =
       Opts.option[URI](
         "database-uri",
         short = "d",
         metavar = "database URL",
         help = "Database URL (default: $DATABASE_URL environment variable)"
-      ).withDefault(sys.env.get("DATABASE_URL"))
+      )
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",
@@ -52,7 +55,7 @@ object ChangesetStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt).mapN {
+    (changesetSourceOpt, databaseUriOpt orElse databaseUriEnv, startSequenceOpt, endSequenceOpt).mapN {
       (changesetSource, databaseUri, startSequence, endSequence) =>
         implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 

@@ -34,7 +34,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
       val rs = preppedStatement.executeQuery()
       sequence = if (rs.next()) Some(rs.getInt("sequence")) else None
     } finally {
-      connection.close()
+      if (connection != null) connection.close()
     }
 
     sequence match {
@@ -63,7 +63,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
       upsertSequence.setInt(3, sequence)
       upsertSequence.execute()
     } finally {
-      connection.close()
+      if (connection != null) connection.close()
     }
   }
 
