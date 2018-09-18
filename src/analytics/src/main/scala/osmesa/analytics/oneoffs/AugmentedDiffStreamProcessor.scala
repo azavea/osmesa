@@ -2,6 +2,7 @@ package osmesa.analytics.oneoffs
 
 import java.net.URI
 import java.sql.{Connection, DriverManager}
+import java.security.InvalidParameterException
 
 import cats.implicits._
 import com.monovore.decline._
@@ -10,6 +11,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
+import osmesa.common.util.DBUtils
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.model.ElementWithSequence
@@ -38,13 +40,15 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         metavar = "uri",
         help = "Location of augmented diffs to process"
       )
+    val databaseUriEnv =
+      Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
     val databaseUriOpt =
       Opts.option[URI](
         "database-uri",
         short = "d",
         metavar = "database URL",
         help = "Database URL (default: $DATABASE_URL environment variable)"
-      ).withDefault(sys.env.get("DATABASE_URL"))
+      )
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",
@@ -59,7 +63,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt).mapN {
+    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt orElse databaseUriEnv).mapN {
       (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
       implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 

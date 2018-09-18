@@ -1,6 +1,4 @@
-tfvars
-tfplan
-terraform.tfstate
-terraform.tfstate.backup
-build
-build-containers
+repository
+docker-compose.local.yml
+docker-compose.deploy.yml
+
