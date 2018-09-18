@@ -45,18 +45,6 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         metavar = "database URL",
         help = "Database URL"
       )
-    val databaseUserOpt =
-      Opts.option[String]("database-user",
-        short = "u",
-        metavar = "database user",
-        help = "Database user"
-      ).orNone
-    val databasePassOpt =
-      Opts.option[String]("database-pass",
-        short = "p",
-        metavar = "database password",
-        help = "Database password"
-      ).orNone
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",
@@ -71,8 +59,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, databaseUserOpt, databasePassOpt).mapN {
-      (augmentedDiffSource, startSequence, endSequence, databaseUri, databaseUser, databasePass) =>
+    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt).mapN {
+      (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
       implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
       import ss.implicits._
@@ -82,12 +70,6 @@ object AugmentedDiffStreamProcessor extends CommandApp(
         "db_uri"    -> databaseUri.toString,
         "proc_name" -> "AugmentedDiffStream"
       ) ++
-        databaseUser
-          .map(usr => Map("db_user" -> usr))
-          .getOrElse(Map.empty[String, String]) ++
-        databasePass
-          .map(pw => Map("db_pass" -> pw))
-          .getOrElse(Map.empty[String, String]) ++
         startSequence
           .map(s => Map("start_sequence" -> s.toString))
           .getOrElse(Map.empty[String, String]) ++
@@ -272,13 +254,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
 
             this.partitionId = partitionId
             this.version = version
-
-            connection = (databaseUser, databasePass).mapN { (usr, pass) =>
-              DriverManager.getConnection(s"jdbc:${databaseUri.toString}", usr, pass)
-            }.getOrElse {
-              DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
-            }
-
+            connection = DBUtils.getJdbcConnection(databaseUri)
             true
           }
 

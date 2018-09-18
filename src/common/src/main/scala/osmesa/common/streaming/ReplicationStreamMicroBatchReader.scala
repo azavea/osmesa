@@ -15,24 +15,20 @@ import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offse
 
 import scala.compat.java8.OptionConverters._
 
+import osmesa.common.util.DBUtils
 
 abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                                                  checkpointLocation: String)
     extends MicroBatchReader
     with Logging {
 
-  private def recoverSequence(dbUri: URI, procName: String, user: Option[String], password: Option[String]): Option[Int] = {
+  private def recoverSequence(dbUri: URI, procName: String): Option[Int] = {
     var sequence: Option[Int] = None
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
     var connection = null.asInstanceOf[Connection]
     try {
-      connection = (user, password).mapN { case (usr, pass) =>
-        DriverManager.getConnection(s"jdbc:${dbUri.toString}", usr, pass)
-      }.getOrElse {
-        DriverManager.getConnection(s"jdbc:${dbUri.toString}")
-      }
-
+      connection = DBUtils.getJdbcConnection(dbUri)
       val preppedStatement = connection.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
       preppedStatement.setString(1, procName)
       val rs = preppedStatement.executeQuery()
@@ -47,16 +43,12 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     }
   }
 
-  private def checkpointSequence(dbUri: URI, sequence: Int, user: Option[String], password: Option[String]): Unit = {
+  private def checkpointSequence(dbUri: URI, sequence: Int): Unit = {
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
     var connection = null.asInstanceOf[Connection]
     try {
-      connection = (user, password).mapN { case (usr, pass) =>
-        DriverManager.getConnection(s"jdbc:${dbUri.toString}", usr, pass)
-      }.getOrElse {
-        DriverManager.getConnection(s"jdbc:${dbUri.toString}")
-      }
+      connection = DBUtils.getJdbcConnection(dbUri)
       val upsertSequence =
         connection.prepareStatement(
           """
@@ -84,18 +76,12 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   protected val databaseUri: Option[URI] =
     options.get("db_uri").asScala.map(new URI(_))
 
-  protected val databaseUser: Option[String] =
-    options.get("db_user").asScala
-
-  protected val databasePass: Option[String] =
-    options.get("db_pass").asScala
-
   protected val procName: String = options.get("proc_name").asScala
     .getOrElse(throw new IllegalStateException("Process name required to recover sequence"))
 
   protected var startSequence: Option[Int] = {
     val start = databaseUri.flatMap { uri =>
-      recoverSequence(uri, procName, databaseUser, databasePass) orElse options.get("start_sequence").asScala.map(_.toInt)
+      recoverSequence(uri, procName) orElse options.get("start_sequence").asScala.map(_.toInt)
     }
     logInfo(s"Starting with sequence: $start")
     start
@@ -190,7 +176,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     databaseUri.foreach {
       val offset = end.asInstanceOf[SequenceOffset]
       logInfo(s"Saving ending sequence of: ${offset.sequence}")
-      checkpointSequence(_, offset.sequence, databaseUser, databasePass)
+      checkpointSequence(_, offset.sequence)
     }
     logInfo(s"Commit: $end")
   }

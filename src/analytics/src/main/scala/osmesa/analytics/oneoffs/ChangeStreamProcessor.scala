@@ -53,21 +53,9 @@ object ChangeStreamProcessor extends CommandApp(
         metavar = "database URL",
         help = "Database URL"
       ).orNone
-    val databaseUserOpt =
-      Opts.option[String]("database-user",
-        short = "u",
-        metavar = "database user",
-        help = "Database user"
-      ).orNone
-    val databasePassOpt =
-      Opts.option[String]("database-pass",
-        short = "p",
-        metavar = "database password",
-        help = "Database password"
-      ).orNone
 
-    (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, databaseUserOpt, databasePassOpt).mapN {
-      (changeSource, startSequence, endSequence, databaseUri, databaseUser, databasePass) =>
+    (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt).mapN {
+      (changeSource, startSequence, endSequence, databaseUri) =>
         implicit val ss: SparkSession =
           Analytics.sparkSession("ChangeStreamProcessor")
 
@@ -79,12 +67,6 @@ object ChangeStreamProcessor extends CommandApp(
         ) ++
           databaseUri
             .map(db => Map("db_uri" -> db.toString))
-            .getOrElse(Map.empty[String, String]) ++
-          databaseUser
-            .map(usr => Map("db_user" -> usr.toString))
-            .getOrElse(Map.empty[String, String]) ++
-          databasePass
-            .map(pw => Map("db_pass" -> pw.toString))
             .getOrElse(Map.empty[String, String]) ++
           startSequence
             .map(s => Map("start_sequence" -> s.toString))
