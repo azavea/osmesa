@@ -1,30 +1,8 @@
-CONFIG_NAME := osm-stat-stream-config
+include config-aws.mk  # Variables for AWS options
+include config-local.mk   # Variables related to running locally
 
 # The osmesa container
 LOCAL_IMG := osm_analytics:latest
-
-# AWS properties
-CLUSTER_NAME := osm-stat-stream-cluster
-INSTANCE_TYPE := m4.xlarge
-KEYPAIR := ???
-VPC := ???
-SUBNETS := ???
-SECURITY_GROUP := ???
-ECR_REPO := ???
-AWS_LOG_GROUP := osm-stats-stream
-AWS_REGION := us-east-1
-
-# Shared properties
-AUGDIFF_START := 3164313
-AUGDIFF_SOURCE := s3://nome-osmesa/augmented-diffs/
-AUGDIFF_LOCAL_SOURCE := s3://mojodna-temp/augdiffs/
-CHANGESET_START := 168249
-CHANGESET_SOURCE := http://10.0.1.244/replication/replication/changesets/
-CHANGESET_LOCAL_SOURCE := https://planet.osm.org/replication/changesets/
-CHANGE_START := 1
-CHANGE_SOURCE := https://planet.osm.org/replication/minute/
-
-DB_URI := ???
 
 
 #########
@@ -32,12 +10,12 @@ DB_URI := ???
 #########
 docker-compose.local.yml:
 	export LOCAL_IMG=${LOCAL_IMG}; \
-	export AUGDIFF_SOURCE=${AUGDIFF_LOCAL_SOURCE}; \
-	export CHANGESET_SOURCE=${CHANGESET_LOCAL_SOURCE}; \
-	export CHANGE_SOURCE=${CHANGE_SOURCE}; \
-	export AUGDIFF_START=${AUGDIFF_START}; \
-	export CHANGESET_START=${CHANGESET_START}; \
-	export CHANGE_START=${CHANGE_START}; \
+	export AUGDIFF_SOURCE=${LOCAL_AUGDIFF_SOURCE}; \
+	export CHANGESET_SOURCE=${LOCAL_CHANGESET_SOURCE}; \
+	export CHANGE_SOURCE=${LOCAL_CHANGE_SOURCE}; \
+	export AUGDIFF_START=${LOCAL_AUGDIFF_START}; \
+	export CHANGESET_START=${LOCAL_CHANGESET_START}; \
+	export CHANGE_START=${LOCAL_CHANGE_START}; \
 		./expand.sh docker-compose.local.yml.tpl > docker-compose.local.yml
 
 start-local: docker-compose.local.yml
