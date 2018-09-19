@@ -4,6 +4,8 @@ include config-local.mk   # Variables related to running locally
 # The osmesa container
 LOCAL_IMG := osm_analytics:latest
 
+build-container:
+	cd .. && ./build-container.sh
 
 #########
 # LOCAL #
