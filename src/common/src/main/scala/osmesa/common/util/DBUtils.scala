@@ -5,13 +5,14 @@ import java.sql.{Connection, DriverManager}
 
 object DBUtils {
   def getJdbcConnection(uri: URI): Connection = {
-    
+
     val cleanUri = new URI(
-      scheme = uri.getScheme, 
-      authority = uri.getAuthority, // host and port
-      path = uri.getPath, 
-      query = null, 
-      fragment = null)
+      uri.getScheme,
+      uri.getAuthority, // host and port
+      uri.getPath,
+      null.asInstanceOf[String],
+      null.asInstanceOf[String]
+    )
     // also drops UserInfo
 
     val auth = Auth.fromUri(uri)
