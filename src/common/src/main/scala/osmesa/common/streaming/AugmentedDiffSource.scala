@@ -47,9 +47,10 @@ object AugmentedDiffSource extends Logging {
         }
         .toSeq
     } catch {
-      case e: AmazonS3Exception if e.getStatusCode == 404 =>
+      case e: AmazonS3Exception if e.getStatusCode == 404 || e.getStatusCode == 403 =>
         getCurrentSequence(baseURI) match {
           case Some(s) if s > sequence =>
+            logInfo("Encountered missing sequence, comparing with current for validity")
             // sequence is missing; this is intentional, so compare with currentSequence for validity
             Seq.empty[AugmentedDiff]
           case _ =>
