@@ -7,8 +7,6 @@ services:
       --augmented-diff-source ${AUGDIFF_SOURCE}
       --start-sequence ${AUGDIFF_START}
       --database-uri ${DB_URI}
-      --database-user ${DB_USER}
-      --database-pass ${DB_PASS}
     deploy:
       restart_policy:
         condition: on-failure
@@ -28,8 +26,6 @@ services:
       --changeset-source ${CHANGESET_SOURCE}
       --start-sequence ${CHANGESET_START}
       --database-uri ${DB_URI}
-      --database-user ${DB_USER}
-      --database-pass ${DB_PASS}
     deploy:
       restart_policy:
         condition: on-failure

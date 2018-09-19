@@ -1,4 +1,5 @@
 repository
 docker-compose.local.yml
 docker-compose.deploy.yml
-
+config-local.mk
+config-aws.mk
