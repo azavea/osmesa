@@ -4,8 +4,6 @@ include config-local.mk   # Variables related to running locally
 # The osmesa container
 LOCAL_IMG := osm_analytics:latest
 
-build-container:
-	cd .. && ./build-container.sh
 
 #########
 # LOCAL #
@@ -89,6 +87,9 @@ stop-service:
 #########
 #  ALL  #
 #########
+build-container:
+	cd .. && ./build-container.sh
+
 clean:
 	rm -f docker-compose.local.yml
 	rm -f docker-compose.deploy.yml
