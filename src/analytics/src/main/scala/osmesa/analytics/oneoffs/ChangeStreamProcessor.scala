@@ -46,28 +46,18 @@ object ChangeStreamProcessor extends CommandApp(
         metavar = "sequence",
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
+    val databaseUriEnv =
+      Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
     val databaseUriOpt =
       Opts.option[URI](
         "database-uri",
         short = "d",
         metavar = "database URL",
-        help = "Database URL"
-      ).orNone
-    val databaseUserOpt =
-      Opts.option[String]("database-user",
-        short = "u",
-        metavar = "database user",
-        help = "Database user"
-      ).orNone
-    val databasePassOpt =
-      Opts.option[String]("database-pass",
-        short = "p",
-        metavar = "database password",
-        help = "Database password"
-      ).orNone
+        help = "Database URL (default: $DATABASE_URL environment variable)"
+      )
 
-    (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, databaseUserOpt, databasePassOpt).mapN {
-      (changeSource, startSequence, endSequence, databaseUri, databaseUser, databasePass) =>
+    (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt orElse databaseUriEnv).mapN {
+      (changeSource, startSequence, endSequence, databaseUri) =>
         implicit val ss: SparkSession =
           Analytics.sparkSession("ChangeStreamProcessor")
 
@@ -75,17 +65,9 @@ object ChangeStreamProcessor extends CommandApp(
 
         val options = Map(
           "base_uri"  -> changeSource.toString,
+          "db_uri"    -> databaseUri.toString,
           "proc_name" -> "ChangeStream"
         ) ++
-          databaseUri
-            .map(db => Map("db_uri" -> db.toString))
-            .getOrElse(Map.empty[String, String]) ++
-          databaseUser
-            .map(usr => Map("db_user" -> usr.toString))
-            .getOrElse(Map.empty[String, String]) ++
-          databasePass
-            .map(pw => Map("db_pass" -> pw.toString))
-            .getOrElse(Map.empty[String, String]) ++
           startSequence
             .map(s => Map("start_sequence" -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
