@@ -7,6 +7,7 @@ import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
+import osmesa.common.util.DBUtils
 import osmesa.common.functions.osm._
 
 
@@ -30,25 +31,15 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "uri",
         help = "Location of changesets to process"
       ).withDefault(new URI("https://planet.osm.org/replication/changesets/"))
+    val databaseUriEnv =
+      Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
     val databaseUriOpt =
       Opts.option[URI](
         "database-uri",
         short = "d",
         metavar = "database URL",
-        help = "Database URL"
+        help = "Database URL (default: $DATABASE_URL environment variable)"
       )
-    val databaseUserOpt =
-      Opts.option[String]("database-user",
-        short = "u",
-        metavar = "database user",
-        help = "Database user"
-      ).orNone
-    val databasePassOpt =
-      Opts.option[String]("database-pass",
-        short = "p",
-        metavar = "database password",
-        help = "Database password"
-      ).orNone
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",
@@ -64,8 +55,8 @@ object ChangesetStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt, databaseUserOpt, databasePassOpt).mapN {
-      (changesetSource, databaseUri, startSequence, endSequence, databaseUser, databasePass) =>
+    (changesetSourceOpt, databaseUriOpt orElse databaseUriEnv, startSequenceOpt, endSequenceOpt).mapN {
+      (changesetSource, databaseUri, startSequence, endSequence) =>
         implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 
         import ss.implicits._
@@ -75,12 +66,6 @@ object ChangesetStreamProcessor extends CommandApp(
           "db_uri"    -> databaseUri.toString,
           "proc_name" -> "ChangesetStream"
         ) ++
-          databaseUser
-            .map(usr => Map("db_user" -> usr))
-            .getOrElse(Map.empty[String, String]) ++
-          databasePass
-            .map(pw => Map("db_pass" -> pw))
-            .getOrElse(Map.empty[String, String]) ++
           startSequence
             .map(s => Map("start_sequence" -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
@@ -204,13 +189,7 @@ object ChangesetStreamProcessor extends CommandApp(
 
               this.partitionId = partitionId
               this.version = version
-
-              connection = (databaseUser, databasePass).mapN { (usr, pass) =>
-                DriverManager.getConnection(s"jdbc:${databaseUri.toString}", usr, pass)
-              }.getOrElse {
-                DriverManager.getConnection(s"jdbc:${databaseUri.toString}")
-              }
-
+              connection = DBUtils.getJdbcConnection(databaseUri)
               true
             }
 

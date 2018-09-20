@@ -47,18 +47,19 @@ object AugmentedDiffSource extends Logging {
         }
         .toSeq
     } catch {
-      case e: AmazonS3Exception if e.getStatusCode == 404 =>
+      case e: AmazonS3Exception if e.getStatusCode == 404 || e.getStatusCode == 403 =>
         getCurrentSequence(baseURI) match {
           case Some(s) if s > sequence =>
+            logInfo("Encountered missing sequence, comparing with current for validity")
             // sequence is missing; this is intentional, so compare with currentSequence for validity
             Seq.empty[AugmentedDiff]
           case _ =>
-            logDebug(s"$sequence is not yet available, sleeping.")
+            logInfo(s"$sequence is not yet available, sleeping.")
             Thread.sleep(Delay.toMillis)
             getSequence(baseURI, sequence)
         }
-      case _: Throwable =>
-        logDebug(s"$sequence was unavailable, sleeping before retrying.")
+      case t: Throwable =>
+        logError(s"sequence $sequence caused an error", t)
         Thread.sleep(Delay.toMillis)
         getSequence(baseURI, sequence)
     }
