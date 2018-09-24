@@ -28,7 +28,7 @@ class ProcessOSMTest extends FunSpec with TestEnvironment with Matchers {
     info(s"Nodes: ${nodeGeoms.count}")
   }
 
-  ignore("parses isle of man wasys") {
+  it("parses isle of man wasys") {
     info(s"Ways: ${wayGeoms.count}")
   }
 

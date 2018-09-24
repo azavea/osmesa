@@ -34,7 +34,7 @@ object ProcessOSM {
       StructField("id", LongType, nullable = false) ::
       StructField("version", IntegerType, nullable = false) ::
       StructField("updated", TimestampType, nullable = false) ::
-      StructField("geom", BinaryType) ::
+      StructField("geom", GeometryUDT) ::
       Nil)
 
   val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
@@ -47,7 +47,7 @@ object ProcessOSM {
       StructField("minorVersion", IntegerType, nullable = false) ::
       StructField("updated", TimestampType, nullable = false) ::
       StructField("validUntil", TimestampType) ::
-      StructField("geom", BinaryType) ::
+      StructField("geom", GeometryUDT) ::
       Nil)
 
   val TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
@@ -59,7 +59,7 @@ object ProcessOSM {
       StructField("minorVersion", IntegerType, nullable = false) ::
       StructField("updated", TimestampType, nullable = false) ::
       StructField("validUntil", TimestampType) ::
-      StructField("geom", BinaryType) ::
+      StructField("geom", GeometryUDT) ::
       Nil)
 
   val VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
@@ -251,7 +251,7 @@ object ProcessOSM {
       .select(
         lit(NodeType) as '_type,
         'id,
-        ST_Point('lon, 'lat) as 'geom,
+        st_makePoint('lon, 'lat) as 'geom,
         'tags,
         'changeset,
         'updated,
