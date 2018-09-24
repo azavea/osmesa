@@ -4,6 +4,7 @@ object Dependencies {
   val decline        = "com.monovore"                %% "decline"                     % Version.decline
   val sparkHive      = "org.apache.spark"            %% "spark-hive"                  % Version.spark
   val sparkStreaming = "org.apache.spark"            %% "spark-streaming"             % Version.spark
+  val sparkJts       = "org.locationtech.geomesa"    %% "geomesa-spark-jts"           % Version.geomesa
   val gtGeomesa      = "org.locationtech.geotrellis" %% "geotrellis-geomesa"          % Version.geotrellis
   val gtGeotools     = "org.locationtech.geotrellis" %% "geotrellis-geotools"         % Version.geotrellis
   val gtS3           = "org.locationtech.geotrellis" %% "geotrellis-s3"               % Version.geotrellis

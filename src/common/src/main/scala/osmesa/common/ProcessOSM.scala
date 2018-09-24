@@ -18,6 +18,9 @@ import osmesa.common.functions.osm._
 import osmesa.common.util.Caching
 import spray.json._
 
+import org.locationtech.geomesa.spark.jts._
+import org.apache.spark.sql.jts.GeometryUDT
+
 object ProcessOSM {
   val NodeType: Byte = 1
   val WayType: Byte = 2
