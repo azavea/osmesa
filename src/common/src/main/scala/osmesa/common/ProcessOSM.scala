@@ -20,6 +20,7 @@ import spray.json._
 
 import org.locationtech.geomesa.spark.jts._
 import org.apache.spark.sql.jts.GeometryUDT
+import com.vividsolutions.jts.{geom => jts}
 
 object ProcessOSM {
   val NodeType: Byte = 1
@@ -335,7 +336,6 @@ object ProcessOSM {
       .mapGroups {
         case ((changeset, id, version, updated), rows) =>
           val nds = rows.toVector
-
           val isArea = nds.head.getAs[Boolean]("isArea")
           val geom = nds
             .sortWith((a, b) => a.getAs[Int]("idx") < b.getAs[Int]("idx"))
@@ -344,31 +344,29 @@ object ProcessOSM {
                   Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN))
             } match {
               // no coordinates provided
-              case coords if coords.isEmpty => Some("LINESTRING EMPTY".parseWKT)
+              case coords if coords.isEmpty => Some(GeomFactory.factory.createLineString(Array.empty[jts.Coordinate]))
               // some of the coordinates are empty; this is invalid
               case coords if coords.exists(Option(_).isEmpty) => None
               // some of the coordinates are invalid
               case coords if coords.exists(_.exists(_.isNaN)) => None
               // 1 pair of coordinates provided
               case coords if coords.length == 1 =>
-                Some(Point(coords.head.head, coords.head.last))
+                Some(GeomFactory.factory.createPoint(new jts.Coordinate(coords.head.head, coords.head.last)))
               case coords => {
-                coords.map(xy => (xy.head.toDouble, xy.last.toDouble)) match {
-                  case pairs => Line(pairs)
-                }
-              } match {
-                case ring if isArea && ring.vertexCount >= 4 && ring.isClosed =>
-                  Some(Polygon(ring))
-                case line => Some(line)
+                val coordinates = coords.map(xy => new jts.Coordinate(xy.head.toDouble, xy.last.toDouble)).toArray
+                val line = GeomFactory.factory.createLineString(coordinates)
+
+                if (isArea && line.getNumPoints >= 4 && line.isClosed)
+                  Some(GeomFactory.factory.createPolygon(line.getCoordinateSequence))
+                else
+                  Some(line)
               }
             }
-
-            val wkb = geom match {
-              case Some(g) if g.isValid => g.toWKB(4326)
-              case _ => null
-            }
-
-            new GenericRowWithSchema(Array(changeset, id, version, updated, wkb), BareElementSchema): Row
+          val geometry = geom match {
+            case Some(g) if g.isValid => g
+            case _ => null
+          }
+          new GenericRowWithSchema(Array(changeset, id, version, updated, geometry), BareElementSchema): Row
       }
 
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
