@@ -32,7 +32,7 @@ class ProcessOSMTest extends FunSpec with TestEnvironment with Matchers {
     info(s"Ways: ${wayGeoms.count}")
   }
 
-  ignore("parses isle of man relations") {
+  it("parses isle of man relations") {
     info(s"Relations: ${relationGeoms.count}")
   }  
 }
