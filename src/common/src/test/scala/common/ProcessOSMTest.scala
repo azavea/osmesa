@@ -16,7 +16,7 @@ class ProcessOSMTest extends FunSpec with TestEnvironment with Matchers {
   import ss.implicits._
   ss.withJTS
 
-  val orcFile = "file:/Users/eugene/Downloads/isle-of-man-latest.osm.orc"
+  val orcFile = "file:/Users/nzimmerman/Downloads/isle-of-man-latest.osm.orc"
 
   val elements = ss.read.orc(orcFile)
   val nodes = ProcessOSM.preprocessNodes(elements).cache
@@ -34,5 +34,5 @@ class ProcessOSMTest extends FunSpec with TestEnvironment with Matchers {
 
   it("parses isle of man relations") {
     info(s"Relations: ${relationGeoms.count}")
-  }  
+  }
 }

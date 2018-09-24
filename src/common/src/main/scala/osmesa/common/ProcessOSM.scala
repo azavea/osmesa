@@ -517,7 +517,7 @@ object ProcessOSM {
             val members = rows.toVector
             val types = members.map(_.getAs[Byte]("type"))
             val roles = members.map(_.getAs[String]("role"))
-            val geoms = members.map(_.getAs[Array[Byte]]("geom"))
+            val geoms = members.map(_.getAs[jts.Geometry]("geom"))
 
             val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
 
@@ -581,7 +581,7 @@ object ProcessOSM {
           val members = rows.toVector
           val types = members.map(_.getAs[Byte]("type"))
           val roles = members.map(_.getAs[String]("role"))
-          val geoms = members.map(_.getAs[Array[Byte]]("geom"))
+          val geoms = members.map(_.getAs[jts.Geometry]("geom"))
 
           buildRoute(id, version, updated, types, roles, geoms) match {
             case Some(components) =>
