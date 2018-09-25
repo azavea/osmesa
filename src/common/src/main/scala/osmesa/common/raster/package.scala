@@ -9,7 +9,8 @@ import geotrellis.raster.{
   IntUserDefinedNoDataCellType,
   MutableArrayTile,
   NoDataHandling,
-  Tile
+  Tile,
+  isData
 }
 
 import scala.collection.mutable
@@ -40,7 +41,7 @@ package object raster {
 
     override def applyDouble(i: Int): Double = apply(i).toDouble
 
-    override def apply(i: Int): Int = values.getOrElse(i, 0)
+    override def apply(i: Int): Int = values.getOrElse(i, noDataValue)
 
     override def copy: ArrayTile = SparseIntTile(cols, rows, Map(values.toSeq: _*), cellType)
 
@@ -78,7 +79,13 @@ package object raster {
 
     override def updateDouble(i: Int, z: Double): Unit = update(i, z.toInt)
 
-    override def update(i: Int, z: Int): Unit = values(i) = z
+    override def update(i: Int, z: Int): Unit = {
+      if (isData(z)) {
+        values(i) = z
+      } else {
+        values.remove(i)
+      }
+    }
 
     def interpretAs(newCellType: CellType): Tile = {
       newCellType match {
@@ -94,7 +101,7 @@ package object raster {
 
     override def applyDouble(i: Int): Double = apply(i).toDouble
 
-    override def apply(i: Int): Int = values.getOrElse(i, 0)
+    override def apply(i: Int): Int = values.getOrElse(i, noDataValue)
 
     override def copy: ArrayTile = MutableSparseIntTile(cols, rows, values.clone(), cellType)
 
