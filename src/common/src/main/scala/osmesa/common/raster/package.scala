@@ -44,6 +44,8 @@ package object raster {
 
     override def copy: ArrayTile = SparseIntTile(cols, rows, Map(values.toSeq: _*), cellType)
 
+    // unimplemented because it doesn't make sense in this context (and SparseIntTile can't be instantiated from
+    // Array[Byte])
     override def toBytes(): Array[Byte] = ???
 
     def toMap: Map[Long, Int] = values
@@ -96,6 +98,8 @@ package object raster {
 
     override def copy: ArrayTile = MutableSparseIntTile(cols, rows, values.clone(), cellType)
 
+    // unimplemented because it doesn't make sense in this context (and MutableSparseIntTile can't be instantiated from
+    // Array[Byte])
     override def toBytes(): Array[Byte] = ???
 
     def toMap: Map[Long, Int] = values.toMap
