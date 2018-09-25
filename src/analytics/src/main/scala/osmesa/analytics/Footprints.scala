@@ -7,7 +7,7 @@ import java.util.zip.GZIPInputStream
 
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.resample.Sum
-import geotrellis.raster.{IntArrayTile, RasterExtent, Raster => GTRaster, _}
+import geotrellis.raster.{RasterExtent, Raster => GTRaster, _}
 import geotrellis.spark.io.index.zcurve.ZSpatialKeyIndex
 import geotrellis.spark.tiling.ZoomedLayoutScheme
 import geotrellis.spark.{KeyBounds, SpatialKey}
@@ -23,6 +23,7 @@ import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, read, write}
 import osmesa.common.model._
 import osmesa.common.model.impl._
+import osmesa.common.raster.MutableSparseIntTile
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.{ForkJoinTaskSupport, TaskSupport}
@@ -633,7 +634,7 @@ object Footprints extends Logging {
             case ((k, z, x, y), tiles) =>
               val sk = SpatialKey(x, y)
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
-              val tile = IntArrayTile.ofDim(cols, rows, IntCellType)
+              val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
               val geoms = tiles.map(_.wkb.readWKB)
 
@@ -658,7 +659,7 @@ object Footprints extends Logging {
             case ((sequence, k, z, x, y), tiles) =>
               val sk = SpatialKey(x, y)
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
-              val tile = IntArrayTile.ofDim(cols, rows, IntCellType)
+              val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
               val geoms = tiles.map(_.wkb.readWKB)
 
