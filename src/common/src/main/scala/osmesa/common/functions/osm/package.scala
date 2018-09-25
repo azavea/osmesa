@@ -20,6 +20,7 @@ import scala.annotation.tailrec
 import scala.collection.GenTraversable
 import scala.reflect.{ClassTag, classTag}
 import com.vividsolutions.jts.geom.prep.PreparedGeometryFactory
+import com.vividsolutions.jts.operation.union.CascadedPolygonUnion
 
 
 package object osm {
@@ -517,7 +518,7 @@ package object osm {
     geometryFactory.createLinearRing(p.getInteriorRingN(i).getCoordinates)
 
   private def dissolveRings(rings: Array[jts.Polygon]): (Seq[jts.Polygon], Seq[jts.Polygon]) = {
-    Option(geometryFactory.createMultiPolygon(rings)) match {
+    Option(geometryFactory.createGeometryCollection(rings.asInstanceOf[Array[Geometry]]).union) match {
       case Some(mp) =>
         val polygons = for (i <- 0 until mp.getNumGeometries) yield {
           mp.getGeometryN(i).asInstanceOf[jts.Polygon]
