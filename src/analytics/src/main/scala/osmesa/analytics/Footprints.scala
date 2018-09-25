@@ -293,7 +293,7 @@ object Footprints extends Logging {
           val targetExtent =
             SpatialKey(tile.x, tile.y).extent(LayoutScheme.levelForZoom(tile.zoom).layout)
 
-          val newTile = rasters.head.tile.prototype(Cols, Rows)
+          val newTile = MutableSparseIntTile(Cols, Rows)
 
           rasters.foreach { raster => newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
           }
@@ -639,7 +639,11 @@ object Footprints extends Logging {
               val geoms = tiles.map(_.wkb.readWKB)
 
               geoms.foreach(g =>
-                g.foreach(rasterExtent) { (c, r) => tile.set(c, r, tile.get(c, r) + 1)
+                g.foreach(rasterExtent) { (c, r) =>
+                  tile.get(c, r) match {
+                    case v if isData(v) => tile.set(c, r, v + 1)
+                    case _              => tile.set(c, r, 1)
+                  }
               })
 
               RasterTileWithKey(k, z, x, y, GTRaster.tupToRaster(tile, tileExtent))
@@ -664,7 +668,11 @@ object Footprints extends Logging {
               val geoms = tiles.map(_.wkb.readWKB)
 
               geoms.foreach(g =>
-                g.foreach(rasterExtent) { (c, r) => tile.set(c, r, tile.get(c, r) + 1)
+                g.foreach(rasterExtent) { (c, r) =>
+                  tile.get(c, r) match {
+                    case v if isData(v) => tile.set(c, r, v + 1)
+                    case _              => tile.set(c, r, 1)
+                  }
               })
 
               RasterTileWithKeyAndSequence(sequence,

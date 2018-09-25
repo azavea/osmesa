@@ -1,6 +1,6 @@
 package osmesa.common.model
 
-import geotrellis.raster.{ArrayTile, CellType, IntArrayTile, MutableArrayTile, Tile, isData, Raster => GTRaster}
+import geotrellis.raster.{IntArrayTile, Tile, isData, Raster => GTRaster}
 import geotrellis.vector.Extent
 import osmesa.common.raster.{MutableSparseIntTile, SparseIntTile}
 
@@ -46,10 +46,9 @@ package object impl {
                                zoom: Int,
                                x: Int,
                                y: Int,
-                               tileValues: Map[Long, Int],
-                               tileCols: Int,
-                               tileRows: Int,
-                               tileCellType: String,
+                               values: Map[Long, Int],
+                               cols: Int,
+                               rows: Int,
                                xmin: Double,
                                ymin: Double,
                                xmax: Double,
@@ -57,14 +56,9 @@ package object impl {
       extends RasterTile
       with Key {
     lazy val raster: GTRaster[Tile] = GTRaster.tupToRaster(
-      SparseIntTile(tileCols, tileRows, tileValues),
+      SparseIntTile(cols, rows, values),
       Extent(xmin, ymin, xmax, ymax)
     )
-
-    override def prototype(cols: Int, rows: Int): MutableArrayTile =
-      ArrayTile.empty(cellType, tileCols, tileRows)
-
-    def cellType: CellType = CellType.fromName(tileCellType)
   }
 
   case class RasterTileWithKeyAndSequence(sequence: Int,
@@ -72,10 +66,9 @@ package object impl {
                                           zoom: Int,
                                           x: Int,
                                           y: Int,
-                                          tileValues: Map[Long, Int],
-                                          tileCols: Int,
-                                          tileRows: Int,
-                                          tileCellType: String,
+                                          values: Map[Long, Int],
+                                          cols: Int,
+                                          rows: Int,
                                           xmin: Double,
                                           ymin: Double,
                                           xmax: Double,
@@ -84,14 +77,9 @@ package object impl {
       with Key
       with Sequence {
     lazy val raster: GTRaster[Tile] = GTRaster.tupToRaster(
-      SparseIntTile(tileCols, tileRows, tileValues),
+      SparseIntTile(cols, rows, values),
       Extent(xmin, ymin, xmax, ymax)
     )
-
-    override def prototype(cols: Int, rows: Int): MutableArrayTile =
-      ArrayTile.empty(cellType, tileCols, tileRows)
-
-    def cellType: CellType = CellType.fromName(tileCellType)
   }
 
   case class RasterWithSequenceTileSeqWithTileCoordinatesAndKey(tiles: Seq[RasterWithSequence],
@@ -103,10 +91,9 @@ package object impl {
       with TileCoordinates
       with Key
 
-  case class RasterWithSequence(tileValues: Map[Long, Int],
-                                tileCols: Int,
-                                tileRows: Int,
-                                tileCellType: String,
+  case class RasterWithSequence(values: Map[Long, Int],
+                                cols: Int,
+                                rows: Int,
                                 xmin: Double,
                                 ymin: Double,
                                 xmax: Double,
@@ -115,14 +102,9 @@ package object impl {
       extends Raster
       with Sequence {
     lazy val raster: GTRaster[Tile] = GTRaster.tupToRaster(
-      SparseIntTile(tileCols, tileRows, tileValues),
+      SparseIntTile(cols, rows, values),
       Extent(xmin, ymin, xmax, ymax)
     )
-
-    override def prototype(cols: Int, rows: Int): MutableArrayTile =
-      ArrayTile.empty(cellType, tileCols, tileRows)
-
-    def cellType: CellType = CellType.fromName(tileCellType)
   }
 
   case class CountWithTileCoordinatesAndKey(count: Long, zoom: Int, x: Int, y: Int, key: String)
@@ -174,7 +156,6 @@ package object impl {
         raster.toMap,
         raster.cols,
         raster.rows,
-        raster.cellType.name,
         raster.extent.xmin,
         raster.extent.ymin,
         raster.extent.xmax,
@@ -198,7 +179,6 @@ package object impl {
         raster.toMap,
         raster.cols,
         raster.rows,
-        raster.cellType.name,
         raster.extent.xmin,
         raster.extent.ymin,
         raster.extent.xmax,
@@ -214,7 +194,6 @@ package object impl {
         raster.toMap,
         raster.cols,
         raster.rows,
-        raster.cellType.name,
         raster.extent.xmin,
         raster.extent.ymin,
         raster.extent.xmax,

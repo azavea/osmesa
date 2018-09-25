@@ -4,7 +4,7 @@ import java.net.URI
 import java.time.Instant
 
 import cats.syntax.either._
-import geotrellis.raster.{MutableArrayTile, Tile, Raster => GTRaster}
+import geotrellis.raster.{Tile, Raster => GTRaster}
 import geotrellis.vector.io._
 import geotrellis.vector.{Feature, Point, Geometry => GTGeometry}
 import io.circe._
@@ -149,7 +149,6 @@ package object model {
   trait GeometryTile extends SerializedGeometry with TileCoordinates
 
   trait Raster {
-    def prototype(cols: Int, rows: Int): MutableArrayTile
     def raster: GTRaster[Tile]
   }
 
