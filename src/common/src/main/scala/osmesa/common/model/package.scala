@@ -149,6 +149,7 @@ package object model {
   trait GeometryTile extends SerializedGeometry with TileCoordinates
 
   trait Raster {
+    def prototype(cols: Int, rows: Int): MutableArrayTile
     def raster: GTRaster[Tile]
   }
 

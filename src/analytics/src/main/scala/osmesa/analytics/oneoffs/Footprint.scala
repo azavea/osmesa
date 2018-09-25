@@ -132,13 +132,15 @@ object Footprint extends Logging {
       case _ => throw new RuntimeException("Unrecognized footprint type")
     }
 
+    // TODO make changesets optional
+    // TODO accept a list of users
+
     val nodes = history
       .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
       .select('lat, 'lon, 'key)
-      .repartition('key)
 
     val stats = Footprints.createFootprints(nodes, outputURI)
-    stats.write.mode(SaveMode.Overwrite).csv("/tmp/footprints/")
+    stats.repartition(1).write.mode(SaveMode.Overwrite).csv("/tmp/footprints/")
 
     spark.stop()
   }
