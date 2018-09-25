@@ -1,19 +1,15 @@
 package osmesa.common.model
 
-import geotrellis.raster.{
-  CellType,
-  IntArrayTile,
-  IntCells,
-  NoDataHandling,
-  Tile,
-  Raster => GTRaster
-}
+import geotrellis.raster.{ArrayTile, CellType, IntArrayTile, MutableArrayTile, Tile, isData, Raster => GTRaster}
 import geotrellis.vector.Extent
+import osmesa.common.raster.{MutableSparseIntTile, SparseIntTile}
 
 package object impl {
   case class CoordinatesWithKey(key: String, lat: Option[BigDecimal], lon: Option[BigDecimal])
       extends Coordinates
       with Key
+
+  import implicits._
 
   case class CoordinatesWithKeyAndSequence(sequence: Int,
                                            key: String,
@@ -50,7 +46,7 @@ package object impl {
                                zoom: Int,
                                x: Int,
                                y: Int,
-                               tileBytes: Array[Byte],
+                               tileValues: Map[Long, Int],
                                tileCols: Int,
                                tileRows: Int,
                                tileCellType: String,
@@ -61,13 +57,14 @@ package object impl {
       extends RasterTile
       with Key {
     lazy val raster: GTRaster[Tile] = GTRaster.tupToRaster(
-      IntArrayTile.fromBytes(
-        tileBytes,
-        tileCols,
-        tileRows,
-        CellType.fromName(tileCellType).asInstanceOf[IntCells with NoDataHandling]),
+      SparseIntTile(tileCols, tileRows, tileValues),
       Extent(xmin, ymin, xmax, ymax)
     )
+
+    override def prototype(cols: Int, rows: Int): MutableArrayTile =
+      ArrayTile.empty(cellType, tileCols, tileRows)
+
+    def cellType: CellType = CellType.fromName(tileCellType)
   }
 
   case class RasterTileWithKeyAndSequence(sequence: Int,
@@ -75,7 +72,7 @@ package object impl {
                                           zoom: Int,
                                           x: Int,
                                           y: Int,
-                                          tileBytes: Array[Byte],
+                                          tileValues: Map[Long, Int],
                                           tileCols: Int,
                                           tileRows: Int,
                                           tileCellType: String,
@@ -87,13 +84,14 @@ package object impl {
       with Key
       with Sequence {
     lazy val raster: GTRaster[Tile] = GTRaster.tupToRaster(
-      IntArrayTile.fromBytes(
-        tileBytes,
-        tileCols,
-        tileRows,
-        CellType.fromName(tileCellType).asInstanceOf[IntCells with NoDataHandling]),
+      SparseIntTile(tileCols, tileRows, tileValues),
       Extent(xmin, ymin, xmax, ymax)
     )
+
+    override def prototype(cols: Int, rows: Int): MutableArrayTile =
+      ArrayTile.empty(cellType, tileCols, tileRows)
+
+    def cellType: CellType = CellType.fromName(tileCellType)
   }
 
   case class RasterWithSequenceTileSeqWithTileCoordinatesAndKey(tiles: Seq[RasterWithSequence],
@@ -105,7 +103,7 @@ package object impl {
       with TileCoordinates
       with Key
 
-  case class RasterWithSequence(tileBytes: Array[Byte],
+  case class RasterWithSequence(tileValues: Map[Long, Int],
                                 tileCols: Int,
                                 tileRows: Int,
                                 tileCellType: String,
@@ -117,19 +115,38 @@ package object impl {
       extends Raster
       with Sequence {
     lazy val raster: GTRaster[Tile] = GTRaster.tupToRaster(
-      IntArrayTile.fromBytes(
-        tileBytes,
-        tileCols,
-        tileRows,
-        CellType.fromName(tileCellType).asInstanceOf[IntCells with NoDataHandling]),
+      SparseIntTile(tileCols, tileRows, tileValues),
       Extent(xmin, ymin, xmax, ymax)
     )
+
+    override def prototype(cols: Int, rows: Int): MutableArrayTile =
+      ArrayTile.empty(cellType, tileCols, tileRows)
+
+    def cellType: CellType = CellType.fromName(tileCellType)
   }
 
   case class CountWithTileCoordinatesAndKey(count: Long, zoom: Int, x: Int, y: Int, key: String)
       extends Count
       with TileCoordinates
       with Key
+
+  object implicits {
+    implicit class RasterMethods(val raster: GTRaster[Tile]) {
+      def toMap: Map[Long, Int] = {
+        raster.tile match {
+          case tile: SparseIntTile        => tile.toMap
+          case tile: MutableSparseIntTile => tile.toMap
+          case tile =>
+            tile
+              .toArray()
+              .zipWithIndex
+              .filter(x => isData(x._1))
+              .map(x => (x._2.toLong, x._1))
+              .toMap
+        }
+      }
+    }
+  }
 
   object RasterWithSequenceTileSeqWithTileCoordinatesAndKey {
     def apply(tiles: Seq[Raster with Sequence], zoom: Int, x: Int, y: Int, key: String)(
@@ -154,10 +171,10 @@ package object impl {
         zoom,
         col,
         row,
-        raster.tile.toBytes,
-        raster.tile.cols,
-        raster.tile.rows,
-        raster.tile.cellType.name,
+        raster.toMap,
+        raster.cols,
+        raster.rows,
+        raster.cellType.name,
         raster.extent.xmin,
         raster.extent.ymin,
         raster.extent.xmax,
@@ -178,10 +195,10 @@ package object impl {
         zoom,
         col,
         row,
-        raster.tile.toBytes,
-        raster.tile.cols,
-        raster.tile.rows,
-        raster.tile.cellType.name,
+        raster.toMap,
+        raster.cols,
+        raster.rows,
+        raster.cellType.name,
         raster.extent.xmin,
         raster.extent.ymin,
         raster.extent.xmax,
@@ -189,13 +206,15 @@ package object impl {
       )
   }
 
+  IntArrayTile
+
   object RasterWithSequence {
     def apply(raster: GTRaster[Tile], sequence: Int): RasterWithSequence =
       RasterWithSequence(
-        raster.tile.toBytes,
-        raster.tile.cols,
-        raster.tile.rows,
-        raster.tile.cellType.name,
+        raster.toMap,
+        raster.cols,
+        raster.rows,
+        raster.cellType.name,
         raster.extent.xmin,
         raster.extent.ymin,
         raster.extent.xmax,
