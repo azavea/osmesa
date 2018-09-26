@@ -8,17 +8,23 @@ import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.jts._
 import org.scalatest.prop.{TableDrivenPropertyChecks, Tables}
 import org.scalatest.{Matchers, PropSpec}
 import osmesa.common.ProcessOSM._
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
+import com.vividsolutions.jts.{geom => jts}
+import com.vividsolutions.jts.io.WKTReader
+import org.locationtech.geomesa.spark.jts._
 
 import scala.io.Source
 
-case class Fixture(id: Int, members: DataFrame, wkt: Seq[String])
+case class Fixture(id: Int, members: DataFrame, geoms: Seq[jts.Geometry])
 
 trait SparkPoweredTables extends Tables {
+  def wktReader = new WKTReader()
+
   val spark: SparkSession = SparkSession
     .builder
     .config(
@@ -28,29 +34,29 @@ trait SparkPoweredTables extends Tables {
         .setIfMissing("spark.master", "local[*]")
         .setIfMissing("spark.serializer", classOf[KryoSerializer].getName)
         .setIfMissing("spark.kryo.registrator", classOf[KryoRegistrator].getName)
-    )
-    .getOrCreate()
+    ).getOrCreate()
+  spark.withJTS
 
-  def relation(relation: Int): (Fixture) = Fixture(relation, orc(s"relation-$relation.orc"), wkt(s"relation-$relation.wkt"))
+  def relation(relation: Int): Fixture = Fixture(relation, orc(s"relation-$relation.orc"), readWKT(s"relation-$relation.wkt"))
 
   def orc(filename: String): DataFrame = spark.read.orc(getClass.getResource("/" + filename).getPath)
 
-  def wkt(filename: String): Seq[String] = {
-    try {
-      Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq match {
-        case expected if expected.isEmpty => Seq("")
-        case expected => expected
-      }
-    } catch {
-      case _: Exception => Seq("[not provided]")
+  def readWKT(filename: String): Seq[jts.Geometry] = {
+    Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq match {
+      case expected if expected.isEmpty =>
+        Seq()
+      case expected =>
+        expected.map(wktReader.read)
     }
+   // } catch {
+   //   case _: Exception => Seq("[not provided]")
   }
 
-  def asWKT(relations: DataFrame): Seq[String] = {
+  def asGeoms(relations: DataFrame): Seq[jts.Geometry] = {
     import relations.sparkSession.implicits._
 
-    relations.select(ST_AsText('geom).as("wkt")).collect.map { row =>
-      row.getAs[String]("wkt")
+    relations.select('geom).collect.map { row =>
+      row.getAs[jts.Geometry]("geom")
     }
   }
 }
@@ -89,11 +95,12 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
         implicit val encoder: Encoder[Row] = VersionedElementEncoder
 
         // TODO rewrite fixtures with additional columns added below
-        val actual = asWKT(fixture.members
+        val actual: Seq[jts.Geometry] = asGeoms(fixture.members
           .withColumn("version", lit(1))
           .withColumn("minorVersion", lit(0))
           .withColumn("updated", lit(Timestamp.valueOf("2001-01-01 00:00:00")))
           .withColumn("validUntil", lit(Timestamp.valueOf("2002-01-01 00:00:00")))
+          .withColumn("geometry", st_geomFromWKB('geom))
           .groupByKey { row =>
             (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]
               ("minorVersion"), row.getAs[Timestamp]("updated"), row.getAs[Timestamp]("validUntil"))
@@ -109,16 +116,16 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
                 case _ => null.asInstanceOf[Byte]
               })
               val roles = members.map(_.getAs[String]("role"))
-              val geoms = members.map(_.getAs[Array[Byte]]("geom"))
+              //val geoms = members.map(_.getAs[jts.Geometry]("geom"))
+              val geoms = members.map(_.getAs[jts.Geometry]("geometry"))
+              val mp = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
 
-              val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
-
-              new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb),
+              new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, mp),
                 VersionedElementSchema): Row
           }
-        )
+        ).map(Option.apply).flatten
 
-        val expected = fixture.wkt
+        val expected = fixture.geoms
 
         try {
           actual should ===(expected)
