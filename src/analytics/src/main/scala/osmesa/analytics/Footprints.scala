@@ -31,9 +31,11 @@ import scala.collection.{GenIterable, GenMap}
 import scala.concurrent.forkjoin.ForkJoinPool
 
 object Footprints extends Logging {
-  val BaseZoom: Int = 15
+  val BaseZoom: Int = 14
   val Cols: Int = 512
   val Rows: Int = 512
+  val BaseCols: Int = Cols * 4
+  val BaseRows: Int = Rows * 4
   val DefaultUploadConcurrency: Int = 8
   val LayoutScheme: ZoomedLayoutScheme = ZoomedLayoutScheme(WebMercator)
   val SequenceLayerName: String = "__sequences__"
@@ -50,7 +52,7 @@ object Footprints extends Logging {
       .as[CoordinatesWithKey]
       .asInstanceOf[Dataset[Coordinates with Key]]
 
-    val pyramid = points.tile(baseZoom).rasterize(Cols * 4, Rows * 4).pyramid(baseZoom)
+    val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
 
     pyramid
       .mapPartitions { tiles: Iterator[RasterTile with Key] =>
@@ -209,7 +211,7 @@ object Footprints extends Logging {
       .as[CoordinatesWithKeyAndSequence]
       .asInstanceOf[Dataset[Coordinates with Key with Sequence]]
 
-    val pyramid = points.tile(baseZoom).rasterize(Cols * 4, Rows * 4).pyramid(baseZoom)
+    val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
 
     pyramid.groupByKeyAndTile
       .mapPartitions { rows: Iterator[TileCoordinates with Key with RasterWithSequenceTileSeq] =>
@@ -438,12 +440,14 @@ object Footprints extends Logging {
     implicit class ExtendedRasterTileWithKey(val rasterTiles: Dataset[RasterTile with Key]) {
       import rasterTiles.sparkSession.implicits._
 
-      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key] =
-        (baseZoom to 0 by -8)
-          .foldLeft(rasterTiles)((acc, z) => {
-            acc.downsample(z).merge
-          })
+      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key] = {
+        // Δz between levels of the pyramid
+        val dz = (math.log(Cols) / math.log(2)).toInt
+
+        (baseZoom to 0 by -dz)
+          .foldLeft(rasterTiles)((acc, z) => acc.downsample(z).merge)
           .repartition('key, getSubPyramid('zoom, 'x, 'y))
+      }
 
       /**
         * Merge tiles containing raster subsets.
@@ -487,8 +491,7 @@ object Footprints extends Logging {
       }
 
       /**
-        * Create downsampled versions of input tiles. Assumes 256x256 tiles and will stop when downsampled dimensions drop
-        * below 1x1.
+        * Create downsampled versions of input tiles. Will stop when downsampled dimensions drop below 1x1.
         *
         * @param baseZoom Zoom level for the base of the pyramid.
         * @return Base + downsampled tiles.
@@ -500,9 +503,11 @@ object Footprints extends Logging {
               val raster = tile.raster
               var parent = raster.tile
 
-              // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
-              // point
-              (tile.zoom to math.max(0, tile.zoom - 8) by -1).iterator.flatMap {
+              // determine how far we're able to pyramid from the current tile (the point where 1 ti
+              // pixel; e.g. 256x256 tiles can be reduced by 8 levels)
+              val dz = (math.log(Cols) / math.log(2)).toInt
+
+              (tile.zoom to math.max(0, tile.zoom - dz) by -1).iterator.flatMap {
                 zoom =>
                   if (zoom == tile.zoom) {
                     Seq(tile)
@@ -539,14 +544,17 @@ object Footprints extends Logging {
       def groupByKeyAndTile: Dataset[TileCoordinates with Key with RasterWithSequenceTileSeq] =
         Footprints.groupByKeyAndTile(rasterTiles)
 
-      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] =
-        (baseZoom to 0 by -8)
+      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] = {
+        // Δz between levels of the pyramid
+        val dz = (math.log(Cols) / math.log(2)).toInt
+
+        (baseZoom to 0 by -dz)
           .foldLeft(rasterTiles)((acc, z) => acc.downsample(z).merge)
           .repartition('key, getSubPyramid('zoom, 'x, 'y))
+      }
 
       /**
-        * Create downsampled versions of input tiles. Assumes 256x256 tiles and will stop when downsampled dimensions drop
-        * below 1x1.
+        * Create downsampled versions of input tiles. Will stop when downsampled dimensions drop below 1x1.
         *
         * @param baseZoom Zoom level for the base of the pyramid.
         * @return Base + downsampled tiles.
@@ -559,9 +567,11 @@ object Footprints extends Logging {
 
               var parent = tile.raster.tile
 
-              // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
-              // point
-              for (zoom <- tile.zoom - 1 to math.max(0, tile.zoom - 8) by -1) {
+              // determine how far we're able to pyramid from the current tile (the point where 1 ti
+              // pixel; e.g. 256x256 tiles can be reduced by 8 levels)
+              val dz = (math.log(Cols) / math.log(2)).toInt
+
+              for (zoom <- tile.zoom - 1 to math.max(0, tile.zoom - dz) by -1) {
                 val dz = tile.zoom - zoom
                 val factor = math.pow(2, dz).intValue
                 val newCols = Cols / factor
