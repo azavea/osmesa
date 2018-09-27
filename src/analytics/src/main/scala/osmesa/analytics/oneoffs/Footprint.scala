@@ -72,8 +72,8 @@ object Footprint extends Logging {
             .orc(historyURI.toString)
             // TODO this is dataset-specific
             .where(!('uid isin (0, 1)))
-            // use the username as the footprint key
-            .withColumnRenamed("user", "key")
+            // use the user id as the footprint key
+            .withColumnRenamed("uid", "key")
         } else {
           logInfo(s"Finding users who've participated in ${targetHashtags.mkString(", ")}")
 
@@ -91,8 +91,8 @@ object Footprint extends Logging {
           spark.read
             .orc(historyURI.toString)
             .join(targetUsers, Seq("uid"))
-            // use the username as the footprint key
-            .withColumnRenamed("user", "key")
+            // use the user id as the footprint key
+            .withColumnRenamed("uid", "key")
         }
       case "hashtags" =>
         if (targetHashtags.isEmpty) {
@@ -132,13 +132,15 @@ object Footprint extends Logging {
       case _ => throw new RuntimeException("Unrecognized footprint type")
     }
 
+    // TODO make changesets optional
+    // TODO accept a list of users
+
     val nodes = history
       .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
       .select('lat, 'lon, 'key)
-      .repartition('key)
 
     val stats = Footprints.createFootprints(nodes, outputURI)
-    stats.write.mode(SaveMode.Overwrite).csv("/tmp/footprints/")
+    stats.repartition(1).write.mode(SaveMode.Overwrite).csv("/tmp/footprints/")
 
     spark.stop()
   }
