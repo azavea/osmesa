@@ -459,35 +459,21 @@ object Footprints extends Logging {
 
         rasterTiles
           .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
-          .reduceGroups((a: RasterTile with Key, b: RasterTile with Key) => {
-            val targetExtent = SpatialKey(a.x, a.y).extent(LayoutScheme.levelForZoom(a.zoom).layout)
+          .mapGroups {
+            case ((k, z, x, y), tiles: Iterator[RasterTile with Key]) =>
+              val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
 
-            val newTile = MutableSparseIntTile(Cols, Rows)
+              val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
+                if (tile.raster.extent == mergedExtent) {
+                  // full resolution raster covering the target extent; no need to merge
+                  tile.raster.tile
+                } else {
+                  acc.merge(mergedExtent, tile.raster.extent, tile.raster.tile, Sum)
+                }
+              })
 
-            newTile.merge(targetExtent, a.raster.extent, a.raster.tile, Sum)
-            newTile.merge(targetExtent, b.raster.extent, b.raster.tile, Sum)
-
-            RasterTileWithKey(a.key, a.zoom, a.x, a.y, GTRaster.tupToRaster(newTile, targetExtent))
-          })
-          .map(_._2)
-          .map(tile => {
-            if (tile.raster.cols >= Cols) {
-              tile
-            } else {
-              // a tile that was never reduced; resize it to match
-              val targetExtent =
-                SpatialKey(tile.x, tile.y).extent(LayoutScheme.levelForZoom(tile.zoom).layout)
-
-              val newTile = MutableSparseIntTile(Cols, Rows)
-                .merge(targetExtent, tile.raster.extent, tile.raster.tile, Sum)
-
-              RasterTileWithKey(tile.key,
-                                tile.zoom,
-                                tile.x,
-                                tile.y,
-                                GTRaster.tupToRaster(newTile, targetExtent))
-            }
-          })
+              RasterTileWithKey(k, z, x, y, GTRaster.tupToRaster(merged, mergedExtent))
+          }
       }
 
       /**
@@ -600,45 +586,22 @@ object Footprints extends Logging {
 
         rasterTiles
           .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
-          .reduceGroups(
-            (a: RasterTile with Key with Sequence, b: RasterTile with Key with Sequence) => {
-              val targetExtent =
-                SpatialKey(a.x, a.y).extent(LayoutScheme.levelForZoom(a.zoom).layout)
+          .mapGroups {
+            case ((sequence, k, z, x, y), tiles: Iterator[RasterTile with Key with Sequence]) =>
+              val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
 
-              val newTile = MutableSparseIntTile(Cols, Rows)
+              val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
+                if (tile.raster.extent == mergedExtent) {
+                  // full resolution raster covering the target extent; no need to merge
+                  tile.raster.tile
+                } else {
+                  acc.merge(mergedExtent, tile.raster.extent, tile.raster.tile, Sum)
+                }
+              })
 
-              newTile.merge(targetExtent, a.raster.extent, a.raster.tile, Sum)
-              newTile.merge(targetExtent, b.raster.extent, b.raster.tile, Sum)
-
-              RasterTileWithKeyAndSequence(a.sequence,
-                                           a.key,
-                                           a.zoom,
-                                           a.x,
-                                           a.y,
-                                           GTRaster.tupToRaster(newTile, targetExtent))
-            })
-          .map(_._2)
-          .map(tile => {
-            if (tile.raster.cols >= Cols) {
-              tile
-            } else {
-              // a tile that was never reduced; resize it to match
-              val targetExtent =
-                SpatialKey(tile.x, tile.y).extent(LayoutScheme.levelForZoom(tile.zoom).layout)
-
-              val newTile = MutableSparseIntTile(Cols, Rows)
-                .merge(targetExtent, tile.raster.extent, tile.raster.tile, Sum)
-
-              RasterTileWithKeyAndSequence(tile.sequence,
-                                           tile.key,
-                                           tile.zoom,
-                                           tile.x,
-                                           tile.y,
-                                           GTRaster.tupToRaster(newTile, targetExtent))
-            }
-          })
+              RasterTileWithKeyAndSequence(sequence, k, z, x, y, GTRaster.tupToRaster(merged, mergedExtent))
+          }
       }
-
     }
 
     implicit class ExtendedGeometryTileWithKey(val geometryTiles: Dataset[GeometryTile with Key]) {
