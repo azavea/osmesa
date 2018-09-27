@@ -7,7 +7,7 @@ import java.util.zip.GZIPInputStream
 
 import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.raster.resample.Sum
-import geotrellis.raster.{IntArrayTile, RasterExtent, Raster => GTRaster, _}
+import geotrellis.raster.{RasterExtent, Raster => GTRaster, _}
 import geotrellis.spark.io.index.zcurve.ZSpatialKeyIndex
 import geotrellis.spark.tiling.ZoomedLayoutScheme
 import geotrellis.spark.{KeyBounds, SpatialKey}
@@ -17,10 +17,13 @@ import geotrellis.vectortile.{Layer, VInt64, Value, VectorTile}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
+import org.apache.spark.sql.expressions.UserDefinedFunction
+import org.apache.spark.sql.functions._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, read, write}
 import osmesa.common.model._
 import osmesa.common.model.impl._
+import osmesa.common.raster.MutableSparseIntTile
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.{ForkJoinTaskSupport, TaskSupport}
@@ -28,9 +31,11 @@ import scala.collection.{GenIterable, GenMap}
 import scala.concurrent.forkjoin.ForkJoinPool
 
 object Footprints extends Logging {
-  val BaseZoom: Int = 15
+  val BaseZoom: Int = 14
   val Cols: Int = 512
   val Rows: Int = 512
+  val BaseCols: Int = Cols * 4
+  val BaseRows: Int = Rows * 4
   val DefaultUploadConcurrency: Int = 8
   val LayoutScheme: ZoomedLayoutScheme = ZoomedLayoutScheme(WebMercator)
   val SequenceLayerName: String = "__sequences__"
@@ -43,10 +48,11 @@ object Footprints extends Logging {
     import nodes.sparkSession.implicits._
 
     val points = nodes
+      .repartition() // eliminate skew
       .as[CoordinatesWithKey]
       .asInstanceOf[Dataset[Coordinates with Key]]
 
-    val pyramid = points.tile(baseZoom).rasterize(Cols * 4, Rows * 4).pyramid(baseZoom)
+    val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
 
     pyramid
       .mapPartitions { tiles: Iterator[RasterTile with Key] =>
@@ -205,7 +211,7 @@ object Footprints extends Logging {
       .as[CoordinatesWithKeyAndSequence]
       .asInstanceOf[Dataset[Coordinates with Key with Sequence]]
 
-    val pyramid = points.tile(baseZoom).rasterize(Cols * 4, Rows * 4).pyramid(baseZoom)
+    val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
 
     pyramid.groupByKeyAndTile
       .mapPartitions { rows: Iterator[TileCoordinates with Key with RasterWithSequenceTileSeq] =>
@@ -289,7 +295,7 @@ object Footprints extends Logging {
           val targetExtent =
             SpatialKey(tile.x, tile.y).extent(LayoutScheme.levelForZoom(tile.zoom).layout)
 
-          val newTile = rasters.head.tile.prototype(Cols, Rows)
+          val newTile = MutableSparseIntTile(Cols, Rows)
 
           rasters.foreach { raster => newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
           }
@@ -360,6 +366,7 @@ object Footprints extends Logging {
       .asInstanceOf[Encoder[TileCoordinates with Key with RasterWithSequenceTileSeq]]
 
     implicit class ExtendedCoordinatesWithKey(val coords: Dataset[Coordinates with Key]) {
+
       def tile(baseZoom: Int = BaseZoom): Dataset[GeometryTile with Key] = {
         val layout = LayoutScheme.levelForZoom(baseZoom).layout
 
@@ -380,7 +387,8 @@ object Footprints extends Logging {
                                               sk.col,
                                               sk.row,
                                               clipped.toWKB(3857)))
-                      case _ => Seq.empty[GeometryTileWithKey]
+                      case _ =>
+                        Seq.empty[GeometryTileWithKey]
                     }
                   }
               case _ => Seq.empty[GeometryTileWithKey]
@@ -391,6 +399,7 @@ object Footprints extends Logging {
 
     implicit class ExtendedCoordinatesWithKeyAndSequence(
         val coords: Dataset[Coordinates with Key with Sequence]) {
+
       def tile(baseZoom: Int = BaseZoom): Dataset[GeometryTile with Key with Sequence] = {
         val layout = LayoutScheme.levelForZoom(baseZoom).layout
 
@@ -421,51 +430,24 @@ object Footprints extends Logging {
       }
     }
 
+    val getSubPyramid: UserDefinedFunction = udf { (zoom: Int, x: Int, y: Int) =>
+      val sp = zoom - (zoom % 4)
+      val dz = zoom - sp
+
+      (sp, math.floor(x / math.pow(2, dz)).intValue, math.floor(y / math.pow(2, dz)).intValue)
+    }
+
     implicit class ExtendedRasterTileWithKey(val rasterTiles: Dataset[RasterTile with Key]) {
+      import rasterTiles.sparkSession.implicits._
 
-      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key] =
-        (baseZoom to 0 by -8).foldLeft(rasterTiles)((acc, z) => acc.downsample(z).merge)
+      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key] = {
+        // Δz between levels of the pyramid; point at which 1 tile becomes 1 pixel
+        val dz = (math.log(Cols) / math.log(2)).toInt
 
-      /**
-        * Create downsampled versions of input tiles. Assumes 256x256 tiles and will stop when downsampled dimensions drop
-        * below 1x1.
-        *
-        * @param baseZoom Zoom level for the base of the pyramid.
-        * @return Base + downsampled tiles.
-        */
-      def downsample(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key] =
-        rasterTiles
-          .flatMap(tile =>
-            if (tile.zoom == baseZoom) {
-              val tiles = ArrayBuffer(tile)
-
-              var parent = tile.raster.tile
-
-              // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
-              // point
-              for (zoom <- tile.zoom - 1 to math.max(0, tile.zoom - 8) by -1) {
-                val dz = tile.zoom - zoom
-                val factor = math.pow(2, dz).intValue
-                val newCols = Cols / factor
-                val newRows = Rows / factor
-
-                if (parent.cols > newCols && newCols > 0) {
-                  // only resample if the raster is getting smaller
-                  parent = parent.resample(newCols, newRows, Sum)
-
-                  tiles.append(
-                    RasterTileWithKey(tile.key,
-                                      zoom,
-                                      tile.x / factor,
-                                      tile.y / factor,
-                                      GTRaster.tupToRaster(parent, tile.raster.extent)))
-                }
-              }
-
-              tiles
-            } else {
-              Seq(tile)
-          })
+        (baseZoom to 0 by -dz)
+          .foldLeft(rasterTiles)((acc, z) => acc.downsample(dz, z).merge)
+          .repartition('key, getSubPyramid('zoom, 'x, 'y))
+      }
 
       /**
         * Merge tiles containing raster subsets.
@@ -479,43 +461,89 @@ object Footprints extends Logging {
           .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
           .mapGroups {
             case ((k, z, x, y), tiles: Iterator[RasterTile with Key]) =>
-              tiles.map(_.raster).toList match {
-                case Seq(raster: GTRaster[Tile]) if raster.cols >= Cols =>
-                  // single, full-resolution raster (no need to merge)
-                  RasterTileWithKey(k, z, x, y, raster)
-                case rasters =>
-                  val targetExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+              val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
 
-                  val newTile = rasters.head.tile.prototype(Cols, Rows)
+              val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
+                if (tile.raster.extent == mergedExtent) {
+                  // full resolution raster covering the target extent; no need to merge
+                  tile.raster.tile
+                } else {
+                  acc.merge(mergedExtent, tile.raster.extent, tile.raster.tile, Sum)
+                }
+              })
 
-                  rasters.foreach { raster =>
-                    newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
-                  }
-
-                  RasterTileWithKey(k, z, x, y, GTRaster.tupToRaster(newTile, targetExtent))
-              }
+              RasterTileWithKey(k, z, x, y, GTRaster.tupToRaster(merged, mergedExtent))
           }
       }
 
+      /**
+        * Create downsampled versions of input tiles. Will stop when downsampled dimensions drop below 1x1.
+        *
+        * @param steps Number of steps to pyramid.
+        * @param baseZoom Zoom level for the base of the pyramid.
+        * @return Base + downsampled tiles.
+        */
+      def downsample(steps: Int, baseZoom: Int = BaseZoom): Dataset[RasterTile with Key] =
+        rasterTiles
+          .flatMap(tile =>
+            if (tile.zoom == baseZoom) {
+              val raster = tile.raster
+              var parent = raster.tile
+
+              (tile.zoom to math.max(0, tile.zoom - steps) by -1).iterator.flatMap {
+                zoom =>
+                  if (zoom == tile.zoom) {
+                    Seq(tile)
+                  } else {
+                    val dz = tile.zoom - zoom
+                    val factor = math.pow(2, dz).intValue
+                    val newCols = Cols / factor
+                    val newRows = Rows / factor
+
+                    if (parent.cols > newCols && newCols > 0) {
+                      // only resample if the raster is getting smaller
+                      parent = parent.resample(newCols, newRows, Sum)
+
+                      Seq(
+                        RasterTileWithKey(tile.key,
+                                          zoom,
+                                          tile.x / factor,
+                                          tile.y / factor,
+                                          GTRaster.tupToRaster(parent, raster.extent)))
+                    } else {
+                      Seq.empty[RasterTile with Key]
+                    }
+                  }
+              }
+            } else {
+              Seq(tile)
+          })
     }
 
     implicit class ExtendedRasterTileWithKeyAndSequence(
         val rasterTiles: Dataset[RasterTile with Key with Sequence]) {
+      import rasterTiles.sparkSession.implicits._
 
       def groupByKeyAndTile: Dataset[TileCoordinates with Key with RasterWithSequenceTileSeq] =
         Footprints.groupByKeyAndTile(rasterTiles)
 
-      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] =
-        (baseZoom to 0 by -8).foldLeft(rasterTiles)((acc, z) => acc.downsample(z).merge)
+      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] = {
+        // Δz between levels of the pyramid; point at which 1 tile becomes 1 pixel
+        val dz = (math.log(Cols) / math.log(2)).toInt
+
+        (baseZoom to 0 by -dz)
+          .foldLeft(rasterTiles)((acc, z) => acc.downsample(dz, z).merge)
+          .repartition('key, getSubPyramid('zoom, 'x, 'y))
+      }
 
       /**
-        * Create downsampled versions of input tiles. Assumes 256x256 tiles and will stop when downsampled dimensions drop
-        * below 1x1.
+        * Create downsampled versions of input tiles. Will stop when downsampled dimensions drop below 1x1.
         *
+        * @param steps Number of steps to pyramid.
         * @param baseZoom Zoom level for the base of the pyramid.
         * @return Base + downsampled tiles.
         */
-      def downsample(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] =
+      def downsample(steps: Int, baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] =
         rasterTiles
           .flatMap(tile =>
             if (tile.zoom == baseZoom) {
@@ -523,9 +551,7 @@ object Footprints extends Logging {
 
               var parent = tile.raster.tile
 
-              // with 256x256 tiles, we can't go past <current zoom> - 8, as values sum into partial pixels at that
-              // point
-              for (zoom <- tile.zoom - 1 to math.max(0, tile.zoom - 8) by -1) {
+              for (zoom <- tile.zoom - 1 to math.max(0, tile.zoom - steps) by -1) {
                 val dz = tile.zoom - zoom
                 val factor = math.pow(2, dz).intValue
                 val newCols = Cols / factor
@@ -562,29 +588,20 @@ object Footprints extends Logging {
           .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
           .mapGroups {
             case ((sequence, k, z, x, y), tiles: Iterator[RasterTile with Key with Sequence]) =>
-              tiles.map(_.raster).toList match {
-                case Seq(raster: GTRaster[Tile]) if raster.cols >= Cols =>
-                  // single, full-resolution raster (no need to merge)
-                  RasterTileWithKeyAndSequence(sequence, k, z, x, y, raster)
-                case rasters =>
-                  val targetExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+              val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
 
-                  val newTile = rasters.head.tile.prototype(Cols, Rows)
+              val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
+                if (tile.raster.extent == mergedExtent) {
+                  // full resolution raster covering the target extent; no need to merge
+                  tile.raster.tile
+                } else {
+                  acc.merge(mergedExtent, tile.raster.extent, tile.raster.tile, Sum)
+                }
+              })
 
-                  rasters.foreach { raster =>
-                    newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
-                  }
-
-                  RasterTileWithKeyAndSequence(sequence,
-                                               k,
-                                               z,
-                                               x,
-                                               y,
-                                               GTRaster.tupToRaster(newTile, targetExtent))
-              }
+              RasterTileWithKeyAndSequence(sequence, k, z, x, y, GTRaster.tupToRaster(merged, mergedExtent))
           }
       }
-
     }
 
     implicit class ExtendedGeometryTileWithKey(val geometryTiles: Dataset[GeometryTile with Key]) {
@@ -594,16 +611,19 @@ object Footprints extends Logging {
         geometryTiles
           .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
           .mapGroups {
-            case ((k, z, x, y), _tiles) =>
-              val tiles = _tiles.toList
+            case ((k, z, x, y), tiles) =>
               val sk = SpatialKey(x, y)
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
-              val tile = IntArrayTile.ofDim(cols, rows, IntCellType)
+              val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
               val geoms = tiles.map(_.wkb.readWKB)
 
               geoms.foreach(g =>
-                g.foreach(rasterExtent) { (c, r) => tile.set(c, r, tile.get(c, r) + 1)
+                g.foreach(rasterExtent) { (c, r) =>
+                  tile.get(c, r) match {
+                    case v if isData(v) => tile.set(c, r, v + 1)
+                    case _              => tile.set(c, r, 1)
+                  }
               })
 
               RasterTileWithKey(k, z, x, y, GTRaster.tupToRaster(tile, tileExtent))
@@ -620,16 +640,19 @@ object Footprints extends Logging {
         geometryTiles
           .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
           .mapGroups {
-            case ((sequence, k, z, x, y), _tiles) =>
-              val tiles = _tiles.toList
+            case ((sequence, k, z, x, y), tiles) =>
               val sk = SpatialKey(x, y)
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
-              val tile = IntArrayTile.ofDim(cols, rows, IntCellType)
+              val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
               val geoms = tiles.map(_.wkb.readWKB)
 
               geoms.foreach(g =>
-                g.foreach(rasterExtent) { (c, r) => tile.set(c, r, tile.get(c, r) + 1)
+                g.foreach(rasterExtent) { (c, r) =>
+                  tile.get(c, r) match {
+                    case v if isData(v) => tile.set(c, r, v + 1)
+                    case _              => tile.set(c, r, 1)
+                  }
               })
 
               RasterTileWithKeyAndSequence(sequence,
