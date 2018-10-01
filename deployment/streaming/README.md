@@ -25,8 +25,9 @@ process.
 
 ## Deployment Steps
 
-1. Copy `config-aws.mk.tpl` to `config-aws.mk` and `config-local.mk.tpl`.
-   These can be configured in a moment.
+1. Copy `config-aws.mk.example` to `config-aws.mk` and
+   `config-local.mk.example` to `config-local.mk`. These can be configured in a
+   moment.
 
 2. Build the osm_analytics container
 
