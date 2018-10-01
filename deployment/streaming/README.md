@@ -38,14 +38,14 @@ make build-container
    The "AmazonEC2ContainerServiceforEC2Role" policy should be attached.
 
 4. Edit [config-aws.mk.tpl](./config-aws.mk.tpl) with variables appropriate
-to your AWS account and desired deployment (choose VPCs, Security Groups,
-etc) and save the file as `config-aws.mk` Note that you will need to provide
-an ECR repo URI (which you'll have to set up manually via the AWS console) in
-order to use your container on AWS.
+   to your AWS account and desired deployment (choose VPCs, Security Groups,
+   etc) and save the file as `config-aws.mk` Note that you will need to provide
+   an ECR repo URI (which you'll have to set up manually via the AWS console) in
+   order to use your container on AWS.
 
 5. Manually create an ECS cluster backed by EC2 instances (not fargate), and
-be sure to record the cluster name in `config-aws.mk`. It should now be
-possible to configure ECS-CLI to deploy services against your cluster:
+   be sure to record the cluster name in `config-aws.mk`. It should now be
+   possible to configure ECS-CLI to deploy services against your cluster:
 
 ```bash
 make configure-cluster
