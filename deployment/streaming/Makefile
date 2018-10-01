@@ -38,6 +38,8 @@ tag-image: login-aws-registry
 push-image: login-aws-registry tag-image
 	docker push ${ECR_REPO}
 
+.PHONY: docker-compose.deploy.yml
+
 docker-compose.deploy.yml:
 	export ECR_REPO=${ECR_REPO}
 	export AWS_LOG_GROUP=${AWS_LOG_GROUP}; \
@@ -48,6 +50,8 @@ docker-compose.deploy.yml:
 	export CHANGESET_START=${CHANGESET_START}; \
 	export DB_URI=${DB_URI}; \
 		./expand.sh docker-compose.deploy.yml.tpl > docker-compose.deploy.yml
+
+.PHONY: configure-cluster
 
 configure-cluster:
 	ecs-cli configure \
@@ -71,12 +75,14 @@ cluster-up:
 cluster-down:
 	ecs-cli down --cluster-config ${CONFIG_NAME}
 
-create-service: configure-cluster
+.PHONY: create-service
+
+create-service: configure-cluster docker-compose.deploy.yml
 	ecs-cli compose \
 	  --file docker-compose.deploy.yml create \
 	  --cluster ${CLUSTER_NAME}
 
-start-service: configure-cluster create-service
+start-service: configure-cluster create-service docker-compose.deploy.yml
 	ecs-cli compose --file docker-compose.deploy.yml service up \
 	  --create-log-groups \
 	  --cluster ${CLUSTER_NAME}
