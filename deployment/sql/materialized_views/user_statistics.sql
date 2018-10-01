@@ -62,7 +62,7 @@ WITH country_counts AS (
        ), agg_stats AS (
         SELECT usr.id,
            usr.name,
-           (('user/'::text || usr.name) || '/{z}/{x}/{y}.mvt'::text) AS extent_uri,
+           (('user/'::text || usr.id) || '/{z}/{x}/{y}.mvt'::text) AS extent_uri,
            array_agg(chg.id) AS changesets,
            sum(chg.road_km_added) AS road_km_added,
            sum(chg.road_km_modified) AS road_km_modified,
