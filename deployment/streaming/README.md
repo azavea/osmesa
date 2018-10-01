@@ -9,6 +9,7 @@ mechanism which ensures the stream starts near where it left off, these
 streams are highly resilient.
 
 An ECS deployment consists of a few different pieces:
+
 - The ECS cluster: scales EC2 instances up and down as necessary
 - Services: describe long-running programs that should maintain availability
 - Tasks: one or more containerized processes being run by the cluster
@@ -24,38 +25,53 @@ process.
 
 ## Deployment Steps
 
-1. Build the osm_analytics container
+1. Copy `config-aws.mk.tpl` to `config-aws.mk` and `config-local.mk.tpl`.
+   These can be configured in a moment.
+
+2. Build the osm_analytics container
+
 ```bash
 make build-container
 ```
 
-2. Edit [config-aws.mk.tpl](./config-aws.mk.tpl) with variables
-appropriate to your AWS account and desired deployment (choose VPCs,
-Security Groups, etc) and save the file as `config-aws.mk` Note that
-you will need to provide an ECR repo URI (which you'll have to set up
-manually via the AWS console) in order to use your container on AWS.
+3. Create an IAM role for EC2 instances. This will become `INSTANCE_ROLE`.
+   The "AmazonEC2ContainerServiceforEC2Role" policy should be attached.
 
-3. Manually create an ECS cluster backed by EC2 instances (not fargate),
-and be sure to record the cluster name in `config-aws.mk`. It should now
-be possible to configure ECS-CLI to deploy services against your
-cluster:
+4. Edit [config-aws.mk.tpl](./config-aws.mk.tpl) with variables appropriate
+to your AWS account and desired deployment (choose VPCs, Security Groups,
+etc) and save the file as `config-aws.mk` Note that you will need to provide
+an ECR repo URI (which you'll have to set up manually via the AWS console) in
+order to use your container on AWS.
+
+5. Manually create an ECS cluster backed by EC2 instances (not fargate), and
+be sure to record the cluster name in `config-aws.mk`. It should now be
+possible to configure ECS-CLI to deploy services against your cluster:
+
 ```bash
 make configure-cluster
 ```
 
-4. Assuming all's well, you're ready to deploy. Update the docker-compose
-which defines your services with the appropriate variables:
+6. Assuming all's well, you're ready to deploy. Update the docker-compose
+   which defines your services with the appropriate variables:
+
 ```bash
 make docker-compose.deploy.yml
 ```
 
-5. Push your image to ECR:
+7. Push your image to ECR:
+
 ```bash
 make push-image
 ```
 
-6. Deploy the service (this will create new task definitions as necessary):
+8. Bring the cluster up:
+
+```bash
+make cluster-up
+```
+
+8. Deploy the service (this will create new task definitions as necessary):
+
 ```bash
 make start-service
 ```
-

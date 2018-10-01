@@ -58,7 +58,8 @@ configure-cluster:
 cluster-up:
 	ecs-cli up \
 	  --keypair ${KEYPAIR} \
-	  --instance-role osmstats-deploy_ec2 \
+	  --instance-role ${INSTANCE_ROLE} \
+	  --security-group ${SECURITY_GROUP} \
 	  --size 1 \
 	  --instance-type ${INSTANCE_TYPE} \
 	  --cluster-config ${CONFIG_NAME} \
@@ -70,15 +71,15 @@ cluster-up:
 cluster-down:
 	ecs-cli down --cluster-config ${CONFIG_NAME}
 
-create-service:
+create-service: configure-cluster
 	ecs-cli compose \
 	  --file docker-compose.deploy.yml create \
-	  --cluster osm-stat-stream-cluster
+	  --cluster ${CLUSTER_NAME}
 
-start-service: create-service
+start-service: configure-cluster create-service
 	ecs-cli compose --file docker-compose.deploy.yml service up \
 	  --create-log-groups \
-	  --cluster osm-stat-stream-cluster
+	  --cluster ${CLUSTER_NAME}
 
 stop-service:
 	ecs-cli compose down
