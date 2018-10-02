@@ -30,7 +30,7 @@ stop-local:
 #########
 
 login-aws-registry:
-	eval `aws ecr get-login --no-include-email --region us-east-1`
+	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
 tag-image: login-aws-registry
 	docker tag ${LOCAL_IMG} ${ECR_REPO}
@@ -38,7 +38,9 @@ tag-image: login-aws-registry
 push-image: login-aws-registry tag-image
 	docker push ${ECR_REPO}
 
-docker-compose.deploy.yml:
+.PHONY: docker-compose.deploy.yml
+
+docker-compose.deploy.yml: docker-compose.deploy.yml.tpl
 	export ECR_REPO=${ECR_REPO}
 	export AWS_LOG_GROUP=${AWS_LOG_GROUP}; \
 	export AWS_REGION=${AWS_REGION}; \
@@ -47,18 +49,21 @@ docker-compose.deploy.yml:
 	export CHANGESET_SOURCE=${CHANGESET_SOURCE}; \
 	export CHANGESET_START=${CHANGESET_START}; \
 	export DB_URI=${DB_URI}; \
-		./expand.sh docker-compose.deploy.yml.tpl > docker-compose.deploy.yml
+		./expand.sh $< > $@
+
+.PHONY: configure-cluster
 
 configure-cluster:
 	ecs-cli configure \
 	  --cluster ${CLUSTER_NAME} \
-	  --region us-east-1 \
+	  --region ${AWS_REGION} \
 	  --config-name ${CONFIG_NAME}
 
 cluster-up:
 	ecs-cli up \
 	  --keypair ${KEYPAIR} \
-	  --instance-role osmstats-deploy_ec2 \
+	  --instance-role ${INSTANCE_ROLE} \
+	  --security-group ${SECURITY_GROUP} \
 	  --size 1 \
 	  --instance-type ${INSTANCE_TYPE} \
 	  --cluster-config ${CONFIG_NAME} \
@@ -70,15 +75,17 @@ cluster-up:
 cluster-down:
 	ecs-cli down --cluster-config ${CONFIG_NAME}
 
-create-service:
-	ecs-cli compose \
-	  --file docker-compose.deploy.yml create \
-	  --cluster osm-stat-stream-cluster
+.PHONY: create-service
 
-start-service: create-service
-	ecs-cli compose --file docker-compose.deploy.yml service up \
+create-service: docker-compose.deploy.yml configure-cluster
+	ecs-cli compose \
+	  --file $< create \
+	  --cluster ${CLUSTER_NAME}
+
+start-service: docker-compose.deploy.yml configure-cluster create-service
+	ecs-cli compose --file $< service up \
 	  --create-log-groups \
-	  --cluster osm-stat-stream-cluster
+	  --cluster ${CLUSTER_NAME}
 
 stop-service:
 	ecs-cli compose down
