@@ -13,8 +13,7 @@ services:
   changeset-stream:
     image: ${LOCAL_IMG}
     volumes:
-      - ~/.aws:/root/.aws
-      - ~/.ssh:/root/.ssh
+      - ./log4j.properties:/spark/conf/log4j.properties
     command: >
       /spark/bin/spark-submit --class osmesa.analytics.oneoffs.ChangesetStreamProcessor /opt/osmesa-analytics.jar
       --changeset-source ${CHANGESET_SOURCE}
@@ -26,20 +25,20 @@ services:
     image: ${LOCAL_IMG}
     volumes:
       - ~/.aws:/root/.aws
-      - ~/.ssh:/root/.ssh
+      - ./log4j.properties:/spark/conf/log4j.properties
     environment:
-      - AWS_PROFILE=gaasdg
+      - AWS_PROFILE
     command: >
       /spark/bin/spark-submit --class osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor /opt/osmesa-analytics.jar
       --augmented-diff-source ${AUGDIFF_SOURCE}
       --start-sequence ${AUGDIFF_START}
       --database-uri postgresql://postgres:pgsecret@database:5432/postgres
-    volumes:
-      - ~/.aws:/root/.aws
     networks:
       - db
   change-stream:
     image: ${LOCAL_IMG}
+    volumes:
+      - ./log4j.properties:/spark/conf/log4j.properties
     command: >
       /spark/bin/spark-submit --class osmesa.analytics.oneoffs.ChangeStreamProcessor /opt/osmesa-analytics.jar
       --change-source ${CHANGE_SOURCE}
