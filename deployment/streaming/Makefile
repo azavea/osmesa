@@ -30,7 +30,7 @@ stop-local:
 #########
 
 login-aws-registry:
-	eval `aws ecr get-login --no-include-email --region us-east-1`
+	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
 tag-image: login-aws-registry
 	docker tag ${LOCAL_IMG} ${ECR_REPO}
@@ -40,7 +40,7 @@ push-image: login-aws-registry tag-image
 
 .PHONY: docker-compose.deploy.yml
 
-docker-compose.deploy.yml:
+docker-compose.deploy.yml: docker-compose.deploy.yml.tpl
 	export ECR_REPO=${ECR_REPO}
 	export AWS_LOG_GROUP=${AWS_LOG_GROUP}; \
 	export AWS_REGION=${AWS_REGION}; \
@@ -49,14 +49,14 @@ docker-compose.deploy.yml:
 	export CHANGESET_SOURCE=${CHANGESET_SOURCE}; \
 	export CHANGESET_START=${CHANGESET_START}; \
 	export DB_URI=${DB_URI}; \
-		./expand.sh docker-compose.deploy.yml.tpl > docker-compose.deploy.yml
+		./expand.sh $< > $@
 
 .PHONY: configure-cluster
 
 configure-cluster:
 	ecs-cli configure \
 	  --cluster ${CLUSTER_NAME} \
-	  --region us-east-1 \
+	  --region ${AWS_REGION} \
 	  --config-name ${CONFIG_NAME}
 
 cluster-up:
@@ -77,13 +77,13 @@ cluster-down:
 
 .PHONY: create-service
 
-create-service: configure-cluster docker-compose.deploy.yml
+create-service: docker-compose.deploy.yml configure-cluster
 	ecs-cli compose \
-	  --file docker-compose.deploy.yml create \
+	  --file $< create \
 	  --cluster ${CLUSTER_NAME}
 
-start-service: configure-cluster create-service docker-compose.deploy.yml
-	ecs-cli compose --file docker-compose.deploy.yml service up \
+start-service: docker-compose.deploy.yml configure-cluster create-service
+	ecs-cli compose --file $< service up \
 	  --create-log-groups \
 	  --cluster ${CLUSTER_NAME}
 
