@@ -11,7 +11,7 @@ import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
 import osmesa.common.model.{Actions, Element}
-import scalaj.http.{Http, HttpOptions}
+import scalaj.http.Http
 
 import scala.concurrent.duration.{Duration, _}
 import scala.xml.XML
@@ -20,7 +20,6 @@ object ChangeSource extends Logging {
   val Delay: Duration = 15 seconds
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Element] = {
-    println(s"this URI: $baseURI this sequence: $sequence")
     val s = f"$sequence%09d".toArray
     val path =
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osc.gz"
