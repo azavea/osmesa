@@ -80,9 +80,10 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     .getOrElse(throw new IllegalStateException("Process name required to recover sequence"))
 
   protected var startSequence: Option[Int] = {
+    val startSequenceOption = options.get("start_sequence").asScala.map(_.toInt)
     val start = databaseUri.flatMap { uri =>
-      recoverSequence(uri, procName) orElse options.get("start_sequence").asScala.map(_.toInt)
-    }
+      recoverSequence(uri, procName)
+    } orElse startSequenceOption
     logInfo(s"Starting with sequence: $start")
     start
   }

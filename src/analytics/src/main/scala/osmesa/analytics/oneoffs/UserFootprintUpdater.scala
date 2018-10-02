@@ -69,24 +69,37 @@ object UserFootprintUpdater
                        metavar = "concurrent uploads",
                        help = "Set the number of concurrent uploads.")
           .orNone
+        val databaseUriOpt =
+          Opts.option[URI](
+            "database-uri",
+            short = "d",
+            metavar = "database URL",
+            help = "Database URL (default: $DATABASE_URL environment variable)"
+          )
+        val databaseUriEnv =
+          Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
 
         (changeSourceOpt,
          changesStartSequenceOpt,
          changesEndSequenceOpt,
          changesBatchSizeOpt,
          tileSourceOpt,
-         concurrentUploadsOpt).mapN {
+         concurrentUploadsOpt,
+         databaseUriOpt orElse databaseUriEnv).mapN {
           (changeSource,
            changesStartSequence,
            changesEndSequence,
            changesBatchSize,
            tileSource,
-           _concurrentUploads) =>
+           _concurrentUploads,
+           databaseUri) =>
             val spark: SparkSession = Analytics.sparkSession("UserFootprintUpdater")
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
 
-            val changeOptions = Map("base_uri" -> changeSource.toString) ++
+            val changeOptions = Map("base_uri" -> changeSource.toString,
+                                    "db_uri" -> databaseUri.toString,
+                                    "proc_name" -> "UserFootprintUpdater") ++
               changesStartSequence
                 .map(s => Map("start_sequence" -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
@@ -104,12 +117,12 @@ object UserFootprintUpdater
 
             val changedNodes = changes
               .where('_type === ProcessOSM.NodeType and 'lat.isNotNull and 'lon.isNotNull)
-              .select('sequence, 'user, 'lat, 'lon)
+              .select('sequence, 'uid, 'lat, 'lon)
 
             val tiledNodes =
               Footprints.updateFootprints(tileSource,
                                           changedNodes
-                                            .withColumnRenamed("user", "key"))
+                                            .withColumnRenamed("uid", "key"))
 
             val query = tiledNodes.writeStream
               .queryName("tiled user footprints")
