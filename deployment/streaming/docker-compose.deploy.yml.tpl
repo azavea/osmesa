@@ -26,3 +26,17 @@ services:
         awslogs-group: ${AWS_LOG_GROUP}
         awslogs-region: ${AWS_REGION}
         awslogs-stream-prefix: changeset
+  user-footprint-updater:
+    image: ${ECR_REPO}:latest
+    command: >
+      /spark/bin/spark-submit --driver-memory 4096m --class osmesa.analytics.oneoffs.UserFootprintUpdater /opt/osmesa-analytics.jar
+      --change-source ${CHANGE_SOURCE}
+      --changes-start-sequence ${CHANGE_START}
+      --database-uri ${DB_URI}
+      --tile-source ${TILE_SOURCE}
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: ${AWS_LOG_GROUP}
+        awslogs-region: ${AWS_REGION}
+        awslogs-stream-prefix: user-footprints

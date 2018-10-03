@@ -8,3 +8,5 @@ task_definition:
       mem_reservation: 2048m
     augdiff-stream:
       mem_reservation: 2048m
+    user-footprint-updater:
+      mem_reservation: 4096m
