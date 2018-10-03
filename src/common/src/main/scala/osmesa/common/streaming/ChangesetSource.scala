@@ -13,7 +13,7 @@ import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
 import osmesa.common.model.Changeset
-import scalaj.http.{Http, HttpOptions}
+import scalaj.http.Http
 
 import scala.concurrent.duration._
 import scala.xml.XML
@@ -32,34 +32,37 @@ object ChangesetSource extends Logging {
       s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osm.gz"
 
     logDebug(s"Fetching sequence $sequence")
-    val response =
-      Http(baseURI.resolve(path).toString).asBytes
 
-    if (response.code === 404) {
-      logDebug(s"$sequence is not yet available, sleeping.")
-      Thread.sleep(Delay.toMillis)
-      getSequence(baseURI, sequence)
-    } else {
-      // NOTE: if diff bodies get really large, switch to a SAX parser to help with the memory footprint
-      val bais = new ByteArrayInputStream(response.body)
-      val gzis = new GZIPInputStream(bais)
-      try {
-        val data = XML.loadString(IOUtils.toString(gzis))
+    try {
+      val response =
+        Http(baseURI.resolve(path).toString).asBytes
 
-        val changesets = (data \ "changeset").map(Changeset.fromXML)
+      if (response.code === 404) {
+        logDebug(s"$sequence is not yet available, sleeping.")
+        Thread.sleep(Delay.toMillis)
+        getSequence(baseURI, sequence)
+      } else {
+        // NOTE: if diff bodies get really large, switch to a SAX parser to help with the memory footprint
+        val bais = new ByteArrayInputStream(response.body)
+        val gzis = new GZIPInputStream(bais)
+        try {
+          val data = XML.loadString(IOUtils.toString(gzis))
 
-        logDebug(s"Received ${changesets.length} changesets")
+          val changesets = (data \ "changeset").map(Changeset.fromXML)
 
-        changesets
-      } catch {
-        case e: IOException =>
-          logWarning(s"Error reading changeset s$sequence", e)
-          Thread.sleep(Delay.toMillis)
-          getSequence(baseURI, sequence)
-      } finally {
-        gzis.close()
-        bais.close()
+          logDebug(s"Received ${changesets.length} changesets")
+
+          changesets
+        } finally {
+          gzis.close()
+          bais.close()
+        }
       }
+    } catch {
+      case e: IOException =>
+        logWarning(s"Error fetching changeset $sequence", e)
+        Thread.sleep(Delay.toMillis)
+        getSequence(baseURI, sequence)
     }
   }
 
@@ -69,7 +72,6 @@ object ChangesetSource extends Logging {
       val response =
         Http(baseURI.resolve("state.yaml").toString).asString
 
-      println(response.body)
       val state = yaml.parser
         .parse(response.body)
         .leftMap(err => err: Error)
