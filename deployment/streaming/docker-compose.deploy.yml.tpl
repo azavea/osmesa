@@ -7,12 +7,6 @@ services:
       --augmented-diff-source ${AUGDIFF_SOURCE}
       --start-sequence ${AUGDIFF_START}
       --database-uri ${DB_URI}
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 1s
-        max_attempts: 10
-        window: 120s
     logging:
       driver: awslogs
       options:
@@ -26,12 +20,6 @@ services:
       --changeset-source ${CHANGESET_SOURCE}
       --start-sequence ${CHANGESET_START}
       --database-uri ${DB_URI}
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 1s
-        max_attempts: 10
-        window: 120s
     logging:
       driver: awslogs
       options:
