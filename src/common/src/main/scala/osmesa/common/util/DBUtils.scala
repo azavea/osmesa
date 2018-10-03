@@ -8,7 +8,7 @@ object DBUtils {
 
     val cleanUri = new URI(
       uri.getScheme,
-      uri.getHost + (if (uri.getPort > 0) ":" + uri.getPort  else ""),
+      Option(uri.getHost).getOrElse("localhost") + (if (uri.getPort > 0) ":" + uri.getPort  else ""),
       uri.getPath,
       null.asInstanceOf[String],
       null.asInstanceOf[String]
