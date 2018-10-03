@@ -3,7 +3,7 @@ services:
   augdiff-stream:
     image: ${ECR_REPO}:latest
     command: >
-      /spark/bin/spark-submit --driver-memory 4096m --class osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor /opt/osmesa-analytics.jar
+      /spark/bin/spark-submit --driver-memory 2048m --class osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor /opt/osmesa-analytics.jar
       --augmented-diff-source ${AUGDIFF_SOURCE}
       --start-sequence ${AUGDIFF_START}
       --database-uri ${DB_URI}
@@ -16,7 +16,7 @@ services:
   changeset-stream:
     image: ${ECR_REPO}:latest
     command: >
-      /spark/bin/spark-submit --driver-memory 4096m --class osmesa.analytics.oneoffs.ChangesetStreamProcessor /opt/osmesa-analytics.jar
+      /spark/bin/spark-submit --driver-memory 2048m --class osmesa.analytics.oneoffs.ChangesetStreamProcessor /opt/osmesa-analytics.jar
       --changeset-source ${CHANGESET_SOURCE}
       --start-sequence ${CHANGESET_START}
       --database-uri ${DB_URI}
