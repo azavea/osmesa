@@ -84,11 +84,12 @@ create-service: docker-compose.deploy.yml configure-cluster
 
 start-service: docker-compose.deploy.yml configure-cluster create-service
 	ecs-cli compose --file $< service up \
+	  --deployment-min-healthy-percent 0 \
 	  --create-log-groups \
 	  --cluster ${CLUSTER_NAME}
 
-stop-service:
-	ecs-cli compose down
+stop-service: docker-compose.deploy.yml
+	ecs-cli compose --file $< down
 
 
 #########
