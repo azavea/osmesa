@@ -16,22 +16,9 @@
 
 package osmesa.common
 
-import geotrellis.spark.io.hadoop.HdfsUtils
-import geotrellis.spark.util.SparkUtils
-import geotrellis.spark.io.kryo.KryoRegistrator
-
-import org.apache.hadoop.fs.FileSystem
-import org.apache.hadoop.fs.FileUtil
-import org.apache.hadoop.fs.Path
-import org.apache.hadoop.conf.Configuration
-import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.SparkSession
 import org.scalatest._
-
-import java.io.File
-import scala.collection.mutable
-import scala.util.Properties
 
 object TestEnvironment {
 }

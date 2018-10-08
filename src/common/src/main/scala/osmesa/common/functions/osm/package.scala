@@ -507,12 +507,12 @@ package object osm {
   }
 
   private def connectSegments(segments: GenTraversable[jts.Geometry])(implicit geometryFactory: GeometryFactory): GenTraversable[LineString] =
-    segments
-      .map({ geom => if (classTag[jts.LineString].runtimeClass.isInstance(geom)) Some(geom.asInstanceOf[jts.LineString]) else None })
-      .flatten
-      .map(_.getCoordinateSequence)
-      .map(s => new VirtualCoordinateSequence(Seq(s)))
-      .map(geometryFactory.createLineString)
+    connectSegments(
+      segments.flatMap {
+        case geom: LineString => Some(geom.getCoordinateSequence)
+        case _                => None
+      }.map(s => new VirtualCoordinateSequence(Seq(s)))
+    ).map(geometryFactory.createLineString)
 
   private def getInteriorRings(p: jts.Polygon): Seq[jts.LinearRing] = for (i <- 0 until p.getNumInteriorRing) yield
     geometryFactory.createLinearRing(p.getInteriorRingN(i).getCoordinates)
