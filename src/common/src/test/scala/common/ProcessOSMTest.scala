@@ -1,16 +1,8 @@
 package osmesa.common
 
-import geotrellis.vector._
-import geotrellis.geotools._
-// import geotrellis.geomesa.geotools. _
 import org.locationtech.geomesa.spark.jts._
 import org.scalatest._
-import org.geotools.feature.simple.SimpleFeatureImpl
-import org.apache.spark.sql._
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.functions._
 
-import scala.util.Try
 
 class ProcessOSMTest extends FunSpec with TestEnvironment with Matchers {
   import ss.implicits._
