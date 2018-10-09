@@ -20,7 +20,7 @@ import org.locationtech.geomesa.spark.jts._
 
 import scala.io.Source
 
-case class Fixture(id: Int, members: DataFrame, geoms: Seq[jts.Geometry])
+case class Fixture(id: Int, members: DataFrame, wkt: Seq[String])
 
 trait SparkPoweredTables extends Tables {
   def wktReader = new WKTReader()
@@ -37,20 +37,24 @@ trait SparkPoweredTables extends Tables {
     ).getOrCreate()
   spark.withJTS
 
-  def relation(relation: Int): Fixture = Fixture(relation, orc(s"relation-$relation.orc"), readWKT(s"relation-$relation.wkt"))
+  def relation(relation: Int): Fixture = Fixture(relation, orc(s"relation-$relation.orc"), readWktFile(s"relation-$relation.wkt"))
 
   def orc(filename: String): DataFrame = spark.read.orc(getClass.getResource("/" + filename).getPath)
 
-  def readWKT(filename: String): Seq[jts.Geometry] = {
-    Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq match {
-      case expected if expected.isEmpty =>
-        Seq()
-      case expected =>
-        expected.map(wktReader.read)
+// osm2pgsql -c -d rhode_island -j -K -l rhode-island-latest.osm.pbf
+// select ST_AsText(way) from planet_osm_polygon where osm_id=-333501;
+
+  def readWktFile(filename: String): Seq[String] =
+    try {
+      Source.fromInputStream(getClass.getResourceAsStream("/" + filename)).getLines.toSeq match {
+        case expected if expected.isEmpty =>
+          Seq()
+        case expected =>
+          expected
+      }
+    } catch {
+      case _: Exception => Seq("[not provided]")
     }
-   // } catch {
-   //   case _: Exception => Seq("[not provided]")
-  }
 
   def asGeoms(relations: DataFrame): Seq[jts.Geometry] = {
     import relations.sparkSession.implicits._
@@ -125,7 +129,7 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
           }
         ).map(Option.apply).flatten
 
-        val expected = fixture.geoms
+        val expected = fixture.wkt.map(wktReader.read)
 
         try {
           actual should ===(expected)
@@ -134,7 +138,7 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
             println(s"${fixture.id} actual:")
             actual.foreach(println)
             println(s"${fixture.id} expected:")
-            expected.foreach(println)
+            fixture.wkt.foreach(println)
 
             throw e
         }
