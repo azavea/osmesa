@@ -10,6 +10,7 @@ libraryDependencies ++= Seq(
   "org.apache.commons" % "commons-compress" % "1.16.1",
   decline,
   sparkHive % "provided",
+  sparkJts,
   //gtGeomesa exclude("com.google.protobuf", "protobuf-java"),
   gtShapefile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
