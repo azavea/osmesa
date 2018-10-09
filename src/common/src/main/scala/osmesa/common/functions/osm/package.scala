@@ -4,9 +4,11 @@ import java.sql.Timestamp
 
 import com.google.common.collect.{Range, RangeMap, TreeRangeMap}
 import com.vividsolutions.jts.geom
+import com.vividsolutions.jts.{geom => jts}
 import com.vividsolutions.jts.geom._
+
 import geotrellis.vector.io._
-import geotrellis.vector.{Line, MultiLine, MultiPolygon, Polygon}
+import geotrellis.vector.{Line, MultiLine, MultiPolygon, Polygon, GeomFactory}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.{Column, Row, TypedColumn}
 import org.apache.spark.sql.expressions.UserDefinedFunction
@@ -16,8 +18,14 @@ import osmesa.common.ProcessOSM._
 
 import scala.annotation.tailrec
 import scala.collection.GenTraversable
+import scala.reflect.{ClassTag, classTag}
+import com.vividsolutions.jts.geom.prep.PreparedGeometryFactory
+import com.vividsolutions.jts.operation.union.CascadedPolygonUnion
+
 
 package object osm {
+  val prepGeomFactory = new PreparedGeometryFactory
+
   // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys) @ v2.8.0.
   private val AreaKeys: Map[String, Map[String, Boolean]] = Map(
     "addr:*" -> Map(),
@@ -471,10 +479,9 @@ package object osm {
   // since GeoTrellis's GeometryFactory is unavailable
   implicit val geometryFactory: GeometryFactory = new geom.GeometryFactory()
 
-  private def formRings(segments: GenTraversable[Line])(implicit geometryFactory: GeometryFactory): GenTraversable[Polygon] =
-    formRings(segments.map(_.jtsGeom.getCoordinateSequence).map(s => new VirtualCoordinateSequence(Seq(s))))
+  private def formRings(segments: GenTraversable[jts.LineString])(implicit geometryFactory: GeometryFactory): GenTraversable[jts.Polygon] =
+    formRings(segments.map(_.getCoordinateSequence).map(s => new VirtualCoordinateSequence(Seq(s))))
       .map(geometryFactory.createPolygon)
-      .map(Polygon(_))
 
   // join segments together
   @tailrec
@@ -499,93 +506,115 @@ package object osm {
     }
   }
 
-  private def connectSegments(segments: GenTraversable[Line])(implicit geometryFactory: GeometryFactory): GenTraversable[Line] =
-    connectSegments(segments.map(_.jtsGeom.getCoordinateSequence).map(s => new VirtualCoordinateSequence(Seq(s))))
-      .map(geometryFactory.createLineString)
-      .map(Line(_))
+  private def connectSegments(segments: GenTraversable[jts.Geometry])(implicit geometryFactory: GeometryFactory): GenTraversable[LineString] =
+    connectSegments(
+      segments.flatMap {
+        case geom: LineString => Some(geom.getCoordinateSequence)
+        case _                => None
+      }.map(s => new VirtualCoordinateSequence(Seq(s)))
+    ).map(geometryFactory.createLineString)
 
-  private def dissolveRings(rings: GenTraversable[Polygon]): (Seq[Polygon], Seq[Polygon]) = {
-    MultiPolygon(rings.toArray).union.asMultiPolygon match {
+  private def getInteriorRings(p: jts.Polygon): Seq[jts.LinearRing] = for (i <- 0 until p.getNumInteriorRing) yield
+    geometryFactory.createLinearRing(p.getInteriorRingN(i).getCoordinates)
+
+  private def dissolveRings(rings: Array[jts.Polygon]): (Seq[jts.Polygon], Seq[jts.Polygon]) = {
+    Option(geometryFactory.createGeometryCollection(rings.asInstanceOf[Array[Geometry]]).union) match {
       case Some(mp) =>
-        (mp.polygons.map(_.exterior).map(Polygon(_)).toVector, mp.polygons.flatMap(_.holes).map(Polygon(_)).toVector)
+        val polygons = for (i <- 0 until mp.getNumGeometries) yield {
+          mp.getGeometryN(i).asInstanceOf[jts.Polygon]
+        }
+
+        (polygons.map(_.getExteriorRing.getCoordinates).map(geometryFactory.createPolygon(_)),
+         polygons.flatMap(getInteriorRings).map(geometryFactory.createPolygon(_)))
       case None =>
-        (Vector.empty[Polygon], Vector.empty[Polygon])
+        (Vector.empty[jts.Polygon], Vector.empty[jts.Polygon])
     }
   }
 
   // TODO this (and accompanying functions) doesn't belong here
-  def buildMultiPolygon(id: Long, version: Int, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Array[Byte]] = {
-    if (types.zip(wkbs).exists { case (t, g) => t == WayType && Option(g).isEmpty }) {
+  def buildMultiPolygon(id: Long, version: Int, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], _geoms: Seq[Geometry]): Option[Geometry] = {
+    if (types.zip(_geoms).exists { case (t, g) => t == WayType && Option(g).isEmpty }) {
       // bail early if null values are present where they should exist (members w/ type=way)
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
       None
     } else {
-      val bytes = wkbs.map(Option(_)).filter(_.isDefined).map(_.get).map(_.length).sum
+      val geomCount = _geoms.map(Option(_)).filter(_.isDefined).length
 
-      logger.debug(s"$id @ $version ($timestamp) ${bytes.formatted("%,d")} bytes")
-      val geoms = wkbs.map(Option(_).map(_.readWKB) match {
-        case Some(geom: Polygon) => geom.as[Polygon].map(_.exterior)
-        case Some(geom) => geom.as[Line]
-        case None => None
+      logger.debug(s"$id @ $version ($timestamp) ${geomCount.formatted("%,d")} geoms")
+      val geoms = _geoms.map( g => g match {
+        case geom: jts.Polygon => Some(geom.getExteriorRing())
+        case geom: jts.LineString => Some(geom)
+        case _ => None
       })
 
-      val vertexCount = geoms.filter(_.isDefined).map(_.get).map(_.vertexCount).sum
+      val vertexCount = geoms.filter(_.isDefined).map(_.get).map(_.getNumPoints).sum
+      logger.warn(s"${vertexCount.formatted("%,d")} vertices (${geomCount.formatted("%,d")} geoms) from ${types.size} members in $id @ $version ($timestamp)")
 
-      logger.warn(s"${vertexCount.formatted("%,d")} vertices (${bytes.formatted("%,d")} bytes) from ${types.size} members in $id @ $version ($timestamp)")
-
-      val members: Seq[(String, Line)] = roles.zip(geoms)
+      val members: Seq[(String, jts.LineString)] = roles.zip(geoms)
         .filter(_._2.isDefined)
         .map(x => (x._1, x._2.get))
 
-      val (complete, partial) = members.foldLeft((Vector.empty[Polygon], Vector.empty[Line])) {
-        case ((c, p), (role, line: Line)) =>
+      val (complete, partial) = members.foldLeft((Vector.empty[jts.Polygon], Vector.empty[jts.LineString])) {
+        case ((c, p), (role, line: jts.LineString)) =>
           role match {
-            case "outer" if line.isClosed && line.vertexCount >= 4 => (c :+ Polygon(line), p)
-            case "outer" => (c, p :+ line)
-            case "inner" if line.isClosed && line.vertexCount >= 4 => (c :+ Polygon(line), p)
+            case "outer" if line.isClosed && line.getNumPoints >= 4 =>
+              (c :+ geometryFactory.createPolygon(line.getCoordinates), p)
+            case "outer" =>
+              (c, p :+ line)
+            case "inner" if line.isClosed && line.getNumPoints >= 4 =>
+              (c :+ geometryFactory.createPolygon(line.getCoordinates), p)
             case "inner" => (c, p :+ line)
-            case "" if line.isClosed && line.vertexCount >= 4 => (c :+ Polygon(line), p)
-            case "" => (c, p :+ line)
-            case _ => (c, p)
+            case "" if line.isClosed && line.getNumPoints >= 4 =>
+              (c :+ geometryFactory.createPolygon(line.getCoordinates), p)
+            case "" =>
+              (c, p :+ line)
+            case _ =>
+              (c, p)
           }
       }
 
       try {
-        val rings = complete ++ formRings(partial.sortWith(_.vertexCount > _.vertexCount))
-        val preparedRings = rings.map(_.prepare)
+        val rings = complete ++ formRings(partial.sortWith(_.getNumPoints > _.getNumPoints))
+        val preparedRings = rings.map(prepGeomFactory.create)
 
         // reclassify rings according to their topology (ignoring roles)
-        val (classifiedOuters, classifiedInners) = rings.sortWith(_.area > _.area) match {
-          case Seq(h, t@_ *) => t.foldLeft((Vector(h), Vector.empty[Polygon])) {
+        val (classifiedOuters, classifiedInners) = rings.sortWith(_.getArea() > _.getArea()) match {
+          case Seq(h, t@_ *) => t.foldLeft((Array(h), Array.empty[jts.Polygon])) {
             case ((os, is), ring) =>
               // check the number of containing elements
-              preparedRings.count(r => r.geom != ring && r.contains(ring)) % 2 match {
+              preparedRings.count(r => r.getGeometry() != ring && r.contains(ring)) % 2 match {
                 // if even, it's an outer ring
                 case 0 => (os :+ ring, is)
                 // if odd, it's an inner ring
                 case 1 => (os, is :+ ring)
               }
           }
-          case rs if rs.isEmpty => (Vector.empty[Polygon], Vector.empty[Polygon])
+          case rs if rs.isEmpty => (Array.empty[jts.Polygon], Array.empty[jts.Polygon])
         }
 
-        val (dissolvedOuters, addlInners) = dissolveRings(classifiedOuters)
-        val (dissolvedInners, addlOuters) = dissolveRings(classifiedInners.map(_.exterior).map(Polygon(_)) ++ addlInners)
+        val (dissolvedOuters, addlInners) =
+          dissolveRings(classifiedOuters)
+        val (dissolvedInners, addlOuters) =
+          dissolveRings(classifiedInners
+            .map(_.getExteriorRing.getCoordinates)
+            .map(geometryFactory.createPolygon(_)) ++ addlInners)
 
-        val (polygons, _) = (dissolvedOuters ++ addlOuters)
-          // sort by size (descending) to use rings as part of the largest available polygon
-          .sortWith(_.area > _.area)
-          // only use inners once if they're contained by multiple outer rings
-          .foldLeft((Vector.empty[Polygon], dissolvedInners)) {
-          case ((ps, is), outer) =>
-            val preparedOuter = outer.prepare
-            (ps :+ Polygon(outer.exterior, is.filter(inner => preparedOuter.contains(inner)).map(_.exterior)), is.filterNot(inner => preparedOuter.contains(inner)))
+        val (polygons, _) =
+          (dissolvedOuters ++ addlOuters)
+            // sort by size (descending) to use rings as part of the largest available polygon
+            .sortWith(_.getArea() > _.getArea())
+            // only use inners once if they're contained by multiple outer rings
+            .foldLeft((Vector.empty[jts.Polygon], dissolvedInners)) {
+              case ((ps, is), outer) =>
+                val preparedOuter = prepGeomFactory.create(outer)
+                (ps :+ geometryFactory.createPolygon(geometryFactory.createLinearRing(outer.getExteriorRing.getCoordinates), is.filter(inner => preparedOuter.contains(inner)).map({ x => geometryFactory.createLinearRing(x.getExteriorRing.getCoordinates) }).toArray),
+                is.filterNot(inner => preparedOuter.contains(inner)))
+            }
+
+        polygons match {
+          case v @ Vector(p: jts.Polygon) if v.length == 1 => Some(p)
+          case ps => Some(geometryFactory.createMultiPolygon(ps.toArray))
         }
-
-        Some(polygons match {
-          case Vector(p: Polygon) => p.toWKB(4326)
-          case ps => MultiPolygon(ps).toWKB(4326)
-        })
       } catch {
         case e@(_: AssemblyException | _: IllegalArgumentException | _: TopologyException) =>
           logger.warn(s"Could not reconstruct relation $id @ $version ($timestamp): ${e.getMessage}")
@@ -604,34 +633,30 @@ package object osm {
 
 
   // TODO this (and accompanying functions) doesn't belong here
-  def buildRoute(id: Long, version: Int, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], wkbs: Seq[Array[Byte]]): Option[Seq[(String, Array[Byte])]] = {
-    if (types.zip(wkbs).exists { case (t, g) => t == WayType && Option(g).isEmpty }) {
+  def buildRoute(id: Long, version: Int, timestamp: Timestamp, types: Seq[Byte], roles: Seq[String], geoms: Seq[jts.Geometry]): Option[Seq[(String, jts.Geometry)]] = {
+    if (types.zip(geoms).exists { case (t, g) => t == WayType && Option(g).isEmpty }) {
       // bail early if null values are present where they should exist (members w/ type=way)
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
       None
     } else {
-      val geoms = wkbs.map(Option(_).map(_.readWKB) match {
-        // polygons are not part of routes (unless they're platforms)
-        case Some(geom: Line) => geom.as[Line]
-        case _ => None
-      })
 
       try {
-        Some(roles.zip(geoms)
+        val res = roles.zip(geoms.map(Option.apply))
           .filter(_._2.isDefined)
           .map(x => (x._1, x._2.get))
           .groupBy {
             case (role, _) => role
           }
           .mapValues(_.map(_._2))
-          .mapValues(connectSegments(_))
+          .mapValues(connectSegments)
           .map { case (role, lines) =>
             lines match {
-              case Seq(line) => (role, line.toWKB(4326))
-              case _ => (role, MultiLine(lines.toArray).toWKB(4326))
+              case Seq(line) => (role, line)
+              case _ => (role, geometryFactory.createMultiLineString(lines.toArray))
             }
-          }
-          .toSeq)
+          }.toSeq
+
+        Some(res)
       } catch {
         case e@(_: AssemblyException | _: IllegalArgumentException | _: TopologyException) =>
           logger.warn(s"Could not reconstruct route relation $id @ $version ($timestamp): ${e.getMessage}")

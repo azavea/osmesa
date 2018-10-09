@@ -11,6 +11,7 @@ import org.apache.spark.sql.types.IntegerType
 import osmesa.common.ProcessOSM._
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
+import com.vividsolutions.jts.{geom => jts}
 
 /*
  * Usage example:
@@ -74,7 +75,7 @@ object DebugRelations extends CommandApp(
                   case _ => null.asInstanceOf[Byte]
                 })
                 val roles = rows.map(_.getAs[String]("role"))
-                val geoms = rows.map(_.getAs[Array[Byte]]("geom"))
+                val geoms = rows.map(_.getAs[jts.Geometry]("geom"))
 
                 val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
 

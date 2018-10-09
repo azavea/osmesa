@@ -689,7 +689,7 @@ object Footprints extends Logging {
             if (value > 0) {
               features.append(
                 PointFeature(Point(rasterExtent.gridToMap(c, r)),
-                             (index.toIndex(SpatialKey(c, r)), value)))
+                             (index.toIndex(SpatialKey(c, r)).toLong, value)))
             }
           }
 
@@ -716,7 +716,7 @@ object Footprints extends Logging {
               if (value > 0) {
                 features.append(
                   PointFeature(Point(rasterExtent.gridToMap(c, r)),
-                               (index.toIndex(SpatialKey(c, r)), value)))
+                               (index.toIndex(SpatialKey(c, r)).toLong, value)))
               }
             }
 
