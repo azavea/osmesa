@@ -1,0 +1,16 @@
+version: '3.0'
+services:
+  stat-gen:
+    image: osm_analytics:latest
+    container_name: stat-gen
+    volumes:
+      - ./data:/tmp/data
+      - /Users/nzimmerman/git_repos/osmesa/src/analytics/target/scala-2.11/osmesa-analytics.jar:/opt/osmesa-analytics2.jar
+    ports:
+      - "4040:4040"
+    command: >
+      /spark/bin/spark-submit --class osmesa.analytics.oneoffs.CentroidStats /opt/osmesa-analytics2.jar
+      --history file:///tmp/data/isle-of-man-internal.osh.orc
+      --output file:///tmp/data/stats-test.orc
+
+

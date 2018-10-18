@@ -83,3 +83,5 @@ dist/
 emr/terraform/auth.json
 
 derby.log
+
+data/*
