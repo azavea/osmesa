@@ -190,18 +190,19 @@ class APISpec extends FunSpec with TestEnvironment {
   }
 
   describe("Dataset[OSM] with History") {
+    import implicits._
+
     val history = asHistory(HistoryDF)
     val timestamp = Timestamp.valueOf("2012-01-01 00:00:00")
-
-    import implicits._
+    val nodes = history.nodes
 
     describe("nodes") {
       it("should produce only nodes") {
-        assert(history.nodes.count === 290861)
+        assert(nodes.count === 290861)
       }
 
       it("should include Tags") {
-        assert(history.nodes.schema.fieldNames.contains("tags"))
+        assert(nodes.schema.fieldNames.contains("tags"))
       }
     }
 
