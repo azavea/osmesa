@@ -56,6 +56,13 @@ package object common {
       Member(`type`, ref, role)
   }
 
+  /** Adds type information to a DataFrame containing changesets.
+    *
+    * Additional columns will be retained but will not be accessible through the [[traits.Changeset]] interface.
+    *
+    * @param df Changesets.
+    * @return Typed changesets.
+    */
   def asChangesets(df: DataFrame): Dataset[Changeset] = {
     import df.sparkSession.implicits._
 
