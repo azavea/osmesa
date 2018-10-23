@@ -394,6 +394,24 @@ package object common {
         with Timestamp
         with Visibility
 
+    final case class PointWithValidity(`type`: Byte,
+                                       id: Long,
+                                       geom: jts.Point,
+                                       tags: Map[String, String],
+                                       changeset: Long,
+                                       updated: java.sql.Timestamp,
+                                       validUntil: Option[java.sql.Timestamp],
+                                       uid: Long,
+                                       user: String,
+                                       version: Int,
+                                       visible: Boolean)
+        extends Element
+        with PackedType
+        with Geometry
+        with traits.Metadata
+        with Validity
+        with Visibility
+
     final case class PointImpl(`type`: Byte,
                                id: Long,
                                geom: jts.Point,
@@ -695,6 +713,32 @@ package object common {
           .as[PointWithTimestamp]
           .asInstanceOf[Dataset[
             Element with PackedType with Geometry with traits.Metadata with Timestamp with Visibility]]
+      }
+    }
+
+    implicit class NodeWithValidityDatasetExtension[T <: Node with Validity](nodes: Dataset[T]) {
+      import nodes.sparkSession.implicits._
+
+      /** Convert coordinates to geometries.
+        *
+        * @return Points with matching metadata for nodes with tags.
+        */
+      def withGeometry: Dataset[
+        Element with PackedType with Geometry with traits.Metadata with Validity with Visibility] =
+        asPoints
+
+      /** Convert tagged nodes to Points.
+        *
+        * @return Points with matching metadata.
+        */
+      def asPoints: Dataset[
+        Element with PackedType with Geometry with traits.Metadata with Validity with Visibility] = {
+        nodes
+          .where(size('tags) > 0)
+          .asPointsInternal
+          .as[PointWithValidity]
+          .asInstanceOf[Dataset[
+            Element with PackedType with Geometry with traits.Metadata with Validity with Visibility]]
       }
     }
 

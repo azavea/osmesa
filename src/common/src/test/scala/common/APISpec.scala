@@ -6,8 +6,9 @@ import java.sql.Timestamp
 import geotrellis.vector.Extent
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.ByteType
-import org.apache.spark.sql.{AnalysisException, DataFrame, Row}
+import org.apache.spark.sql.{AnalysisException, DataFrame, Dataset, Row}
 import org.scalatest.FunSpec
+import osmesa.common.traits._
 import osmesa.common.{TestEnvironment, _}
 
 class APISpec extends FunSpec with TestEnvironment {
@@ -195,6 +196,12 @@ class APISpec extends FunSpec with TestEnvironment {
     val history = asHistory(HistoryDF)
     val timestamp = Timestamp.valueOf("2012-01-01 00:00:00")
     val nodes = history.nodes
+    val ways = history.ways
+    val relations = history.relations
+
+    val node = nodes.first()
+    val way = ways.first()
+    val relation = relations.first()
 
     describe("nodes") {
       it("should produce only nodes") {
@@ -203,18 +210,32 @@ class APISpec extends FunSpec with TestEnvironment {
 
       it("should include Tags") {
         assert(nodes.schema.fieldNames.contains("tags"))
+
+        assert(node.isInstanceOf[Tags])
       }
     }
 
     describe("ways") {
       it("should produce only ways") {
-        assert(history.ways.count === 75849)
+        assert(ways.count === 75849)
+      }
+
+      it("should include Tags") {
+        assert(ways.schema.fieldNames.contains("tags"))
+
+        assert(way.isInstanceOf[Tags])
       }
     }
 
     describe("relations") {
       it("should produce only relations") {
-        assert(history.relations.count === 4825)
+        assert(relations.count === 4825)
+      }
+
+      it("should include Tags") {
+        assert(relations.schema.fieldNames.contains("tags"))
+
+        assert(relation.isInstanceOf[Tags])
       }
     }
 
@@ -286,19 +307,26 @@ class APISpec extends FunSpec with TestEnvironment {
 
     describe("asPoints") {
       val geoms = nodes.asPoints.cache
+      val geom = geoms.first()
 
       it("should include Geometry") {
         assert(geoms.schema.fieldNames.contains("geom"))
+
+        assert(geom.isInstanceOf[Geometry])
       }
 
       it("should include Metadata") {
         assert(geoms.schema.fieldNames.contains("changeset"))
         assert(geoms.schema.fieldNames.contains("uid"))
         assert(geoms.schema.fieldNames.contains("user"))
+
+        assert(geom.isInstanceOf[Metadata])
       }
 
       it("should include Timestamp") {
         assert(geoms.schema.fieldNames.contains("timestamp"))
+
+        assert(geom.isInstanceOf[traits.Timestamp])
       }
 
       it("should produce the correct number of results") {
@@ -310,27 +338,84 @@ class APISpec extends FunSpec with TestEnvironment {
       }
     }
   }
-
   describe("Dataset[Node]") {
     import implicits._
 
-    val nodes = asHistory(HistoryDF).nodes.withValidity
+    val nodes = asHistory(HistoryDF).nodes.withValidity.asInstanceOf[Dataset[Node]]
 
     describe("asPoints") {
       val geoms = nodes.asPoints.cache
+      val geom = geoms.first()
+
 
       it("should include Geometry") {
         assert(geoms.schema.fieldNames.contains("geom"))
+
+        assert(geom.isInstanceOf[Geometry])
       }
 
       it("should include Metadata") {
         assert(geoms.schema.fieldNames.contains("changeset"))
         assert(geoms.schema.fieldNames.contains("uid"))
         assert(geoms.schema.fieldNames.contains("user"))
+
+        assert(geom.isInstanceOf[Metadata])
+      }
+
+      it("should not include Validity") {
+        assert(!geom.isInstanceOf[Validity])
       }
 
       it("should not include Timestamp") {
         assert(!geoms.schema.fieldNames.contains("timestamp"))
+
+        assert(!geom.isInstanceOf[traits.Timestamp])
+      }
+
+      it("should produce the correct number of results") {
+        assert(geoms.count === 33533)
+      }
+
+      it("should be distinct by changeset") {
+        assert(geoms.count === geoms.groupBy('id, 'changeset).agg(first('id)).count)
+      }
+    }
+  }
+
+  describe("Dataset[Node with Validity]") {
+    import implicits._
+
+    val nodes = asHistory(HistoryDF).nodes.withValidity
+
+    describe("asPoints") {
+      val geoms = nodes.asPoints
+      val geom = geoms.first()
+
+      it("should include Geometry") {
+        assert(geoms.schema.fieldNames.contains("geom"))
+
+        assert(geom.isInstanceOf[Geometry])
+      }
+
+      it("should include Metadata") {
+        assert(geoms.schema.fieldNames.contains("changeset"))
+        assert(geoms.schema.fieldNames.contains("uid"))
+        assert(geoms.schema.fieldNames.contains("user"))
+
+        assert(geom.isInstanceOf[Metadata])
+      }
+
+      it("should include Validity") {
+        assert(geoms.schema.fieldNames.contains("updated"))
+        assert(geoms.schema.fieldNames.contains("validUntil"))
+
+        assert(geom.isInstanceOf[Validity])
+      }
+
+      it("should not include Timestamp") {
+        assert(!geoms.schema.fieldNames.contains("timestamp"))
+
+        assert(!geom.isInstanceOf[traits.Timestamp])
       }
 
       it("should produce the correct number of results") {
@@ -350,24 +435,32 @@ class APISpec extends FunSpec with TestEnvironment {
 
     describe("withValidity") {
       val ds = ways.withValidity
+      val way = ds.first()
 
       it("should exclude `type`") {
         assert(!ds.schema.fieldNames.contains("type"))
+
+        assert(!way.isInstanceOf[PackedType])
       }
 
       it("should exclude coordinates") {
         assert(!ds.schema.fieldNames.contains("lat"))
         assert(!ds.schema.fieldNames.contains("lon"))
+
+        assert(!way.isInstanceOf[Coordinates])
       }
 
       it("should exclude `members`") {
         assert(!ds.schema.fieldNames.contains("members"))
+
+        assert(!way.isInstanceOf[Members])
       }
 
       it("should set validUntil") {
         val el = ds.where('id === 49824922 and 'version === 1).first()
 
         assert(el.validUntil === Some(Timestamp.valueOf("2010-02-07 17:00:33")))
+        assert(el.isInstanceOf[Validity])
       }
 
       it("should set geometryChanged") {
