@@ -334,9 +334,7 @@ class APISpec extends FunSpec with TestEnvironment {
       }
 
       it("should produce the correct number of results") {
-        // the total number of tagged nodes is 31847
-        // the total number of distinct node/changeset combinations is 30487
-        assert(geoms.count === 30487)
+        assert(geoms.count === 33533)
       }
 
       it("should be distinct by changeset") {
