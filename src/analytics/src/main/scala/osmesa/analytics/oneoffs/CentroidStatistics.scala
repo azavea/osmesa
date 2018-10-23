@@ -44,6 +44,7 @@ object CentroidStats extends CommandApp(
 
       val logGridCells = 4 // Vector tiles will have 16x16 cells inside
       val cellZoom = baseZoom + logGridCells
+      val intervalMillis = 1000 * 60 * 60 * 24 * 7 // weeks
 
       val history = spark.read.orc(historySource)
 
@@ -71,6 +72,9 @@ object CentroidStats extends CommandApp(
       val toWM = org.apache.spark.sql.functions.udf[Geometry, Geometry]{g =>
         vector.Geometry(g).reproject(LatLng, WebMercator).jtsGeom
       }
+      val toLL = org.apache.spark.sql.functions.udf[Geometry, Geometry]{g =>
+        vector.Geometry(g).reproject(WebMercator, LatLng).jtsGeom
+      }
       val indexWMPoint = org.apache.spark.sql.functions.udf[Long, Geometry]{ g =>
         val wmpt = vector.Point(g.asInstanceOf[Point])
         keyIndex.toIndex(layout.mapTransform(wmpt)).toLong
@@ -90,7 +94,7 @@ object CentroidStats extends CommandApp(
         .withColumn("center", st_centroid(toWM('geom)))
         .withColumn("zindex", indexWMPoint('center))
         .withColumn("spatialKey", wmPointToKey('center))
-        .withColumn("temporalKey", (col("updated").cast("long"))/lit(604800))
+        .withColumn("temporalKey", (col("updated").cast("long"))/lit(intervalMillis))
 
       augmentedBuildings.printSchema
 
@@ -128,7 +132,7 @@ object CentroidStats extends CommandApp(
           first(shiftRight($"spatialKey.row", lit(logGridCells))).as('row),
           collect_list('center).as('centers),
           collect_list('num).as('buildingCounts),
-          collect_list((col("temporalKey") * lit(604800)).cast("timestamp")).as('weekBeginning)
+          collect_list((col("temporalKey") * lit(intervalMillis)).cast("timestamp")).as('weekBeginning)
         )
 
       tileData.printSchema
@@ -142,6 +146,7 @@ object CentroidStats extends CommandApp(
           val buildingCounts = row.getAs[Seq[Long]]("buildingCounts")
           val date = row.getAs[Seq[java.sql.Timestamp]]("weekBeginning")
           val key = SpatialKey(row.getAs[Long]("col").toInt, row.getAs[Long]("row").toInt)
+          val tmsKey = SpatialKey(row.getAs[Long]("col").toInt, math.pow(2, baseZoom).toInt - 1 - row.getAs[Long]("row").toInt)
           val ex = tileLayout.mapTransform(key)
 
           val features = for (i <- Range(0, locations.length)) yield
@@ -150,7 +155,7 @@ object CentroidStats extends CommandApp(
               Map("buildingsChanged" -> VInt64(buildingCounts(i)),
                   "weekBeginning" -> VInt64(date(i).getTime)))
 
-          (key, VectorTile(Map("statistics" -> StrictLayer(name="statistics",
+          (tmsKey, VectorTile(Map("statistics" -> StrictLayer(name="statistics",
                                                            tileWidth=4096,
                                                            version=2,
                                                            tileExtent = ex,
