@@ -412,6 +412,18 @@ package object common {
         history: Dataset[Node with Timestamp] with History) {
       import history.sparkSession.implicits._
 
+      /** Add validity windows to nodes.
+        *
+        * `timestamp` is changed to `updated` (to prepare for timestamps inherited from contributing elements),
+        * `validUntil` is introduced based on the creation `timestamp` of the next version. Elements with a `null`
+        * `validUntil` are currently valid.
+        *
+        *
+        * Tags are also copied from elements immediately prior to being deleted (!'visible), as they're cleared out
+        * otherwise.
+        *
+        * @return Nodes with `timestamp` and `validUntil` columns.
+        */
       def withValidity: Dataset[Node with Validity] with History =
         history.withValidityInternal
           .as[NodeWithValidity]
@@ -422,6 +434,18 @@ package object common {
         history: Dataset[Way with Timestamp] with History) {
       import history.sparkSession.implicits._
 
+      /** Add validity windows to ways.
+        *
+        * `timestamp` is changed to `updated` (to prepare for timestamps inherited from contributing elements),
+        * `validUntil` is introduced based on the creation `timestamp` of the next version. Elements with a `null`
+        * `validUntil` are currently valid.
+        *
+        *
+        * Tags are also copied from elements immediately prior to being deleted (!'visible), as they're cleared out
+        * otherwise.
+        *
+        * @return Ways with `timestamp` and `validUntil` columns.
+        */
       def withValidity: Dataset[Way with Validity] with History =
         history.withValidityInternal
           .as[WayWithValidity]
@@ -432,6 +456,18 @@ package object common {
         history: Dataset[Relation with Timestamp] with History) {
       import history.sparkSession.implicits._
 
+      /** Add validity windows to relations.
+        *
+        * `timestamp` is changed to `updated` (to prepare for timestamps inherited from contributing elements),
+        * `validUntil` is introduced based on the creation `timestamp` of the next version. Elements with a `null`
+        * `validUntil` are currently valid.
+        *
+        *
+        * Tags are also copied from elements immediately prior to being deleted (!'visible), as they're cleared out
+        * otherwise.
+        *
+        * @return Relations with `timestamp` and `validUntil` columns.
+        */
       def withValidity: Dataset[Relation with Validity] with History =
         history.withValidityInternal
           .as[RelationWithValidity]
@@ -442,7 +478,19 @@ package object common {
         ds: Dataset[T]) {
       import ds.sparkSession.implicits._
 
-      def withValidityInternal: DataFrame = {
+      /** Add validity windows to elements.
+        *
+        * `timestamp` is changed to `updated` (to prepare for timestamps inherited from contributing elements),
+        * `validUntil` is introduced based on the creation `timestamp` of the next version. Elements with a `null`
+        * `validUntil` are currently valid.
+        *
+        *
+        * Tags are also copied from elements immediately prior to being deleted (!'visible), as they're cleared out
+        * otherwise.
+        *
+        * @return Elements with `timestamp` and `validUntil` columns.
+        */
+      private[osmesa] def withValidityInternal: DataFrame = {
         @transient val idByVersion = Window.partitionBy('id).orderBy('version)
 
         ds.withColumn("tags",
@@ -529,6 +577,18 @@ package object common {
           .as[NodeWithTimestamp]
           .asInstanceOf[Dataset[Node with Timestamp] with History]
 
+      /** Add validity windows to elements.
+        *
+        * `timestamp` is changed to `updated` (to prepare for timestamps inherited from contributing elements),
+        * `validUntil` is introduced based on the creation `timestamp` of the next version. Elements with a `null`
+        * `validUntil` are currently valid.
+        *
+        *
+        * Tags are also copied from elements immediately prior to being deleted (!'visible), as they're cleared out
+        * otherwise.
+        *
+        * @return Elements with `timestamp` and `validUntil` columns.
+        */
       def withValidity: Dataset[UniversalElement with Validity] with History =
         history.withValidityInternal
           .as[UniversalElementWithValidity]
@@ -553,7 +613,10 @@ package object common {
 
       implicit val encoder: Encoder[Row] = RowEncoder(nodes.schema)
 
-      def asPointsInternal: DataFrame = {
+      // TODO create a version of this that groups by timestamp (configurable granularity, e.g. 1 day) when
+      // VersionControl is absent (or unreliable, in the case of GDPR-restricted GeoFabrik extracts where changeset is
+      // always 0)
+      private[osmesa] def asPointsInternal: DataFrame = {
         // this needs to convert to DataFrames first in order to avoid narrowing the schema produced
 
         nodes
@@ -575,6 +638,10 @@ package object common {
     implicit class NodeDatasetExtension[T <: Node](nodes: Dataset[T]) {
       import nodes.sparkSession.implicits._
 
+      /** Convert tagged nodes to Points.
+        *
+        * @return Points with matching metadata.
+        */
       def asPoints
         : Dataset[Element with PackedType with Geometry with traits.Metadata with Visibility] = {
         nodes
@@ -593,6 +660,10 @@ package object common {
       implicit val NodeEncoder: Encoder[Node with Timestamp] =
         Encoders.product[NodeWithTimestamp].asInstanceOf[Encoder[Node with Timestamp]]
 
+      /** Convert tagged nodes to Points.
+        *
+        * @return Points with matching metadata.
+        */
       def asPoints: Dataset[
         Element with PackedType with Geometry with traits.Metadata with Timestamp with Visibility] = {
         nodes
