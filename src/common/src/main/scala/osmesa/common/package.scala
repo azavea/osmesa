@@ -645,6 +645,14 @@ package object common {
     implicit class NodeDatasetExtension[T <: Node](nodes: Dataset[T]) {
       import nodes.sparkSession.implicits._
 
+      /** Convert coordinates to geometries.
+        *
+        * @return Points with matching metadata for nodes with tags.
+        */
+      def withGeometry
+        : Dataset[Element with PackedType with Geometry with traits.Metadata with Visibility] =
+        asPoints
+
       /** Convert tagged nodes to Points.
         *
         * @return Points with matching metadata.
@@ -666,6 +674,14 @@ package object common {
 
       implicit val NodeEncoder: Encoder[Node with Timestamp] =
         Encoders.product[NodeWithTimestamp].asInstanceOf[Encoder[Node with Timestamp]]
+
+      /** Convert coordinates to geometries.
+        *
+        * @return Points with matching metadata for nodes with tags.
+        */
+      def withGeometry: Dataset[
+        Element with PackedType with Geometry with traits.Metadata with Timestamp with Visibility] =
+        asPoints
 
       /** Convert tagged nodes to Points.
         *
