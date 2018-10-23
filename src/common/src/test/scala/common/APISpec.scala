@@ -239,6 +239,14 @@ class APISpec extends FunSpec with TestEnvironment {
 
         assert(node.validUntil === Some(Timestamp.valueOf("2008-08-25 17:58:32")))
       }
+
+      it("should include tags for invisible elements") {
+        val v2 = ds.where('type === RelationType and 'id === 3605412 and 'version === 2).first()
+        val v3 = ds.where('type === RelationType and 'id === 3605412 and 'version === 3).first()
+
+        assert(!v3.visible)
+        assert(v2.tags === v3.tags)
+      }
     }
   }
 

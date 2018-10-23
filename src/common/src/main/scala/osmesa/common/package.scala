@@ -445,7 +445,10 @@ package object common {
       def withValidityInternal: DataFrame = {
         @transient val idByVersion = Window.partitionBy('id).orderBy('version)
 
-        ds.withColumnRenamed("timestamp", "updated")
+        ds.withColumn("tags",
+                      when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
+                           lag('tags, 1) over idByVersion).otherwise('tags))
+          .withColumnRenamed("timestamp", "updated")
           .withColumn("validUntil", lead('updated, 1) over idByVersion)
       }
     }
