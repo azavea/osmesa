@@ -348,38 +348,38 @@ package object common {
         extends Relation
         with Timestamp
 
-    case class SnapshotWithTimestamp[T <: Dataset[_]](override val dataset: T,
-                                                      timestamp: java.sql.Timestamp)
+    final case class SnapshotWithTimestamp[T <: Dataset[_]](override val dataset: T,
+                                                            timestamp: java.sql.Timestamp)
         extends SnapshotImpl(dataset)
         with Timestamp
 
     class SnapshotImpl[T <: Dataset[_]](val dataset: T) extends Snapshot[T]
 
-    case class ChangesetImpl(id: Long,
-                             createdAt: java.sql.Timestamp,
-                             closedAt: Option[java.sql.Timestamp],
-                             open: Boolean,
-                             numChanges: Int,
-                             user: String,
-                             uid: Long,
-                             minLat: Option[Float],
-                             maxLat: Option[Float],
-                             minLon: Option[Float],
-                             maxLon: Option[Float],
-                             commentsCount: Int,
-                             tags: Map[String, String])
+    final case class ChangesetImpl(id: Long,
+                                   createdAt: java.sql.Timestamp,
+                                   closedAt: Option[java.sql.Timestamp],
+                                   open: Boolean,
+                                   numChanges: Int,
+                                   user: String,
+                                   uid: Long,
+                                   minLat: Option[Float],
+                                   maxLat: Option[Float],
+                                   minLon: Option[Float],
+                                   maxLon: Option[Float],
+                                   commentsCount: Int,
+                                   tags: Map[String, String])
         extends Changeset
 
-    case class PointWithTimestamp(`type`: Byte,
-                                  id: Long,
-                                  geom: jts.Point,
-                                  tags: Map[String, String],
-                                  changeset: Long,
-                                  timestamp: java.sql.Timestamp,
-                                  uid: Long,
-                                  user: String,
-                                  version: Int,
-                                  visible: Boolean)
+    final case class PointWithTimestamp(`type`: Byte,
+                                        id: Long,
+                                        geom: jts.Point,
+                                        tags: Map[String, String],
+                                        changeset: Long,
+                                        timestamp: java.sql.Timestamp,
+                                        uid: Long,
+                                        user: String,
+                                        version: Int,
+                                        visible: Boolean)
         extends Element
         with PackedType
         with Geometry
@@ -387,15 +387,15 @@ package object common {
         with Timestamp
         with Visibility
 
-    case class PointImpl(`type`: Byte,
-                         id: Long,
-                         geom: jts.Point,
-                         tags: Map[String, String],
-                         changeset: Long,
-                         uid: Long,
-                         user: String,
-                         version: Int,
-                         visible: Boolean)
+    final case class PointImpl(`type`: Byte,
+                               id: Long,
+                               geom: jts.Point,
+                               tags: Map[String, String],
+                               changeset: Long,
+                               uid: Long,
+                               user: String,
+                               version: Int,
+                               visible: Boolean)
         extends Element
         with PackedType
         with Geometry
