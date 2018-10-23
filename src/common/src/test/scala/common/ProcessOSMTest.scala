@@ -1,11 +1,11 @@
 package osmesa.common
 
+import common.TestEnvironment
 import org.locationtech.geomesa.spark.jts._
 import org.scalatest._
 
 
 class ProcessOSMTest extends FunSpec with TestEnvironment with Matchers {
-  import ss.implicits._
   ss.withJTS
 
   val orcFile = getClass.getResource("/isle-of-man-latest.osm.orc").getPath

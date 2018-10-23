@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-package osmesa.common
+package common
 
 import org.apache.spark.serializer.KryoSerializer
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.scalatest._
 
-object TestEnvironment {
-}
+object TestEnvironment {}
 
 /*
  * These set of traits handle the creation and deletion of test directories on the local fs and hdfs,
@@ -32,11 +31,18 @@ trait TestEnvironment extends BeforeAndAfterAll { self: Suite with BeforeAndAfte
     .master("local[*]")
     .appName("OSMesa Test")
     .config("spark.ui.enabled", "false")
-    .config("spark.default.parallelism","8")
+    .config("spark.default.parallelism", "8")
     .config("spark.serializer", classOf[KryoSerializer].getName)
     .config("spark.kryo.registrationRequired", "false")
     .config("spark.kryoserializer.buffer.max", "500m")
     .getOrCreate()
+
+  val ChangesetsFile: String = getClass.getResource("/changesets.orc").getPath
+  val ChangesetsDF: DataFrame = ss.read.orc(ChangesetsFile)
+  val HistoryFile: String = getClass.getResource("/disneyland.osh.orc").getPath
+  val HistoryDF: DataFrame = ss.read.orc(HistoryFile)
+  val SnapshotFile: String = getClass.getResource("/isle-of-man-latest.osm.orc").getPath
+  val SnapshotDF: DataFrame = ss.read.orc(SnapshotFile)
 
   // get the name of the class which mixes in this trait
   val name = this.getClass.getName
