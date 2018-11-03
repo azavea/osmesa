@@ -3,6 +3,7 @@ package common.datasetWithHistory
 import java.sql.Timestamp
 
 import common.TestEnvironment
+import org.apache.spark.sql.Dataset
 import org.scalatest.FunSpec
 import osmesa.common._
 import osmesa.common.traits._
@@ -13,7 +14,7 @@ class OSMSpec extends FunSpec with TestEnvironment {
   describe("Dataset[OSM] with History") {
     import implicits._
 
-    val history = asHistory(HistoryDF)
+    val history: Dataset[OSM] with History = asHistory(HistoryDF)
     val timestamp = Timestamp.valueOf("2012-01-01 00:00:00")
     val nodes = history.nodes
     val ways = history.ways
@@ -74,7 +75,7 @@ class OSMSpec extends FunSpec with TestEnvironment {
     }
 
     describe("withValidity") {
-      val ds = history.withValidity
+      val ds: Dataset[UniversalElement with Validity] with History = history.withValidity
 
       it("should set validUntil") {
         val node = ds.where('type === NodeType and 'id === 123104496 and 'version === 3).first()

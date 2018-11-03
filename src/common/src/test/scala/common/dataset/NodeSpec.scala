@@ -13,10 +13,12 @@ class NodeSpec extends FunSpec with TestEnvironment {
   describe("Dataset[Node]") {
     import implicits._
 
-    val nodes = asHistory(HistoryDF).nodes.withValidity.asInstanceOf[Dataset[Node]]
+    val rawNodes: Dataset[Node with Timestamp] with History = asHistory(HistoryDF).nodes
+    val nodesWithValidity: Dataset[Node with Validity] with History = rawNodes.withValidity
+    val nodes = nodesWithValidity.asInstanceOf[Dataset[Node]]
 
     describe("asPoints") {
-      val geoms = nodes.asPoints.cache
+      val geoms: Dataset[OSMFeature with Metadata with Visibility] = nodes.asPoints.cache
       val geom = geoms.first()
 
       it("should include Geometry") {
@@ -25,12 +27,10 @@ class NodeSpec extends FunSpec with TestEnvironment {
         assert(geom.isInstanceOf[Geometry])
       }
 
-      it("should include Metadata") {
+      it("should include VersionControl") {
         assert(geoms.schema.fieldNames.contains("changeset"))
-        assert(geoms.schema.fieldNames.contains("uid"))
-        assert(geoms.schema.fieldNames.contains("user"))
 
-        assert(geom.isInstanceOf[Metadata])
+        assert(geom.isInstanceOf[VersionControl])
       }
 
       it("should not include Validity") {

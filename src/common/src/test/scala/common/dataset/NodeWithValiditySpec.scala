@@ -1,6 +1,7 @@
 package common.dataset
 
 import common.TestEnvironment
+import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 import org.scalatest.FunSpec
 import osmesa.common.traits._
@@ -12,10 +13,10 @@ class NodeWithValiditySpec extends FunSpec with TestEnvironment {
   describe("Dataset[Node with Validity]") {
     import implicits._
 
-    val nodes = asHistory(HistoryDF).nodes.withValidity
+    val nodes: Dataset[Node with Validity] with History = asHistory(HistoryDF).nodes.withValidity
 
     describe("asPoints") {
-      val geoms = nodes.asPoints
+      val geoms: Dataset[OSMFeature with Metadata with Validity with Visibility] with History = nodes.asPoints.cache
       val geom = geoms.first()
 
       it("should include Geometry") {

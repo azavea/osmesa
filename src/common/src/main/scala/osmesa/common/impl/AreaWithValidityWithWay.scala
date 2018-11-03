@@ -1,0 +1,20 @@
+package osmesa.common.impl
+import java.sql.Timestamp
+
+import osmesa.common.traits
+
+final case class AreaWithValidityWithWay(
+    isArea: Boolean,
+    updated: Timestamp,
+    validUntil: Option[Timestamp],
+    visible: Boolean,
+    tags: Map[String, String],
+    changeset: Long,
+    nds: Seq[Long],
+    uid: Long,
+    user: String,
+    id: Long,
+    version: Int
+) extends traits.Area
+    with traits.Validity
+    with traits.Way

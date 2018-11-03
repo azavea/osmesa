@@ -40,10 +40,10 @@ class APISpec extends FunSpec with TestEnvironment {
       assert(c1.getAs[Long]("uid") === c2.uid)
       assert(c1.getAs[String]("user") === c2.user)
 
-      assert(Option(c1.getAs[BigDecimal]("min_lat")).map(_.floatValue()) === c2.minLat)
-      assert(Option(c1.getAs[BigDecimal]("max_lat")).map(_.floatValue()) === c2.maxLat)
-      assert(Option(c1.getAs[BigDecimal]("min_lon")).map(_.floatValue()) === c2.minLon)
-      assert(Option(c1.getAs[BigDecimal]("max_lon")).map(_.floatValue()) === c2.maxLon)
+      assert(Option(c1.getAs[BigDecimal]("min_lat")).map(_.doubleValue()) === c2.minLat)
+      assert(Option(c1.getAs[BigDecimal]("max_lat")).map(_.doubleValue()) === c2.maxLat)
+      assert(Option(c1.getAs[BigDecimal]("min_lon")).map(_.doubleValue()) === c2.minLon)
+      assert(Option(c1.getAs[BigDecimal]("max_lon")).map(_.doubleValue()) === c2.maxLon)
 
       assert(c1.getAs[Int]("num_changes") === c2.numChanges)
       assert(c1.getAs[Int]("comments_count") === c2.commentsCount)
@@ -88,7 +88,7 @@ class APISpec extends FunSpec with TestEnvironment {
     }
 
     it("should pass node data through unmodified (except for types)") {
-      val conditions = 'id === 14840391
+      val conditions = 'id === 14840391 and 'version === 2
 
       val node1 = df.where('type === "node" and conditions).first()
       val node2 = ds.where('type === NodeType and conditions).first()
@@ -96,8 +96,8 @@ class APISpec extends FunSpec with TestEnvironment {
       assert(node1.getAs[Long]("id") === node2.id)
       assert(NodeType === node2.`type`)
       assert(node1.getAs[Map[String, String]]("tags") === node2.tags)
-      assert(Option(node1.getAs[BigDecimal]("lat")).map(_.floatValue()) === node2.lat)
-      assert(Option(node1.getAs[BigDecimal]("lon")).map(_.floatValue()) === node2.lon)
+      assert(Option(node1.getAs[BigDecimal]("lat")).map(_.doubleValue()) === node2.lat)
+      assert(Option(node1.getAs[BigDecimal]("lon")).map(_.doubleValue()) === node2.lon)
       assert(node1.getAs[Long]("changeset") === node2.changeset)
       assert(node1.getAs[Timestamp]("timestamp") === node2.timestamp)
       assert(node1.getAs[Long]("uid") === node2.uid)

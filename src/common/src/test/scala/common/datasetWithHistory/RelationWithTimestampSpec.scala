@@ -3,6 +3,7 @@ package common.datasetWithHistory
 import java.sql.Timestamp
 
 import common.TestEnvironment
+import org.apache.spark.sql.Dataset
 import org.scalatest.FunSpec
 import osmesa.common._
 
@@ -12,10 +13,10 @@ class RelationWithTimestampSpec extends FunSpec with TestEnvironment {
   describe("Dataset[Relation with Timestamp] with History") {
     import implicits._
 
-    val relations = asHistory(HistoryDF).relations
+    val relations: Dataset[traits.Relation with traits.Timestamp] with traits.History = asHistory(HistoryDF).relations
 
     describe("withValidity") {
-      val ds = relations.withValidity
+      val ds: Dataset[traits.Relation with traits.Validity] with traits.History = relations.withValidity
 
       it("should exclude `type`") {
         assert(!ds.schema.fieldNames.contains("type"))
