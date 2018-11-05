@@ -1,5 +1,6 @@
 package common.dataset
 
+import com.vividsolutions.jts.geom.Point
 import common.TestEnvironment
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
@@ -16,13 +17,13 @@ class NodeWithTimestampSpec extends FunSpec with TestEnvironment {
     val nodes: Dataset[Node with Timestamp] with History = asHistory(HistoryDF).nodes
 
     describe("asPoints") {
-      val geoms: Dataset[OSMFeature with Metadata with Timestamp with Visibility] with History = nodes.asPoints.cache
+      val geoms: Dataset[OSMFeature[Point] with Metadata with Timestamp with Visibility] with History = nodes.asPoints.cache
       val geom = geoms.first()
 
       it("should include Geometry") {
         assert(geoms.schema.fieldNames.contains("geom"))
 
-        assert(geom.isInstanceOf[Geometry])
+        assert(geom.isInstanceOf[Geometry[Point]])
       }
 
       it("should include VersionControl") {

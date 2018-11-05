@@ -1,5 +1,6 @@
 package osmesa.common
 
+import com.vividsolutions.jts.{geom => jts}
 import geotrellis.vector.Extent
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
@@ -21,8 +22,9 @@ object implicits {
 
   // extensions that convert between types
 
-  trait AsPointsExtension[
-      I <: Coordinates with Identity with Tags with VersionControl, O <: OSMFeature, H >: History] {
+  trait AsPointsExtension[I <: Coordinates with Identity with Tags with VersionControl,
+                          O <: OSMFeature[jts.Point],
+                          H >: History] {
     val ds: Dataset[I] with H
 
     /** Convert coordinates to geometries.
@@ -113,7 +115,7 @@ object implicits {
       * @return Ways with matching metadata.
       */
     def withGeometry[
-        R >: OSMFeature with GeometryChanged with MinorVersion with Tags with Validity: TypeTag](
+        R >: OSMFeature[jts.Geometry] with GeometryChanged with MinorVersion with Tags with Validity: TypeTag](
         implicit nodes: Dataset[Node with Timestamp] with History): Dataset[R] with History = {
       implicit val encoder: Encoder[R] = buildEncoder[R]
       reconstruction
@@ -283,8 +285,7 @@ object implicits {
         })
         .map(_._2)
         .withColumn("type", lit(NodeType))
-        .withColumn("geom", st_castToGeometry(st_makePoint('lon, 'lat)))
-//        .withColumn("geom", st_makePoint('lon, 'lat).as[jts.Geometry])
+        .withColumn("geom", st_makePoint('lon, 'lat))
     }
   }
 
@@ -298,17 +299,21 @@ object implicits {
       with WithValidityExtension[T, UniversalElement, H]
 
   implicit class NodeExtension[T <: Node, H >: History](val ds: Dataset[T] with H)
-      extends AsPointsExtension[T, OSMFeature with Metadata with Visibility, H]
+      extends AsPointsExtension[T, OSMFeature[jts.Point] with Metadata with Visibility, H]
 
   implicit class NodeWithTimestampExtension[T <: Node with Timestamp, H >: History](
       val ds: Dataset[T] with H)
-      extends AsPointsExtension[T, OSMFeature with Metadata with Timestamp with Visibility, H]
+      extends AsPointsExtension[T,
+                                OSMFeature[jts.Point] with Metadata with Timestamp with Visibility,
+                                H]
       with WithGeometryChangedExtension[T, T, H]
       with WithValidityExtension[T, Node, H]
 
   implicit class NodeWithValidityExtension[T <: Node with Validity, H >: History](
       val ds: Dataset[T] with H)
-      extends AsPointsExtension[T, OSMFeature with Metadata with Validity with Visibility, H]
+      extends AsPointsExtension[T,
+                                OSMFeature[jts.Point] with Metadata with Validity with Visibility,
+                                H]
       with WithGeometryChangedExtension[T, T, H]
 
   implicit class RelationWithTimestampExtension[T <: Relation with Timestamp, H >: History](

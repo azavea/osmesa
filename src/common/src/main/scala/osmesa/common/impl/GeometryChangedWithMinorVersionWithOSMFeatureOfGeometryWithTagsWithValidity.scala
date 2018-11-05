@@ -4,7 +4,7 @@ import java.sql.Timestamp
 import com.vividsolutions.jts.geom.Geometry
 import osmesa.common.traits
 
-final case class GeometryChangedWithMinorVersionWithOSMFeatureWithTagsWithValidity(
+final case class GeometryChangedWithMinorVersionWithOSMFeatureOfGeometryWithTagsWithValidity(
     geometryChanged: Boolean,
     minorVersion: Int,
     tags: Map[String, String],
@@ -17,6 +17,6 @@ final case class GeometryChangedWithMinorVersionWithOSMFeatureWithTagsWithValidi
     geom: Geometry
 ) extends traits.GeometryChanged
     with traits.MinorVersion
-    with traits.OSMFeature
+    with traits.OSMFeature[Geometry]
     with traits.Tags
     with traits.Validity

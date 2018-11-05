@@ -55,8 +55,8 @@ package object traits {
   trait Element extends Identity with Tags
 
   /** Geometric representation of an element. */
-  trait Geometry {
-    def geom: jts.Geometry
+  trait Geometry[T <: jts.Geometry] {
+    def geom: T
   }
 
   /** Has this element's geometry changed relative to its previous version? */
@@ -115,7 +115,7 @@ package object traits {
       with Visibility
 
   /** An OSM element with its geometric representation. */
-  trait OSMFeature extends Identity with PackedType with Geometry with VersionControl
+  trait OSMFeature[T <: jts.Geometry] extends Identity with PackedType with Geometry[T] with VersionControl
 
   /** Contains `type` as a Byte to reduce storage requirements. */
   trait PackedType {

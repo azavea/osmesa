@@ -16,19 +16,24 @@ object encoders {
         tag, {
           val pkg = "osmesa.common.impl"
 
-          val traits = traitsIn[T]
-          val traitNames = traits.map(_.name.toString).toSeq.sorted
+          val traits = traitsIn(tag.tpe).sortBy(_.typeSymbol.name.toString)
 
-          val name = s"$pkg.${traitNames.mkString("With")}"
+          val name = pkg + "." + traits
+            .map(t => {
+              List(t.typeSymbol.name.toString,
+                   t.typeArgs.map(x => x.typeSymbol.name.toString).mkString("With"))
+                .filter(!_.isEmpty)
+                .mkString("Of")
+            })
+            .mkString("With")
 
           // https://stackoverflow.com/a/23792152/507685
           val c = try {
             Class.forName(name) // obtain java.lang.Class object from a string
           } catch {
             case e: ClassNotFoundException =>
-              throw new RuntimeException(
-                s"${e.getMessage} must be an implementation of the following traits: ${traitNames
-                  .mkString(", ")}")
+              throw new RuntimeException(s"${e.getMessage} must be an implementation of ${traits
+                .mkString(", ")}")
             case e: Throwable => throw e
           }
 
@@ -54,24 +59,10 @@ object encoders {
       .asInstanceOf[Encoder[T]]
   }
 
-  // determine closest traits
-  private def traitsIn[T](implicit tag: TypeTag[T]): Set[TypeSymbol] = {
-    val tpe = tag.tpe
-
-    val t = tpe.baseClasses.filter(s => s.isAbstract && s != typeOf[Any].typeSymbol).map(_.asType)
-
-    t.foldLeft(Seq.empty[TypeSymbol]) {
-        case (acc, x) => {
-          // if x is a super type of anything in acc, skip it
-          if (acc.exists(y => y.toType <:< x.toType)) {
-            acc
-          } else {
-            // filter out anything in acc that's a super type of x
-            acc.filterNot(y => x.toType <:< y.toType) :+ x
-          }
-        }
-      }
-      .sortBy(_.toString)
-      .toSet
+  private[osmesa] def traitsIn(tpe: Type): List[Type] = {
+    tpe match {
+      case rt: RefinedType => rt.parents.flatMap(p => traitsIn(p))
+      case _               => List(tpe)
+    }
   }
 }

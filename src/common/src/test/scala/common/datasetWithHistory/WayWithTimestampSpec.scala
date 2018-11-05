@@ -1,5 +1,6 @@
 package common.datasetWithHistory
 
+import com.vividsolutions.jts.{geom => jts}
 import common.TestEnvironment
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions.first
@@ -42,14 +43,15 @@ class WayWithTimestampSpec extends FunSpec with TestEnvironment {
     describe("withGeometry") {
       implicit val nodes: Dataset[Node with Timestamp] with History = history.nodes
 
-      val geoms: Dataset[OSMFeature with GeometryChanged with MinorVersion with Tags with Validity]
+      val geoms: Dataset[
+        OSMFeature[jts.Geometry] with GeometryChanged with MinorVersion with Tags with Validity]
         with History = ways.withGeometry.cache
       val geom = geoms.first()
 
       it("should include Geometry") {
         assert(geoms.schema.fieldNames.contains("geom"))
 
-        assert(geom.isInstanceOf[Geometry])
+        assert(geom.isInstanceOf[Geometry[jts.Point]])
       }
 
       it("should include VersionControl") {
