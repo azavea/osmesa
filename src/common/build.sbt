@@ -39,6 +39,8 @@ Test / baseDirectory := (baseDirectory.value).getParentFile
 Test / parallelExecution := false
 Test / testOptions += Tests.Argument("-oDF")
 
+test in assembly := {}
+
 initialCommands in console :=
   """
   """
