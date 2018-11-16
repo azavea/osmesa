@@ -28,7 +28,8 @@ object encoders {
             .mkString("With")
 
           // https://stackoverflow.com/a/23792152/507685
-          val c = try {
+          // confirm that a concrete case class implementation exists
+          try {
             Class.forName(name) // obtain java.lang.Class object from a string
           } catch {
             case e: ClassNotFoundException =>
@@ -37,9 +38,14 @@ object encoders {
             case e: Throwable => throw e
           }
 
-          val mirror = runtimeMirror(c.getClassLoader) // obtain runtime mirror
-          val sym = mirror.staticClass(name) // obtain class symbol for `c`
-          val tpe = sym.selfType // obtain type object for `c`
+          // obtain a runtime mirror, using the current thread's context classloader; this is used rather than the
+          // class's classloader (Class.forName, above) in order to work with the Scala REPL (which uses a different
+          // ClassLoader instance than was used to load classes in the first place); if Class.getClassLoader() is used,
+          // this mirror won't match TypeCreator's mirror, below
+          val mirror = runtimeMirror(Thread.currentThread().getContextClassLoader)
+
+          // get a Type object
+          val tpe = mirror.staticClass(name).selfType
 
           // create a type tag which contains the above type object
           val targetType = TypeTag(
@@ -49,7 +55,7 @@ object encoders {
                 if (m == mirror) tpe.asInstanceOf[U#Type]
                 else
                   throw new IllegalArgumentException(
-                    s"Type tag defined in $mirror cannot be migrated to other mirrors.")
+                    s"Type tag defined in $mirror cannot be migrated to other mirrors, specifically $m.")
             }
           ).asInstanceOf[TypeTag[Product]]
 
