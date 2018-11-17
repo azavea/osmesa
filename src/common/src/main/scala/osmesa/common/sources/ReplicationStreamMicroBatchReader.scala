@@ -1,21 +1,19 @@
-package osmesa.common.streaming
+package osmesa.common.sources
 
 import java.net.URI
-import java.util.Optional
 import java.sql._
+import java.util.Optional
 
 import cats.implicits._
 import io.circe.parser._
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.v2.DataSourceOptions
-import org.apache.spark.sql.sources.v2.reader.DataReader
 import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
+import osmesa.common.util.DBUtils
 
 import scala.compat.java8.OptionConverters._
-
-import osmesa.common.util.DBUtils
 
 abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
                                                  checkpointLocation: String)
@@ -68,19 +66,19 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   }
 
   val DefaultBatchSize: Int =
-    SparkEnv.get.conf.getInt("spark.sql.shuffle.partitions", 200)
+    SparkEnv.get.conf.getInt(SQLConf.SHUFFLE_PARTITIONS.key, SQLConf.SHUFFLE_PARTITIONS.defaultValue.get)
 
   protected val batchSize: Int =
-    options.getInt("batch_size", DefaultBatchSize)
+    options.getInt(Source.BatchSize, DefaultBatchSize)
 
   protected val databaseUri: Option[URI] =
-    options.get("db_uri").asScala.map(new URI(_))
+    options.get(Source.DatabaseURI).asScala.map(new URI(_))
 
-  protected val procName: String = options.get("proc_name").asScala
+  protected val procName: String = options.get(Source.ProcessName).asScala
     .getOrElse(throw new IllegalStateException("Process name required to recover sequence"))
 
   protected var startSequence: Option[Int] = {
-    val startSequenceOption = options.get("start_sequence").asScala.map(_.toInt)
+    val startSequenceOption = options.get(Source.StartSequence).asScala.map(_.toInt)
     val start = databaseUri.flatMap { uri =>
       recoverSequence(uri, procName)
     } orElse startSequenceOption
@@ -89,7 +87,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   }
 
   protected var endSequence: Option[Int] =
-    options.get("end_sequence").asScala.map(_.toInt)
+    options.get(Source.EndSequence).asScala.map(_.toInt)
 
   // start offsets are exclusive, so start with the one before what's requested (if provided)
   protected var startOffset: Option[SequenceOffset] =
@@ -169,9 +167,7 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     }
 
   override def getEndOffset: Offset =
-    endOffset.getOrElse {
-      throw new IllegalStateException("end offset not set")
-    }
+    endOffset.getOrElse(SequenceOffset(Int.MaxValue))
 
   override def commit(end: Offset): Unit = {
     databaseUri.foreach {
@@ -199,6 +195,11 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   protected def getCurrentSequence: Option[Int]
 
   // return an inclusive range
-  protected def sequenceRange: Range =
-    startOffset.get.sequence + 1 to endOffset.get.sequence
+  protected def sequenceRange: Range = {
+    if (startOffset.isEmpty || endOffset.isEmpty) {
+      throw new IllegalStateException("Can't determine sequence range")
+    } else {
+      startOffset.get.sequence + 1 to endOffset.get.sequence
+    }
+  }
 }

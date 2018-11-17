@@ -4,10 +4,9 @@ import java.net.URI
 
 import cats.implicits._
 import com.monovore.decline._
-import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
-import osmesa.common.model.ElementWithSequence
+import osmesa.common.model.AugmentedDiff
 import osmesa.common.sources.Source
 
 /*
@@ -16,17 +15,15 @@ import osmesa.common.sources.Source
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.examples.AugmentedDiffStreamProcessor \
+ *   --class osmesa.analytics.examples.AugmentedDiffProcessor \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --augmented-diff-source s3://somewhere/diffs/
  */
-object AugmentedDiffStreamProcessor
+object AugmentedDiffProcessor
     extends CommandApp(
-      name = "osmesa-augmented-diff-stream-processor",
-      header = "Update statistics from streaming augmented diffs",
+      name = "osmesa-augmented-diff-processor",
+      header = "Read from augmented diffs",
       main = {
-        type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
-
         val augmentedDiffSourceOpt = Opts.option[URI](
           "augmented-diff-source",
           short = "a",
@@ -46,7 +43,7 @@ object AugmentedDiffStreamProcessor
             "end-sequence",
             short = "e",
             metavar = "sequence",
-            help = "Ending sequence. If absent, this will be an infinite stream."
+            help = "Ending sequence. If absent, the current (remote) sequence will be used."
           )
           .orNone
 
@@ -54,10 +51,11 @@ object AugmentedDiffStreamProcessor
           .mapN {
             (augmentedDiffSource, startSequence, endSequence) =>
               implicit val ss: SparkSession =
-                Analytics.sparkSession("AugmentedDiffStreamProcessor")
+                Analytics.sparkSession("AugmentedDiffProcessor")
 
-              val options = Map(Source.BaseURI -> augmentedDiffSource.toString,
-                                Source.ProcessName -> "AugmentedDiffStreamProcessor") ++
+              import ss.implicits._
+
+              val options = Map(Source.BaseURI -> augmentedDiffSource.toString) ++
                 startSequence
                   .map(s => Map(Source.StartSequence -> s.toString))
                   .getOrElse(Map.empty[String, String]) ++
@@ -66,14 +64,11 @@ object AugmentedDiffStreamProcessor
                   .getOrElse(Map.empty[String, String])
 
               val geoms =
-                ss.readStream.format(Source.AugmentedDiffs).options(options).load
+                ss.read.format(Source.AugmentedDiffs).options(options).load
 
               // aggregations are triggered when an event with a later timestamp ("event time") is received
-              val query = geoms.writeStream
-                .format("console")
-                .start
-
-              query.awaitTermination()
+              // geoms.select('sequence).distinct.show
+              geoms.as[AugmentedDiff].show
 
               ss.stop()
           }
