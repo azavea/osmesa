@@ -1,5 +1,4 @@
-package osmesa.common.streaming
-
+package osmesa.common.sources
 import org.apache.spark.sql.sources.v2.reader.streaming.Offset
 
 case class SequenceOffset(sequence: Int, pending: Boolean = false)

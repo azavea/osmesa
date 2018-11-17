@@ -23,6 +23,10 @@ import org.apache.spark.sql.jts.GeometryUDT
 import com.vividsolutions.jts.{geom => jts}
 
 object ProcessOSM {
+  private val ss: SparkSession = SparkSession.builder.getOrCreate()
+  // global initialization of Spark JTS
+  ss.withJTS
+
   val NodeType: Byte = 1
   val WayType: Byte = 2
   val RelationType: Byte = 3
@@ -726,7 +730,7 @@ object ProcessOSM {
         val countryLookup = new CountryLookup()
 
         partition.map { row =>
-          val countryCodes = Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
+          val countryCodes = Option(row.getAs[jts.Geometry]("geom")).map(Geometry(_)) match {
             case Some(geom) => countryLookup.lookup(geom).map(x => x.code)
             case None => Seq.empty[String]
           }

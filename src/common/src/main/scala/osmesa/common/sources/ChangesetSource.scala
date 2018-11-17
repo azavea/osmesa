@@ -1,4 +1,4 @@
-package osmesa.common.streaming
+package osmesa.common.sources
 
 import java.io.{ByteArrayInputStream, IOException}
 import java.net.URI
@@ -15,7 +15,7 @@ import org.joda.time.format.DateTimeFormat
 import osmesa.common.model.Changeset
 import scalaj.http.Http
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.{Duration, _}
 import scala.xml.XML
 
 object ChangesetSource extends Logging {
@@ -37,7 +37,7 @@ object ChangesetSource extends Logging {
       val response =
         Http(baseURI.resolve(path).toString).asBytes
 
-      if (response.code === 404) {
+      if (response.code == 404) {
         logDebug(s"$sequence is not yet available, sleeping.")
         Thread.sleep(Delay.toMillis)
         getSequence(baseURI, sequence)
@@ -48,7 +48,7 @@ object ChangesetSource extends Logging {
         try {
           val data = XML.loadString(IOUtils.toString(gzis))
 
-          val changesets = (data \ "changeset").map(Changeset.fromXML)
+          val changesets = (data \ "changeset").map(Changeset.fromXML(_, sequence))
 
           logDebug(s"Received ${changesets.length} changesets")
 

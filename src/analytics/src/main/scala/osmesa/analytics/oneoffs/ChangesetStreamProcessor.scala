@@ -1,14 +1,15 @@
 package osmesa.analytics.oneoffs
 
 import java.net.URI
-import java.sql.{Connection, DriverManager, Timestamp}
+import java.sql.{Connection, Timestamp}
 
 import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
-import osmesa.common.util.DBUtils
 import osmesa.common.functions.osm._
+import osmesa.common.sources.Source
+import osmesa.common.util.DBUtils
 
 
 /*
@@ -62,20 +63,17 @@ object ChangesetStreamProcessor extends CommandApp(
         import ss.implicits._
 
         val options = Map(
-          "base_uri"  -> changesetSource.toString,
-          "db_uri"    -> databaseUri.toString,
-          "proc_name" -> "ChangesetStream"
+          Source.BaseURI -> changesetSource.toString,
+          Source.DatabaseURI -> databaseUri.toString,
+          Source.ProcessName -> "ChangesetStream"
         ) ++
-          startSequence
-            .map(s => Map("start_sequence" -> s.toString))
+          startSequence.map(s => Map(Source.StartSequence -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
-          endSequence
-            .map(s => Map("end_sequence" -> s.toString))
+          endSequence.map(s => Map(Source.EndSequence -> s.toString))
             .getOrElse(Map.empty[String, String])
 
         val changesets =
-          ss.readStream
-            .format("changesets")
+          ss.readStream.format(Source.Changesets)
             .options(options)
             .load
 
