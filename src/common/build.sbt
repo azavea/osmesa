@@ -42,3 +42,11 @@ Test / testOptions += Tests.Argument("-oDF")
 initialCommands in console :=
   """
   """
+
+assemblyMergeStrategy in assembly := {
+  case s if s.startsWith("META-INF/services") => MergeStrategy.concat
+  case "reference.conf" | "application.conf"  => MergeStrategy.concat
+  case "META-INF/MANIFEST.MF" | "META-INF\\MANIFEST.MF" => MergeStrategy.discard
+  case "META-INF/ECLIPSE_.RSA" | "META-INF/ECLIPSE_.SF" => MergeStrategy.discard
+  case _ => MergeStrategy.first
+}
