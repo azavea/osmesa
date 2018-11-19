@@ -23,6 +23,10 @@ import org.apache.spark.sql.jts.GeometryUDT
 import com.vividsolutions.jts.{geom => jts}
 
 object ProcessOSM {
+  private val ss: SparkSession = SparkSession.builder.getOrCreate()
+  // initialize JTS support
+  ss.withJTS
+
   val NodeType: Byte = 1
   val WayType: Byte = 2
   val RelationType: Byte = 3
