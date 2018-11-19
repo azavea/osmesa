@@ -286,6 +286,8 @@ object implicits {
         .map(_._2)
         .withColumn("type", lit(NodeType))
         .withColumn("geom", st_makePoint('lon, 'lat))
+        .drop('lat)
+        .drop('lon)
     }
   }
 
