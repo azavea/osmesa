@@ -3,15 +3,15 @@ package osmesa
 import java.sql.Timestamp
 
 import com.monovore.decline._
+import com.vividsolutions.jts.{geom => jts}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.types.IntegerType
+import org.locationtech.geomesa.spark.jts.st_asText
 import osmesa.common.ProcessOSM._
-import osmesa.common.functions._
 import osmesa.common.functions.osm._
-import com.vividsolutions.jts.{geom => jts}
 
 /*
  * Usage example:
@@ -83,7 +83,7 @@ object DebugRelations extends CommandApp(
             }
             .toIterator
         })
-        .select('changeset, 'id, 'version, 'updated, ST_AsText('geom) as 'wkt)
+        .select('changeset, 'id, 'version, 'updated, st_asText('geom) as 'wkt)
         .repartition(1)
         .write
         .mode("overwrite")
