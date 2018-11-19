@@ -2,10 +2,6 @@ package osmesa.common
 
 import java.math.BigDecimal
 
-import geotrellis.proj4.{CRS, LatLng, WebMercator}
-import geotrellis.util.Haversine
-import geotrellis.vector._
-import geotrellis.vector.io._
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
 import osmesa.common.util._
@@ -15,9 +11,6 @@ package object functions {
   // Spark functions are typically defined using snake_case, therefore so are the UDFs
   // internal helper functions use standard Scala naming conventions
   // spatial functions w/ matching signatures use ST_* for familarity
-
-  private def _reproject(geom: Array[Byte], targetCRS: CRS = WebMercator) =
-    Option(geom).map(_.readWKB.reproject(LatLng, targetCRS).toWKB(targetCRS.epsgCode.get)).orNull
 
   // Convert BigDecimals to doubles
   // Reduces size taken for representation at the expense of some precision loss.
@@ -58,45 +51,5 @@ package object functions {
 
   val without: UserDefinedFunction = udf { (list: Seq[String], without: String) =>
     list.filterNot(x => x == without)
-  }
-
-  val ST_AsText: UserDefinedFunction = udf {
-    Option(_: Array[Byte]).map(_.readWKB.toWKT).getOrElse("")
-  }
-
-  val ST_IsEmpty: UserDefinedFunction = udf {
-    Option(_: Array[Byte]).forall(_.readWKB.isEmpty)
-  }
-
-  val ST_IsValid: UserDefinedFunction = udf {
-    Option(_: Array[Byte]).exists(_.readWKB.isValid)
-  }
-
-  val ST_Length: UserDefinedFunction = udf {
-    Option(_: Array[Byte]).map { geom =>
-      geom.readWKB match {
-        case line: Line =>
-          line
-            .points
-            .zip(line.points.tail)
-            .foldLeft(0d) { case (acc, (p, c)) =>
-              acc + Haversine(p.x, p.y, c.x, c.y)
-            }
-        case _ => 0d
-      }
-    }.getOrElse(0d)
-  }
-
-  val ST_Point: UserDefinedFunction = udf((x: Double, y: Double) =>
-    (x, y) match {
-      // drop ways with invalid coordinates
-      case (_, _) if x.equals(Double.NaN) || y.equals(Double.NaN) => null
-      // drop ways that don't contain valid geometries
-      case (_, _) => Point(x, y).toWKB(4326)
-    }
-  )
-
-  val ST_Transform: UserDefinedFunction = udf {
-    _reproject(_: Array[Byte], _: CRS)
   }
 }
