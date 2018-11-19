@@ -730,7 +730,7 @@ object ProcessOSM {
         val countryLookup = new CountryLookup()
 
         partition.map { row =>
-          val countryCodes = Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
+          val countryCodes = Option(row.getAs[jts.Geometry]("geom")).map(Geometry(_)) match {
             case Some(geom) => countryLookup.lookup(geom).map(x => x.code)
             case None => Seq.empty[String]
           }
