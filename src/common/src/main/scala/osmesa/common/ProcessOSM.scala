@@ -23,6 +23,10 @@ import org.apache.spark.sql.jts.GeometryUDT
 import com.vividsolutions.jts.{geom => jts}
 
 object ProcessOSM {
+  private val ss: SparkSession = SparkSession.builder.getOrCreate()
+  // initialize JTS support
+  ss.withJTS
+
   val NodeType: Byte = 1
   val WayType: Byte = 2
   val RelationType: Byte = 3
@@ -117,8 +121,8 @@ object ProcessOSM {
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
             lag('tags, 1) over idByVersion)
             .otherwise('tags) as 'tags,
-          when(!'visible, lit(Float.NaN)).otherwise(asFloat('lat)) as 'lat,
-          when(!'visible, lit(Float.NaN)).otherwise(asFloat('lon)) as 'lon,
+          when(!'visible, lit(Double.NaN)).otherwise(asDouble('lat)) as 'lat,
+          when(!'visible, lit(Double.NaN)).otherwise(asDouble('lon)) as 'lon,
           'changeset,
           'timestamp,
           (lead('timestamp, 1) over idByVersion) as 'validUntil,
@@ -340,8 +344,8 @@ object ProcessOSM {
           val geom = nds
             .sortWith((a, b) => a.getAs[Int]("idx") < b.getAs[Int]("idx"))
             .map { row =>
-              Seq(Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN),
-                  Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Float]).getOrElse(Float.NaN))
+              Seq(Option(row.get(row.fieldIndex("lon"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN),
+                  Option(row.get(row.fieldIndex("lat"))).map(_.asInstanceOf[Double]).getOrElse(Double.NaN))
             } match {
               // no coordinates provided
               case coords if coords.isEmpty => Some(GeomFactory.factory.createLineString(Array.empty[jts.Coordinate]))
@@ -726,7 +730,7 @@ object ProcessOSM {
         val countryLookup = new CountryLookup()
 
         partition.map { row =>
-          val countryCodes = Option(row.getAs[Array[Byte]]("geom")).map(_.readWKB) match {
+          val countryCodes = Option(row.getAs[jts.Geometry]("geom")).map(Geometry(_)) match {
             case Some(geom) => countryLookup.lookup(geom).map(x => x.code)
             case None => Seq.empty[String]
           }
