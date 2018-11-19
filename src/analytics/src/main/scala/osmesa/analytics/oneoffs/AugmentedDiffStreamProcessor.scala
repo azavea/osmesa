@@ -1,20 +1,20 @@
 package osmesa.analytics.oneoffs
 
 import java.net.URI
-import java.sql.{Connection, DriverManager}
-import java.security.InvalidParameterException
+import java.sql.Connection
 
 import cats.implicits._
 import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import org.locationtech.geomesa.spark.jts.st_length
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
-import osmesa.common.util.DBUtils
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.model.ElementWithSequence
+import osmesa.common.util.DBUtils
 
 /*
  * Usage example:
@@ -101,13 +101,15 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           'uid,
           'user,
           'countries,
-          when(isRoad('tags) and isNew('version, 'minorVersion), ST_Length('geom))
+          when(isRoad('tags) and isNew('version, 'minorVersion), st_length('geom))
             .otherwise(lit(0)) as 'road_m_added,
-          when(isRoad('tags) and !isNew('version, 'minorVersion), abs(ST_Length('geom) - ST_Length('prevGeom)))
+          when(isRoad('tags) and !isNew('version, 'minorVersion),
+               abs(st_length('geom) - st_length('prevGeom)))
             .otherwise(lit(0)) as 'road_m_modified,
-          when(isWaterway('tags) and isNew('version, 'minorVersion), ST_Length('geom))
+          when(isWaterway('tags) and isNew('version, 'minorVersion), st_length('geom))
             .otherwise(lit(0)) as 'waterway_m_added,
-          when(isWaterway('tags) and !isNew('version, 'minorVersion), abs(ST_Length('geom) - ST_Length('prevGeom)))
+          when(isWaterway('tags) and !isNew('version, 'minorVersion),
+               abs(st_length('geom) - st_length('prevGeom)))
             .otherwise(lit(0)) as 'waterway_m_modified,
           when(isRoad('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'roads_added,
