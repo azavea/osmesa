@@ -272,12 +272,12 @@ package object updater extends Logging {
       }
   }
 
-  def segregate(features: Seq[VTFeature]): (Seq[TypedVTFeature[Point]],
-                                            Seq[TypedVTFeature[MultiPoint]],
-                                            Seq[TypedVTFeature[Line]],
-                                            Seq[TypedVTFeature[MultiLine]],
-                                            Seq[TypedVTFeature[Polygon]],
-                                            Seq[TypedVTFeature[MultiPolygon]]) = {
+  def segregate(features: Iterable[VTFeature]): (Seq[TypedVTFeature[Point]],
+                                                 Seq[TypedVTFeature[MultiPoint]],
+                                                 Seq[TypedVTFeature[Line]],
+                                                 Seq[TypedVTFeature[MultiLine]],
+                                                 Seq[TypedVTFeature[Polygon]],
+                                                 Seq[TypedVTFeature[MultiPolygon]]) = {
     val points = ListBuffer[TypedVTFeature[Point]]()
     val multiPoints = ListBuffer[TypedVTFeature[MultiPoint]]()
     val lines = ListBuffer[TypedVTFeature[Line]]()
@@ -300,7 +300,7 @@ package object updater extends Logging {
     (points, multiPoints, lines, multiLines, polygons, multiPolygons)
   }
 
-  def makeLayer(name: String, extent: Extent, features: Seq[VTFeature]): (String, Layer) = {
+  def makeLayer(name: String, extent: Extent, features: Iterable[VTFeature]): (String, Layer) = {
     val (points, multiPoints, lines, multiLines, polygons, multiPolygons) = segregate(features)
 
     name -> StrictLayer(
