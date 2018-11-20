@@ -110,6 +110,11 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           when(isWaterway('tags) and !isNew('version, 'minorVersion),
                abs(st_length('geom) - st_length('prevGeom)))
             .otherwise(lit(0)) as 'waterway_m_modified,
+          when(isCoastline('tags) and isNew('version, 'minorVersion), st_length('geom))
+            .otherwise(lit(0)) as 'coastline_m_added,
+          when(isCoastline('tags) and !isNew('version, 'minorVersion),
+               abs(st_length('geom) - st_length('prevGeom)))
+            .otherwise(lit(0)) as 'coastline_m_modified,
           when(isRoad('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'roads_added,
           when(isRoad('tags) and !isNew('version, 'minorVersion), lit(1))
@@ -118,6 +123,10 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             .otherwise(lit(0)) as 'waterways_added,
           when(isWaterway('tags) and !isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'waterways_modified,
+          when(isCoastline('tags) and isNew('version, 'minorVersion), lit(1))
+            .otherwise(lit(0)) as 'coastline_added,
+          when(isCoastline('tags) and !isNew('version, 'minorVersion), lit(1))
+            .otherwise(lit(0)) as 'coastline_modified,
           when(isBuilding('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'buildings_added,
           when(isBuilding('tags) and !isNew('version, 'minorVersion), lit(1))
@@ -132,10 +141,14 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           sum('road_m_modified / 1000) as 'road_km_modified,
           sum('waterway_m_added / 1000) as 'waterway_km_added,
           sum('waterway_m_modified / 1000) as 'waterway_km_modified,
+          sum('coastline_m_added / 1000) as 'coastline_km_added,
+          sum('coastline_m_modified / 1000) as 'coastline_km_modified,
           sum('roads_added) as 'roads_added,
           sum('roads_modified) as 'roads_modified,
           sum('waterways_added) as 'waterways_added,
           sum('waterways_modified) as 'waterways_modified,
+          sum('coastline_added) as 'coastline_added,
+          sum('coastline_modified) as 'coastline_modified,
           sum('buildings_added) as 'buildings_added,
           sum('buildings_modified) as 'buildings_modified,
           sum('pois_added) as 'pois_added,
@@ -158,6 +171,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |    ? AS roads_modified,
               |    ? AS waterways_added,
               |    ? AS waterways_modified,
+              |    ? AS coastline_added,
+              |    ? AS coastline_modified,
               |    ? AS buildings_added,
               |    ? AS buildings_modified,
               |    ? AS pois_added,
@@ -166,6 +181,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |    ? AS road_km_modified,
               |    ? AS waterway_km_added,
               |    ? AS waterway_km_modified,
+              |    ? AS coastline_km_added,
+              |    ? AS coastline_km_modified,
               |    ? AS augmented_diffs,
               |    current_timestamp AS updated_at
               |)
@@ -176,6 +193,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  roads_modified,
               |  waterways_added,
               |  waterways_modified,
+              |  coastline_added,
+              |  coastline_modified,
               |  buildings_added,
               |  buildings_modified,
               |  pois_added,
@@ -184,6 +203,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  road_km_modified,
               |  waterway_km_added,
               |  waterway_km_modified,
+              |  coastline_km_added,
+              |  coastline_km_modified,
               |  augmented_diffs,
               |  updated_at
               |) SELECT * FROM data
@@ -193,6 +214,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  roads_modified = c.roads_modified + coalesce(EXCLUDED.roads_modified, 0),
               |  waterways_added = c.waterways_added + coalesce(EXCLUDED.waterways_added, 0),
               |  waterways_modified = c.waterways_modified + coalesce(EXCLUDED.waterways_modified, 0),
+              |  coastline_added = c.coastline_added + coalesce(EXCLUDED.coastline_added, 0),
+              |  coastline_modified = c.coastline_modified + coalesce(EXCLUDED.coastline_modified, 0),
               |  buildings_added = c.buildings_added + coalesce(EXCLUDED.buildings_added, 0),
               |  buildings_modified = c.buildings_modified + coalesce(EXCLUDED.buildings_modified, 0),
               |  pois_added = c.pois_added + coalesce(EXCLUDED.pois_added, 0),
@@ -201,6 +224,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  road_km_modified = c.road_km_modified + coalesce(EXCLUDED.road_km_modified, 0),
               |  waterway_km_added = c.waterway_km_added + coalesce(EXCLUDED.waterway_km_added, 0),
               |  waterway_km_modified = c.waterway_km_modified + coalesce(EXCLUDED.waterway_km_modified, 0),
+              |  coastline_km_added = c.coastline_km_added + coalesce(EXCLUDED.coastline_km_added, 0),
+              |  coastline_km_modified = c.coastline_km_modified + coalesce(EXCLUDED.coastline_km_modified, 0),
               |  augmented_diffs = coalesce(c.augmented_diffs, ARRAY[]::integer[]) || EXCLUDED.augmented_diffs,
               |  updated_at = current_timestamp
               |WHERE c.id = EXCLUDED.id
@@ -272,10 +297,14 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             val roadKmModified = row.getAs[Double]("road_km_modified")
             val waterwayKmAdded = row.getAs[Double]("waterway_km_added")
             val waterwayKmModified = row.getAs[Double]("waterway_km_modified")
+            val coastlineKmAdded = row.getAs[Double]("coastline_km_added")
+            val coastlineKmModified = row.getAs[Double]("coastline_km_modified")
             val roadsAdded = row.getAs[Long]("roads_added")
             val roadsModified = row.getAs[Long]("roads_modified")
             val waterwaysAdded = row.getAs[Long]("waterways_added")
             val waterwaysModified = row.getAs[Long]("waterways_modified")
+            val coastlineAdded = row.getAs[Long]("coastline_added")
+            val coastlineModified = row.getAs[Long]("coastline_modified")
             val buildingsAdded = row.getAs[Long]("buildings_added")
             val buildingsModified = row.getAs[Long]("buildings_modified")
             val poisAdded = row.getAs[Long]("pois_added")
@@ -291,16 +320,20 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               updateChangesets.setLong(4, roadsModified)
               updateChangesets.setLong(5, waterwaysAdded)
               updateChangesets.setLong(6, waterwaysModified)
-              updateChangesets.setLong(7, buildingsAdded)
-              updateChangesets.setLong(8, buildingsModified)
-              updateChangesets.setLong(9, poisAdded)
-              updateChangesets.setLong(10, poisModified)
-              updateChangesets.setDouble(11, roadKmAdded)
-              updateChangesets.setDouble(12, roadKmModified)
-              updateChangesets.setDouble(13, waterwayKmAdded)
-              updateChangesets.setDouble(14, waterwayKmModified)
+              updateChangesets.setLong(7, coastlineAdded)
+              updateChangesets.setLong(8, coastlineModified)
+              updateChangesets.setLong(9, buildingsAdded)
+              updateChangesets.setLong(10, buildingsModified)
+              updateChangesets.setLong(11, poisAdded)
+              updateChangesets.setLong(12, poisModified)
+              updateChangesets.setDouble(13, roadKmAdded)
+              updateChangesets.setDouble(14, roadKmModified)
+              updateChangesets.setDouble(15, waterwayKmAdded)
+              updateChangesets.setDouble(16, waterwayKmModified)
+              updateChangesets.setDouble(17, coastlineKmAdded)
+              updateChangesets.setDouble(18, coastlineKmModified)
               updateChangesets.setArray(
-                15, connection.createArrayOf("integer", Array(sequence.underlying)))
+                19, connection.createArrayOf("integer", Array(sequence.underlying)))
 
               updateChangesets.execute
             } finally {
