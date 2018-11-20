@@ -336,7 +336,7 @@ object Footprints extends Logging {
           .flatMap { point =>
             val geom = point.geom
 
-            Option(geom).map(GTGeometry(_).reproject(LatLng, WebMercator)) match {
+            Option(geom).map(GTGeometry(_)).map(_.reproject(LatLng, WebMercator)) match {
               case Some(g) if g.isValid =>
                 layout.mapTransform
                   .keysForGeometry(g)
@@ -344,7 +344,11 @@ object Footprints extends Logging {
                     g.intersection(sk.extent(layout)).toGeometry match {
                       case Some(clipped) if clipped.isValid =>
                         Seq(
-                          GeometryTileWithKey(point.key, baseZoom, sk.col, sk.row, clipped.jtsGeom))
+                          GeometryTileWithKey(point.key,
+                                              baseZoom,
+                                              sk.col,
+                                              sk.row,
+                                              clipped.jtsGeom))
                       case _ =>
                         Seq.empty[GeometryTileWithKey]
                     }
@@ -366,7 +370,7 @@ object Footprints extends Logging {
           .flatMap { point =>
             val geom = point.geom
 
-            Option(geom).map(GTGeometry(_).reproject(LatLng, WebMercator)) match {
+            Option(geom).map(GTGeometry(_)).map(_.reproject(LatLng, WebMercator)) match {
               case Some(g) if g.isValid =>
                 layout.mapTransform
                   .keysForGeometry(g)
@@ -579,10 +583,10 @@ object Footprints extends Logging {
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
               val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
-              val geoms = tiles.map(t => GTGeometry(t.geom))
+              val geoms = tiles.map(_.geom)
 
               geoms.foreach(g =>
-                g.foreach(rasterExtent) { (c, r) =>
+                GTGeometry(g).foreach(rasterExtent) { (c, r) =>
                   tile.get(c, r) match {
                     case v if isData(v) => tile.set(c, r, v + 1)
                     case _              => tile.set(c, r, 1)
@@ -607,10 +611,10 @@ object Footprints extends Logging {
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
               val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
-              val geoms = tiles.map(t => GTGeometry(t.geom))
+              val geoms = tiles.map(_.geom)
 
               geoms.foreach(g =>
-                g.foreach(rasterExtent) { (c, r) =>
+                GTGeometry(g).foreach(rasterExtent) { (c, r) =>
                   tile.get(c, r) match {
                     case v if isData(v) => tile.set(c, r, v + 1)
                     case _              => tile.set(c, r, 1)
