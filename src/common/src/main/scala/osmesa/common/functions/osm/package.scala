@@ -224,6 +224,10 @@ package object osm {
     (_: Map[String, String]).contains("highway")
   }
 
+  val isCoastline: UserDefinedFunction = udf {
+    (_: Map[String, String]).getOrElse("natural", "no").toLowerCase == "coastline"
+  }
+
   val isWaterway: UserDefinedFunction = udf {
     (tags: Map[String, String]) => WaterwayValues.contains(tags.getOrElse("waterway", null))
   }
