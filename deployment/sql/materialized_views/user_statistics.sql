@@ -80,6 +80,7 @@ WITH country_counts AS (
            sum(chg.buildings_modified) AS buildings_modified,
            sum(chg.pois_added) AS pois_added,
            sum(chg.pois_modified) AS pois_modified,
+           max(coalesce(chg.closed_at, chg.created_at)) AS last_edit,
            count(*) AS changeset_count,
            count(*) AS edit_count,
            max(COALESCE(chg.closed_at, chg.created_at, chg.updated_at)) AS updated_at
@@ -108,6 +109,7 @@ WITH country_counts AS (
      agg_stats.buildings_modified,
      agg_stats.pois_added,
      agg_stats.pois_modified,
+     agg_stats.last_edit,
      agg_stats.changeset_count,
      agg_stats.edit_count,
      usr_editor_counts.editor_json AS editors,
