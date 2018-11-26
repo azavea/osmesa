@@ -37,7 +37,7 @@ object ChangesetStats extends CommandApp(
 
       val wayGeoms = ProcessOSM.geocode(ProcessOSM.reconstructWayGeometries(
         // pre-filter to interesting ways
-        history.where('type === "way" and (isBuilding('tags) or isRoad('tags) or isWaterway('tags) or isPOI('tags))),
+        history.where('type === "way" and (isBuilding('tags) or isRoad('tags) or isWaterway('tags) or isCoastline('tags) or isPOI('tags))),
         // let reconstructWayGeometries do its thing; nodes are cheap
         history.where('type === "node")
       ).drop('geometryChanged))
@@ -46,7 +46,7 @@ object ChangesetStats extends CommandApp(
 
       val augmentedWays = wayGeoms.withColumn("length", st_length('geom))
         .withColumn("delta",
-          when(isRoad('tags) or isWaterway('tags),
+          when(isRoad('tags) or isWaterway('tags) or isCoastline('tags),
             coalesce(abs('length - (lag('length, 1) over idByUpdated)), lit(0)))
             .otherwise(lit(0)))
 
@@ -63,6 +63,12 @@ object ChangesetStats extends CommandApp(
         .withColumn("waterway_m_modified",
           when(isWaterway('tags) and not('version === 1 and 'minorVersion === 0), 'delta)
             .otherwise(lit(0)))
+        .withColumn("coastline_m_added",
+          when(isCoastline('tags) and 'version === 1 and 'minorVersion === 0, 'length)
+            .otherwise(lit(0)))
+        .withColumn("coastline_m_modified",
+          when(isCoastline('tags) and not('version === 1 and 'minorVersion === 0), 'delta)
+            .otherwise(lit(0)))
         .withColumn("roads_added",
           when(isRoad('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
             .otherwise(lit(0)))
@@ -74,6 +80,12 @@ object ChangesetStats extends CommandApp(
             .otherwise(lit(0)))
         .withColumn("waterways_modified",
           when(isWaterway('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
+            .otherwise(lit(0)))
+        .withColumn("coastline_added",
+          when(isCoastline('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
+            .otherwise(lit(0)))
+        .withColumn("coastline_modified",
+          when(isCoastline('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
             .otherwise(lit(0)))
         .withColumn("buildings_added",
           when(isBuilding('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
@@ -93,10 +105,14 @@ object ChangesetStats extends CommandApp(
           sum('road_m_modified / 1000).as('road_km_modified),
           sum('waterway_m_added / 1000).as('waterway_km_added),
           sum('waterway_m_modified / 1000).as('waterway_km_modified),
+          sum('coastline_m_added / 1000).as('coastline_km_added),
+          sum('coastline_m_modified / 1000).as('coastline_km_modified),
           sum('roads_added).as('roads_added),
           sum('roads_modified).as('roads_modified),
           sum('waterways_added).as('waterways_added),
           sum('waterways_modified).as('waterways_modified),
+          sum('coastline_added).as('coastline_added),
+          sum('coastline_modified).as('coastline_modified),
           sum('buildings_added).as('buildings_added),
           sum('buildings_modified).as('buildings_modified),
           sum('pois_added).as('pois_added),
@@ -133,10 +149,14 @@ object ChangesetStats extends CommandApp(
         .withColumn("road_km_modified", coalesce('road_km_modified, lit(0)))
         .withColumn("waterway_km_added", coalesce('waterway_km_added, lit(0)))
         .withColumn("waterway_km_modified", coalesce('waterway_km_modified, lit(0)))
+        .withColumn("coastline_km_added", coalesce('coastline_km_added, lit(0)))
+        .withColumn("coastline_km_modified", coalesce('coastline_km_modified, lit(0)))
         .withColumn("roads_added", coalesce('roads_added, lit(0)))
         .withColumn("roads_modified", coalesce('roads_modified, lit(0)))
         .withColumn("waterways_added", coalesce('waterways_added, lit(0)))
         .withColumn("waterways_modified", coalesce('waterways_modified, lit(0)))
+        .withColumn("coastline_added", coalesce('coastline_added, lit(0)))
+        .withColumn("coastline_modified", coalesce('coastline_modified, lit(0)))
         .withColumn("buildings_added", coalesce('buildings_added, lit(0)))
         .withColumn("buildings_modified", coalesce('buildings_modified, lit(0)))
         .withColumn("pois_added",
@@ -180,10 +200,14 @@ object ChangesetStats extends CommandApp(
       //          sum('road_km_modified) as 'road_km_modified,
       //          sum('waterway_km_added) as 'waterway_km_added,
       //          sum('waterway_km_modified) as 'waterway_km_modified,
+      //          sum('coastline_km_added) as 'coastline_km_added,
+      //          sum('coastline_km_modified) as 'coastline_km_modified,
       //          sum('roads_added) as 'roads_added,
       //          sum('roads_modified) as 'roads_modified,
       //          sum('waterways_added) as 'waterways_added,
       //          sum('waterways_modified) as 'waterways_modified,
+      //          sum('coastline_added) as 'coastline_added,
+      //          sum('coastline_modified) as 'coastline_modified,
       //          sum('buildings_added) as 'buildings_added,
       //          sum('buildings_modified) as 'buildings_modified,
       //          sum('pois_added) as 'pois_added,
@@ -196,7 +220,7 @@ object ChangesetStats extends CommandApp(
       //          sum_counts(collect_list('countries)) as 'countries
       //        )
       //        .withColumn("edit_count", ('roads_added + 'roads_modified + 'waterways_added + 'waterways_modified +
-      //          'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
+      //          'coastline_added + 'coastline_modified + 'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
       //
       //      val hashtagStats = changesetStats
       //        .withColumn("hashtag", explode('hashtags))
@@ -206,10 +230,14 @@ object ChangesetStats extends CommandApp(
       //          sum('road_km_modified) as 'road_km_modified,
       //          sum('waterway_km_added) as 'waterway_km_added,
       //          sum('waterway_km_modified) as 'waterway_km_modified,
+      //          sum('coastline_km_added) as 'coastline_km_added,
+      //          sum('coastline_km_modified) as 'coastline_km_modified,
       //          sum('roads_added) as 'roads_added,
       //          sum('roads_modified) as 'roads_modified,
       //          sum('waterways_added) as 'waterways_added,
       //          sum('waterways_modified) as 'waterways_modified,
+      //          sum('coastline_added) as 'coastline_added,
+      //          sum('coastline_modified) as 'coastline_modified,
       //          sum('buildings_added) as 'buildings_added,
       //          sum('buildings_modified) as 'buildings_modified,
       //          sum('pois_added) as 'pois_added,
@@ -221,7 +249,7 @@ object ChangesetStats extends CommandApp(
       //          sum_counts(collect_list('countries)) as 'countries
       //        )
       //        .withColumn("edit_count", ('roads_added + 'roads_modified + 'waterways_added + 'waterways_modified +
-      //          'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
+      //          'coastline_added + 'coastline_modified + 'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
       //        .withColumn("related_hashtags", count_values(without('hashtags, 'hashtag)))
       //        .drop('hashtags)
       //
@@ -241,4 +269,3 @@ object ChangesetStats extends CommandApp(
     }
   }
 )
-
