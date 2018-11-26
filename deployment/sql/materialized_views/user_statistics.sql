@@ -68,10 +68,14 @@ WITH country_counts AS (
            sum(chg.road_km_modified) AS road_km_modified,
            sum(chg.waterway_km_added) AS waterway_km_added,
            sum(chg.waterway_km_modified) AS waterway_km_modified,
+           sum(chg.coastline_km_added) AS coastline_km_added,
+           sum(chg.coastline_km_modified) AS coastline_km_modified,
            sum(chg.roads_added) AS roads_added,
            sum(chg.roads_modified) AS roads_modified,
            sum(chg.waterways_added) AS waterways_added,
            sum(chg.waterways_modified) AS waterways_modified,
+           sum(chg.coastline_added) AS coastline_added,
+           sum(chg.coastline_modified) AS coastline_modified,
            sum(chg.buildings_added) AS buildings_added,
            sum(chg.buildings_modified) AS buildings_modified,
            sum(chg.pois_added) AS pois_added,
@@ -92,10 +96,14 @@ WITH country_counts AS (
      agg_stats.road_km_modified,
      agg_stats.waterway_km_added,
      agg_stats.waterway_km_modified,
+     agg_stats.coastline_km_added,
+     agg_stats.coastline_km_modified,
      agg_stats.roads_added,
      agg_stats.roads_modified,
      agg_stats.waterways_added,
      agg_stats.waterways_modified,
+     agg_stats.coastline_added,
+     agg_stats.coastline_modified,
      agg_stats.buildings_added,
      agg_stats.buildings_modified,
      agg_stats.pois_added,
@@ -112,4 +120,3 @@ WITH country_counts AS (
       LEFT JOIN usr_hashtag_counts ON ((agg_stats.id = usr_hashtag_counts.user_id)))
       LEFT JOIN usr_day_counts ON ((agg_stats.id = usr_day_counts.user_id)))
       LEFT JOIN usr_editor_counts ON ((agg_stats.id = usr_editor_counts.user_id)));
-

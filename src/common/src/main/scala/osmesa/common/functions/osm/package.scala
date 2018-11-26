@@ -225,7 +225,7 @@ package object osm {
   }
 
   val isCoastline: UserDefinedFunction = udf {
-    (_: Map[String, String]).getOrElse("natural", "no").toLowerCase == "coastline"
+    (_: Map[String, String]).getOrElse("natural", "").toLowerCase == "coastline"
   }
 
   val isWaterway: UserDefinedFunction = udf {
