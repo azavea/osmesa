@@ -76,3 +76,30 @@ make cluster-up
 ```bash
 make start-service
 ```
+
+## Local Testing
+
+From a clean environment,
+
+1. In the `deployment/streaming` directory, update the missing values in
+   `config-local.mk.example` (LOCAL_AUGDIFF_SOURCE, LOCAL_AUGDIFF_START,
+   LOCAL_CHANGE_START, LOCAL_CHANGESET_START) and save to `config-local.mk`.
+
+2. In the same directory, ensure that `config-aws.mk` exists.  You may `touch`
+   the file if it does not.
+
+3. Execute `make build-container` followed by `make start-local`.  You should
+   observe a stream of log messages.  Any errors should appear in this window.
+
+4. If you want to verify that the system is operating up to spec, you may
+```bash
+docker exec -it streaming_db_1 bash
+psql -U postgres
+```
+(The trailing "1" may need to be incremented.  See `docker ps` for the proper
+name.)  From there, you may issue a `\d` directive and verify that the DB is
+populated with the correct tables.
+
+5. You may now test the operation of the system in the DB interface by issuing
+   queries against the available tables and observing the log output.  The
+   content of the tables will update as the system runs.
