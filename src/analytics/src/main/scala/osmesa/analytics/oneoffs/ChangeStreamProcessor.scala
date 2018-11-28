@@ -5,6 +5,7 @@ import java.net.URI
 import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
+import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
 import osmesa.common.sources.Source
@@ -60,7 +61,7 @@ object ChangeStreamProcessor extends CommandApp(
     (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt orElse databaseUriEnv).mapN {
       (changeSource, startSequence, endSequence, databaseUri) =>
         implicit val ss: SparkSession =
-          Analytics.sparkSession("ChangeStreamProcessor")
+          Analytics.sparkSession("ChangeStreamProcessor").withJTS
 
         import ss.implicits._
 

@@ -8,7 +8,7 @@ import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import org.locationtech.geomesa.spark.jts.st_length
+import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
 import osmesa.common.functions._
@@ -66,7 +66,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
 
     (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt orElse databaseUriEnv).mapN {
       (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
-      implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
+      implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor").withJTS
 
       import ss.implicits._
 
