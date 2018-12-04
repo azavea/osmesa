@@ -7,11 +7,11 @@ import com.monovore.decline.{CommandApp, Opts}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{SaveMode, SparkSession}
+import org.locationtech.geomesa.spark.jts.st_length
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
-
 
 object ChangesetStats extends CommandApp(
   name = "changeset-stats",
@@ -44,8 +44,7 @@ object ChangesetStats extends CommandApp(
 
       @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
-      val augmentedWays = wayGeoms
-        .withColumn("length", ST_Length('geom))
+      val augmentedWays = wayGeoms.withColumn("length", st_length('geom))
         .withColumn("delta",
           when(isRoad('tags) or isWaterway('tags),
             coalesce(abs('length - (lag('length, 1) over idByUpdated)), lit(0)))
