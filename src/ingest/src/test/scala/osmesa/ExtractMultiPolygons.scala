@@ -8,9 +8,9 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import org.locationtech.geomesa.spark.jts.st_asText
 import osmesa.common.ProcessOSM
 import osmesa.common.functions.osm._
-import osmesa.common.functions._
 import osmesa.common.util.Caching
 
 
@@ -108,7 +108,7 @@ object ExtractMultiPolygons extends CommandApp(
 
       relationGeoms
         .where('geom.isNotNull)
-        .withColumn("wkt", ST_AsText('geom))
+        .withColumn("wkt", st_asText('geom))
         .drop('geom)
         .orderBy('id, 'version, 'updated)
         .repartition(1)
