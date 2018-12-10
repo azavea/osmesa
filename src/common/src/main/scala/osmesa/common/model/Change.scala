@@ -5,7 +5,6 @@ import java.sql.Timestamp
 
 import org.apache.spark.sql.types._
 import org.joda.time.DateTime
-import osmesa.common.ProcessOSM.{NodeType, RelationType, WayType}
 import osmesa.common.model.Actions.Action
 
 import scala.xml.Node
@@ -13,51 +12,54 @@ import scala.xml.Node
 // TODO at some point user metadata (changeset, uid, user, timestamp?) should become options, as they may not be
 // available
 case class Change(sequence: Int,
-                  `type`: Byte,
                   id: Long,
+                  `type`: String,
                   tags: Map[String, String],
                   lat: Option[BigDecimal],
                   lon: Option[BigDecimal],
-                  nds: Option[Seq[Long]],
+                  nds: Option[Seq[Nd]],
                   members: Option[Seq[Member]],
                   changeset: Long,
                   timestamp: Timestamp,
                   uid: Long,
                   user: String,
-                  version: Int,
+                  version: Long,
                   visible: Boolean)
 
 object Change {
   val Schema = StructType(
     StructField("sequence", IntegerType) ::
-      StructField("type", ByteType, nullable = false) ::
-      StructField("id", LongType, nullable = false) ::
+      StructField("id", LongType, nullable = true) ::
+      StructField("type", StringType, nullable = true) ::
       StructField(
         "tags",
-        MapType(StringType, StringType, valueContainsNull = false),
-        nullable = false
+        MapType(StringType, StringType, valueContainsNull = true),
+        nullable = true
       ) ::
       StructField("lat", DataTypes.createDecimalType(9, 7), nullable = true) ::
       StructField("lon", DataTypes.createDecimalType(10, 7), nullable = true) ::
-      StructField("nds", DataTypes.createArrayType(LongType), nullable = true) ::
+        StructField(
+    "nds",
+    DataTypes.createArrayType(StructType(StructField("ref", LongType, nullable = true) :: Nil)),
+    nullable = true) ::
       StructField(
         "members",
         DataTypes.createArrayType(
           StructType(
-            StructField("type", ByteType, nullable = false) ::
-              StructField("ref", LongType, nullable = false) ::
-              StructField("role", StringType, nullable = false) ::
+            StructField("type", StringType, nullable = true) ::
+              StructField("ref", LongType, nullable = true) ::
+              StructField("role", StringType, nullable = true) ::
               Nil
           )
         ),
         nullable = true
       ) ::
-      StructField("changeset", LongType, nullable = false) ::
-      StructField("timestamp", TimestampType, nullable = false) ::
-      StructField("uid", LongType, nullable = false) ::
-      StructField("user", StringType, nullable = false) ::
-      StructField("version", IntegerType, nullable = false) ::
-      StructField("visible", BooleanType, nullable = false) ::
+        StructField("changeset", LongType, nullable = true) ::
+        StructField("timestamp", TimestampType, nullable = true) ::
+        StructField("uid", LongType, nullable = true) ::
+        StructField("user", StringType, nullable = true) ::
+        StructField("version", LongType, nullable = true) ::
+        StructField("visible", BooleanType, nullable = true) ::
       Nil
   )
 
@@ -65,11 +67,7 @@ object Change {
     Timestamp.from(DateTime.parse(s).toDate.toInstant)
 
   def fromXML(node: Node, action: Action, sequence: Int): Change = {
-    val `type` = node.label match {
-      case "node"     => NodeType
-      case "way"      => WayType
-      case "relation" => RelationType
-    }
+    val `type` = node.label
     val id = (node \@ "id").toLong
     val tags =
       (node \ "tag").map(tag => (tag \@ "k", tag \@ "v")).toMap
@@ -82,12 +80,12 @@ object Change {
       case v  => Some(new BigDecimal(v))
     }
     val nds = `type` match {
-      case WayType =>
-        Some((node \ "nd").map(n => (n \@ "ref").toLong))
+      case "way" =>
+      Some((node \ "nd").map(Nd.fromXML))
       case _ => None
     }
     val members = `type` match {
-      case RelationType =>
+      case "relation" =>
         Some((node \ "member").map(Member.fromXML))
       case _ => None
     }
@@ -95,15 +93,15 @@ object Change {
     val timestamp = node \@ "timestamp"
     val uid = (node \@ "uid").toLong
     val user = node \@ "user"
-    val version = (node \@ "version").toInt
+    val version = (node \@ "version").toLong
     val visible = action match {
       case Actions.Create | Actions.Modify => true
       case Actions.Delete                  => false
     }
 
     Change(sequence,
-      `type`,
       id,
+      `type`,
       tags,
       lat,
       lon,
