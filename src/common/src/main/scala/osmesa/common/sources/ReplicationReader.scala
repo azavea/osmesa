@@ -10,12 +10,12 @@ import osmesa.common.model.Change
 import scala.compat.java8.OptionConverters._
 
 abstract class ReplicationReader(options: DataSourceOptions) extends DataSourceReader {
-  val DefaultBatchSize: Int =
+  val DefaultPartitionCount: Int =
     SparkEnv.get.conf
       .getInt(SQLConf.SHUFFLE_PARTITIONS.key, SQLConf.SHUFFLE_PARTITIONS.defaultValue.get)
 
-  protected val batchSize: Int =
-    options.getInt(Source.BatchSize, DefaultBatchSize)
+  protected val partitionCount: Int =
+    options.getInt(Source.PartitionCount, DefaultPartitionCount)
   protected var endSequence: Int =
     options
       .get(Source.EndSequence)

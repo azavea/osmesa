@@ -68,7 +68,7 @@ object MergeChanges
               .enableHiveSupport
               .getOrCreate
 
-            val options = Map(Source.BaseURI -> changeSource.toString, Source.BatchSize -> "1") ++
+            val options = Map(Source.BaseURI -> changeSource.toString, Source.PartitionCount -> "1") ++
               startSequence
                 .map(s => Map(Source.StartSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++

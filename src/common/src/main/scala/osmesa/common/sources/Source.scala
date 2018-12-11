@@ -8,6 +8,7 @@ object Source {
   val BaseURI: String = "base_uri"
   val BatchSize: String = "batch_size"
   val DatabaseURI: String = "db_uri"
+  val PartitionCount: String = "partition_count"
   val ProcessName: String = "proc_name"
   val StartSequence: String = "start_sequence"
   val EndSequence: String = "end_sequence"
