@@ -79,7 +79,7 @@ object EditHistogram extends Logging {
 
           (zoom, sk, extent, mergedTiles, List.empty[Int])
       }
-      .repartition(getSubPyramid('_1, '_2))
+//      .repartition(getSubPyramid('_1, '_2))
 
     histograms
       .mapPartitions {
