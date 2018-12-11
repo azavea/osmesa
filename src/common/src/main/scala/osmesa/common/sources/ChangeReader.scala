@@ -10,12 +10,14 @@ import org.apache.spark.sql.types.StructType
 import osmesa.common.model.Change
 
 import scala.collection.JavaConverters._
+import scala.util.Random
 
 case class ChangeReader(options: DataSourceOptions) extends ReplicationReader(options) {
   override def readSchema(): StructType = Change.Schema
 
   override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] = {
-    val sequences = startSequence to endSequence
+    // prevent sequential diffs from being assigned to the same task
+    val sequences = Random.shuffle((startSequence to endSequence).toList)
 
     sequences
       .grouped(Math.max(1, sequences.length / partitionCount))
