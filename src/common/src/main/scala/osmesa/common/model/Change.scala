@@ -10,8 +10,7 @@ import scala.xml.Node
 
 // TODO at some point user metadata (changeset, uid, user, timestamp?) should become options, as they may not be
 // available
-case class Change(sequence: Int,
-                  id: Long,
+case class Change(id: Long,
                   `type`: String,
                   tags: Map[String, String],
                   lat: Option[Double],
@@ -23,42 +22,41 @@ case class Change(sequence: Int,
                   uid: Long,
                   user: String,
                   version: Long,
-                  visible: Boolean)
+                  visible: Boolean,
+                  sequence: Int)
 
 object Change {
   val Schema = StructType(
-    StructField("sequence", IntegerType) ::
-      StructField("id", LongType, nullable = true) ::
-      StructField("type", StringType, nullable = true) ::
+    StructField("id", LongType) ::
+      StructField("type", StringType) ::
       StructField(
       "tags",
-      MapType(StringType, StringType, valueContainsNull = true),
-      nullable = true
+      MapType(StringType, StringType, valueContainsNull = true)
     ) ::
-      StructField("lat", DoubleType, nullable = true) ::
-      StructField("lon", DoubleType, nullable = true) ::
+      StructField("lat", DoubleType) ::
+      StructField("lon", DoubleType) ::
       StructField(
       "nds",
-      DataTypes.createArrayType(StructType(StructField("ref", LongType, nullable = true) :: Nil)),
-      nullable = true) ::
+      DataTypes.createArrayType(StructType(StructField("ref", LongType) :: Nil))
+    ) ::
       StructField(
       "members",
       DataTypes.createArrayType(
         StructType(
-          StructField("type", StringType, nullable = true) ::
-            StructField("ref", LongType, nullable = true) ::
-            StructField("role", StringType, nullable = true) ::
+          StructField("type", StringType) ::
+            StructField("ref", LongType) ::
+            StructField("role", StringType) ::
             Nil
         )
-      ),
-      nullable = true
+      )
     ) ::
-      StructField("changeset", LongType, nullable = true) ::
-      StructField("timestamp", TimestampType, nullable = true) ::
-      StructField("uid", LongType, nullable = true) ::
-      StructField("user", StringType, nullable = true) ::
-      StructField("version", LongType, nullable = true) ::
-      StructField("visible", BooleanType, nullable = true) ::
+      StructField("changeset", LongType) ::
+      StructField("timestamp", TimestampType) ::
+      StructField("uid", LongType) ::
+      StructField("user", StringType) ::
+      StructField("version", LongType) ::
+      StructField("visible", BooleanType) ::
+      StructField("sequence", IntegerType) ::
       Nil
   )
 
@@ -98,19 +96,19 @@ object Change {
       case Actions.Delete                  => false
     }
 
-    Change(sequence,
-      id,
-      `type`,
-      tags,
-      lat,
-      lon,
-      nds,
-      members,
-      changeset,
-      timestamp,
-      uid,
-      user,
-      version,
-      visible)
+    Change(id,
+           `type`,
+           tags,
+           lat,
+           lon,
+           nds,
+           members,
+           changeset,
+           timestamp,
+           uid,
+           user,
+           version,
+           visible,
+           sequence)
   }
 }
