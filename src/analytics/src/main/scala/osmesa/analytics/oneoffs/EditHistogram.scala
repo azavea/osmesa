@@ -31,6 +31,7 @@ object EditHistogramCommand
 
           val nodes = history
             .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
+            .where('uid > 1)
             .select('lat, 'lon, year('timestamp) * 100 + weekofyear('timestamp) as 'key)
 
           val stats = EditHistogram.createTiles(nodes, outputURI)
