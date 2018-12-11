@@ -14,8 +14,8 @@ import org.scalatest.{Matchers, PropSpec}
 import osmesa.common.ProcessOSM._
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
-import com.vividsolutions.jts.{geom => jts}
-import com.vividsolutions.jts.io.WKTReader
+import org.locationtech.jts.{geom => jts}
+import org.locationtech.jts.io.WKTReader
 import org.locationtech.geomesa.spark.jts._
 
 import scala.io.Source

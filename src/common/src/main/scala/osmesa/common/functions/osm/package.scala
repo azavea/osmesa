@@ -3,9 +3,9 @@ package osmesa.common.functions
 import java.sql.Timestamp
 
 import com.google.common.collect.{Range, RangeMap, TreeRangeMap}
-import com.vividsolutions.jts.geom
-import com.vividsolutions.jts.{geom => jts}
-import com.vividsolutions.jts.geom._
+import org.locationtech.jts.geom
+import org.locationtech.jts.{geom => jts}
+import org.locationtech.jts.geom._
 
 import geotrellis.vector.io._
 import geotrellis.vector.{Line, MultiLine, MultiPolygon, Polygon, GeomFactory}
@@ -19,8 +19,8 @@ import osmesa.common.ProcessOSM._
 import scala.annotation.tailrec
 import scala.collection.GenTraversable
 import scala.reflect.{ClassTag, classTag}
-import com.vividsolutions.jts.geom.prep.PreparedGeometryFactory
-import com.vividsolutions.jts.operation.union.CascadedPolygonUnion
+import org.locationtech.jts.geom.prep.PreparedGeometryFactory
+import org.locationtech.jts.operation.union.CascadedPolygonUnion
 
 
 package object osm {
@@ -303,6 +303,8 @@ package object osm {
     override def expandEnvelope(env: Envelope): Envelope = sequence.expandEnvelope(env)
 
     override def clone(): AnyRef = new ReversedCoordinateSequence(sequence)
+
+    override def copy(): CoordinateSequence = sequence.copy
   }
 
   class PartialCoordinateSequence(sequence: CoordinateSequence, offset: Int) extends CoordinateSequence {
@@ -349,6 +351,8 @@ package object osm {
     }
 
     override def clone(): AnyRef = new PartialCoordinateSequence(sequence, offset)
+
+    override def copy(): CoordinateSequence = new PartialCoordinateSequence(sequence, offset)
   }
 
   // rather than being a nested set of CoordinateSequences, this is a mutable wrapper to avoid deep call stacks
@@ -362,6 +366,8 @@ package object osm {
     private var dimension: Int = sequences.map(_.getDimension).min
 
     private var _size: Int = sequences.map(_.size).sum
+
+    override def copy(): CoordinateSequence = new VirtualCoordinateSequence(sequences)
 
     private def getSequence(i: Int): (CoordinateSequence, Int) = {
       val entry = rangeMap.getEntry(i: Integer)

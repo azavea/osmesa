@@ -3,7 +3,6 @@ package osmesa.common
 import java.io._
 import java.sql.Timestamp
 
-import com.vividsolutions.jts.{geom => jts}
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
@@ -16,6 +15,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.jts.GeometryUDT
 import org.apache.spark.sql.types._
 import org.locationtech.geomesa.spark.jts._
+import org.locationtech.jts.{geom => jts}
 import osmesa.common.functions.osm._
 import osmesa.common.util.Caching
 import spray.json._
@@ -705,7 +705,7 @@ object ProcessOSM {
         new Traversable[(geotrellis.vector.prepared.PreparedGeometry[geotrellis.vector.MultiPolygon], CountryId)] {
           override def foreach[U](f: ((geotrellis.vector.prepared.PreparedGeometry[geotrellis.vector.MultiPolygon],
             CountryId)) => U): Unit = {
-            val visitor = new com.vividsolutions.jts.index.ItemVisitor {
+            val visitor = new org.locationtech.jts.index.ItemVisitor {
               override def visitItem(obj: AnyRef): Unit = f(obj.asInstanceOf[(geotrellis.vector.prepared
               .PreparedGeometry[geotrellis.vector.MultiPolygon], CountryId)])
             }
