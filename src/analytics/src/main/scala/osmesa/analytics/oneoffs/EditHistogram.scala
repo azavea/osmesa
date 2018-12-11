@@ -31,7 +31,7 @@ object EditHistogramCommand
 
           val nodes = history
             .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
-            .select('lat, 'lon, year('timestamp) * 100 + month('timestamp) as 'key)
+            .select('lat, 'lon, year('timestamp) * 100 + weekofyear('timestamp) as 'key)
 
           val stats = EditHistogram.createTiles(nodes, outputURI)
           stats.repartition(1).write.mode(SaveMode.Overwrite).csv("/tmp/currency/")
