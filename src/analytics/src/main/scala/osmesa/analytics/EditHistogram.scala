@@ -410,6 +410,8 @@ object EditHistogram extends Logging {
 
       def tile(baseZoom: Int = BaseZoom): Dataset[GeometryTile with Key] = {
         val layout = LayoutScheme.levelForZoom(baseZoom).layout
+        val xs = 0 until Math.pow(2, baseZoom).intValue()
+        val ys = 0 until Math.pow(2, baseZoom).intValue()
 
         coords
           .flatMap { point =>
@@ -422,8 +424,13 @@ object EditHistogram extends Logging {
                   .flatMap { sk =>
                     g.intersection(sk.extent(layout)).toGeometry match {
                       case Some(clipped) if clipped.isValid =>
-                        Seq(
-                          GeometryTileWithKey(point.key, baseZoom, sk.col, sk.row, clipped.jtsGeom))
+                        if (xs.contains(sk.col) && ys.contains(sk.row)) {
+                          Seq(
+                            GeometryTileWithKey(point.key, baseZoom, sk.col, sk.row, clipped.jtsGeom))
+                        } else {
+                          log.warn(s"Out of range: ${sk.col}, ${sk.row}, ${clipped}")
+                          Seq.empty[GeometryTileWithKey]
+                        }
                       case _ =>
                         Seq.empty[GeometryTileWithKey]
                     }
