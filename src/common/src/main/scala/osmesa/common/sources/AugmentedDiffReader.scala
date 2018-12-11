@@ -19,7 +19,7 @@ case class AugmentedDiffReader(options: DataSourceOptions) extends ReplicationRe
     val sequences = startSequence to endSequence
 
     sequences
-      .grouped(Math.max(1, sequences.length / batchSize))
+      .grouped(Math.max(1, sequences.length / partitionCount))
       .toList
       .map(
         AugmentedDiffStreamBatchTask(baseURI, _)

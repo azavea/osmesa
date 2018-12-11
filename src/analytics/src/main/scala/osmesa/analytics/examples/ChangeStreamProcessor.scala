@@ -45,16 +45,16 @@ object ChangeStreamProcessor
             help = "Ending sequence. If absent, this will be an infinite stream."
           )
           .orNone
-        val batchSizeOpt = Opts
-          .option[Int]("batch-size",
-                       short = "b",
-                       metavar = "batch size",
-                       help = "Change batch size.")
+        val partitionCountOpt = Opts
+          .option[Int]("partitions",
+                       short = "p",
+                       metavar = "partition count",
+                       help = "Change partition count.")
           .orNone
 
-        (changeSourceOpt, startSequenceOpt, endSequenceOpt, batchSizeOpt)
+        (changeSourceOpt, startSequenceOpt, endSequenceOpt, partitionCountOpt)
           .mapN {
-            (changeSource, startSequence, endSequence, batchSize) =>
+            (changeSource, startSequence, endSequence, partitionCount) =>
               implicit val ss: SparkSession =
                 Analytics.sparkSession("ChangeStreamProcessor")
 
@@ -63,7 +63,7 @@ object ChangeStreamProcessor
                   .getOrElse(Map.empty[String, String]) ++
                 endSequence.map(s => Map(Source.EndSequence -> s.toString))
                   .getOrElse(Map.empty[String, String]) ++
-                batchSize.map(s => Map(Source.BatchSize -> s.toString))
+                partitionCount.map(s => Map(Source.PartitionCount -> s.toString))
                   .getOrElse(Map.empty[String, String])
 
               val changes =

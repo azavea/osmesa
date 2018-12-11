@@ -18,7 +18,7 @@ case class ChangesetReader(options: DataSourceOptions) extends ReplicationReader
     val sequences = startSequence to endSequence
 
     sequences
-      .grouped(Math.max(1, sequences.length / batchSize))
+      .grouped(Math.max(1, sequences.length / partitionCount))
       .toList
       .map(
         ChangesetStreamBatchTask(baseURI, _)
