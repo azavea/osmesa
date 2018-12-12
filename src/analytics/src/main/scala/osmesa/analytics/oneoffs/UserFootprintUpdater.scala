@@ -10,6 +10,7 @@ import org.apache.spark.sql._
 import osmesa.analytics.{Analytics, Footprints}
 import osmesa.common.ProcessOSM
 import osmesa.common.model._
+import osmesa.common.sources.Source
 
 /*
  * Usage example:
@@ -97,21 +98,17 @@ object UserFootprintUpdater
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
 
-            val changeOptions = Map("base_uri" -> changeSource.toString,
-                                    "db_uri" -> databaseUri.toString,
-                                    "proc_name" -> "UserFootprintUpdater") ++
-              changesStartSequence
-                .map(s => Map("start_sequence" -> s.toString))
+            val changeOptions = Map(Source.BaseURI -> changeSource.toString,
+                Source.DatabaseURI -> databaseUri.toString,
+                Source.ProcessName -> "UserFootprintUpdater") ++
+              changesStartSequence.map(s => Map(Source.StartSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
-              changesEndSequence
-                .map(s => Map("end_sequence" -> s.toString))
+              changesEndSequence.map(s => Map(Source.EndSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
-              changesBatchSize
-                .map(s => Map("batch_size" -> s.toString))
+              changesBatchSize.map(s => Map(Source.BatchSize -> s.toString))
                 .getOrElse(Map.empty[String, String])
 
-            val changes = spark.readStream
-              .format("changes")
+            val changes = spark.readStream.format(Source.Changes)
               .options(changeOptions)
               .load
 

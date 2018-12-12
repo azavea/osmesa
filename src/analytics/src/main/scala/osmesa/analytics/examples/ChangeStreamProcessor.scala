@@ -4,10 +4,9 @@ import java.net.URI
 
 import cats.implicits._
 import com.monovore.decline._
-import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
-import osmesa.common.model.ElementWithSequence
+import osmesa.common.sources.Source
 
 /*
  * Usage example:
@@ -17,15 +16,13 @@ import osmesa.common.model.ElementWithSequence
  * spark-submit \
  *   --class osmesa.analytics.examples.ChangeStreamProcessor \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
- *   --augmented-diff-source s3://somewhere/diffs/ \
+ *   --augmented-diff-source s3://somewhere/diffs/
  */
 object ChangeStreamProcessor
     extends CommandApp(
-      name = "osmesa-augmented-diff-stream-processor",
-      header = "Update statistics from streaming augmented diffs",
+      name = "osmesa-change-stream-processor",
+      header = "Update statistics from streaming changes",
       main = {
-        type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
-
         val changeSourceOpt = Opts
           .option[URI]("change-source",
                        short = "d",
@@ -48,32 +45,29 @@ object ChangeStreamProcessor
             help = "Ending sequence. If absent, this will be an infinite stream."
           )
           .orNone
-        val batchSizeOpt = Opts
-          .option[Int]("batch-size",
-                       short = "b",
-                       metavar = "batch size",
-                       help = "Change batch size.")
+        val partitionCountOpt = Opts
+          .option[Int]("partitions",
+                       short = "p",
+                       metavar = "partition count",
+                       help = "Change partition count.")
           .orNone
 
-        (changeSourceOpt, startSequenceOpt, endSequenceOpt, batchSizeOpt)
+        (changeSourceOpt, startSequenceOpt, endSequenceOpt, partitionCountOpt)
           .mapN {
-            (changeSource, startSequence, endSequence, batchSize) =>
+            (changeSource, startSequence, endSequence, partitionCount) =>
               implicit val ss: SparkSession =
                 Analytics.sparkSession("ChangeStreamProcessor")
 
-              val options = Map("base_uri" -> changeSource.toString) ++
-                startSequence
-                  .map(s => Map("start_sequence" -> s.toString))
+              val options = Map(Source.BaseURI -> changeSource.toString, Source.ProcessName -> "ChangeStreamProcessor") ++
+                startSequence.map(s => Map(Source.StartSequence -> s.toString))
                   .getOrElse(Map.empty[String, String]) ++
-                endSequence
-                  .map(s => Map("end_sequence" -> s.toString))
+                endSequence.map(s => Map(Source.EndSequence -> s.toString))
                   .getOrElse(Map.empty[String, String]) ++
-                batchSize
-                  .map(s => Map("batch_size" -> s.toString))
+                partitionCount.map(s => Map(Source.PartitionCount -> s.toString))
                   .getOrElse(Map.empty[String, String])
 
               val changes =
-                ss.readStream.format("changes").options(options).load
+                ss.readStream.format(Source.Changes).options(options).load
 
               val query = changes.writeStream
                 .format("console")

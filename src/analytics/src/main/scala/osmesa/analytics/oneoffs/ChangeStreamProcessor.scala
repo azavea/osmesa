@@ -7,6 +7,7 @@ import com.monovore.decline._
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
+import osmesa.common.sources.Source
 
 /*
  * Usage example:
@@ -64,20 +65,20 @@ object ChangeStreamProcessor extends CommandApp(
         import ss.implicits._
 
         val options = Map(
-          "base_uri"  -> changeSource.toString,
-          "db_uri"    -> databaseUri.toString,
-          "proc_name" -> "ChangeStream"
+          Source.BaseURI -> changeSource.toString,
+          Source.DatabaseURI -> databaseUri.toString,
+          Source.ProcessName -> "ChangeStream"
         ) ++
           startSequence
-            .map(s => Map("start_sequence" -> s.toString))
+            .map(s => Map(Source.StartSequence -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
           endSequence
-            .map(s => Map("end_sequence" -> s.toString))
+            .map(s => Map(Source.EndSequence -> s.toString))
             .getOrElse(Map.empty[String, String])
 
         val changes =
           ss.readStream
-            .format("changes")
+            .format(Source.Changes)
             .options(options)
             .load
 
