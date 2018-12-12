@@ -5,7 +5,7 @@ import geotrellis.vector.Extent
 import osmesa.common.raster.{MutableSparseIntTile, SparseIntTile}
 
 package object impl {
-  case class CoordinatesWithKey(key: String, lat: Option[BigDecimal], lon: Option[BigDecimal])
+  case class CoordinatesWithKey(key: String, lat: Option[Double], lon: Option[Double])
       extends Coordinates
       with Key
 
@@ -13,8 +13,8 @@ package object impl {
 
   case class CoordinatesWithKeyAndSequence(sequence: Int,
                                            key: String,
-                                           lat: Option[BigDecimal],
-                                           lon: Option[BigDecimal])
+                                           lat: Option[Double],
+                                           lon: Option[Double])
       extends Coordinates
       with Key
       with Sequence
