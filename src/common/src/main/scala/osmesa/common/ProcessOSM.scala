@@ -3,6 +3,7 @@ package osmesa.common
 import java.io._
 import java.sql.Timestamp
 
+import com.vividsolutions.jts.{geom => jts}
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
@@ -12,20 +13,14 @@ import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.jts.GeometryUDT
 import org.apache.spark.sql.types._
+import org.locationtech.geomesa.spark.jts._
 import osmesa.common.functions.osm._
 import osmesa.common.util.Caching
 import spray.json._
 
-import org.locationtech.geomesa.spark.jts._
-import org.apache.spark.sql.jts.GeometryUDT
-import com.vividsolutions.jts.{geom => jts}
-
 object ProcessOSM {
-  private val ss: SparkSession = SparkSession.builder.getOrCreate()
-  // initialize JTS support
-  ss.withJTS
-
   val NodeType: Byte = 1
   val WayType: Byte = 2
   val RelationType: Byte = 3
@@ -33,7 +28,7 @@ object ProcessOSM {
 
   lazy val logger: Logger = Logger.getLogger(getClass)
 
-  val BareElementSchema = StructType(
+  lazy val BareElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("version", IntegerType, nullable = false) ::
@@ -41,9 +36,9 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
+  lazy val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
 
-  val TaggedVersionedElementSchema = StructType(
+  lazy val TaggedVersionedElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("tags", MapType(StringType, StringType, valueContainsNull = false), nullable = false) ::
@@ -54,9 +49,9 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  val TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
+  lazy val TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
 
-  val VersionedElementSchema = StructType(
+  lazy val VersionedElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("version", IntegerType, nullable = false) ::
@@ -66,7 +61,7 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  val VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
+  lazy val VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
 
   /**
     * Snapshot pre-processed elements.
@@ -281,6 +276,7 @@ object ProcessOSM {
                                                                                                             cache: Caching = Caching.none, cachePartitions: Option[Int] = None): DataFrame = {
     implicit val ss: SparkSession = _ways.sparkSession
     import ss.implicits._
+    ss.withJTS
 
     @transient val idByVersion = Window.partitionBy('id).orderBy('version)
 
@@ -488,6 +484,7 @@ object ProcessOSM {
   : DataFrame = {
     implicit val ss: SparkSession = _relations.sparkSession
     import ss.implicits._
+    ss.withJTS
 
     val relations = preprocessRelations(_relations)
       .where(isMultiPolygon('tags))
@@ -552,6 +549,7 @@ object ProcessOSM {
   : DataFrame = {
     implicit val ss: SparkSession = _relations.sparkSession
     import ss.implicits._
+    ss.withJTS
 
     val relations = preprocessRelations(_relations)
       .where(isRoute('tags))
