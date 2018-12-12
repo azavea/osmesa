@@ -1,6 +1,5 @@
 package osmesa.common.model
 
-import java.math.BigDecimal
 import java.sql.Timestamp
 
 import org.joda.time.DateTime
@@ -14,8 +13,8 @@ import scala.xml.Node
 case class Element(_type: Byte,
                    id: Long,
                    tags: Map[String, String],
-                   lat: Option[BigDecimal],
-                   lon: Option[BigDecimal],
+                   lat: Option[Double],
+                   lon: Option[Double],
                    nds: Option[Seq[Long]],
                    members: Option[Seq[Member]],
                    changeset: Long,
@@ -40,11 +39,11 @@ object Element {
       (node \ "tag").map(tag => (tag \@ "k", tag \@ "v")).toMap
     val lat = node \@ "lat" match {
       case "" => None
-      case v  => Some(new BigDecimal(v))
+      case v  => Some(v.toDouble)
     }
     val lon = node \@ "lon" match {
       case "" => None
-      case v  => Some(new BigDecimal(v))
+      case v  => Some(v.toDouble)
     }
     val nds = _type match {
       case WayType =>

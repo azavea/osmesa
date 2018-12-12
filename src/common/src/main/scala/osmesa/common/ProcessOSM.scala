@@ -13,7 +13,6 @@ import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.util.Caching
 import spray.json._
@@ -121,8 +120,8 @@ object ProcessOSM {
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
             lag('tags, 1) over idByVersion)
             .otherwise('tags) as 'tags,
-          when(!'visible, lit(Double.NaN)).otherwise(asDouble('lat)) as 'lat,
-          when(!'visible, lit(Double.NaN)).otherwise(asDouble('lon)) as 'lon,
+          when(!'visible, lit(Double.NaN)).otherwise('lat) as 'lat,
+          when(!'visible, lit(Double.NaN)).otherwise('lon) as 'lon,
           'changeset,
           'timestamp,
           (lead('timestamp, 1) over idByVersion) as 'validUntil,
@@ -258,7 +257,7 @@ object ProcessOSM {
       .select(
         lit(NodeType) as '_type,
         'id,
-        st_makePoint('lon, 'lat) as 'geom,
+        when('lon.isNotNull and 'lat.isNotNull, st_makePoint('lon, 'lat)) as 'geom,
         'tags,
         'changeset,
         'updated,
