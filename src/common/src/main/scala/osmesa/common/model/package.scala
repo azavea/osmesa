@@ -30,8 +30,8 @@ package object model {
   trait RasterTile extends Raster with TileCoordinates
 
   trait Coordinates extends Geometry {
-    def lat: Option[BigDecimal]
-    def lon: Option[BigDecimal]
+    def lat: Option[Double]
+    def lon: Option[Double]
 
     def geom: Point = Point(x, y)
 
