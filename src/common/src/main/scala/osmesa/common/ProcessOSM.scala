@@ -276,6 +276,7 @@ object ProcessOSM {
                                                                                                             cache: Caching = Caching.none, cachePartitions: Option[Int] = None): DataFrame = {
     implicit val ss: SparkSession = _ways.sparkSession
     import ss.implicits._
+    ss.withJTS
 
     @transient val idByVersion = Window.partitionBy('id).orderBy('version)
 
@@ -483,6 +484,7 @@ object ProcessOSM {
   : DataFrame = {
     implicit val ss: SparkSession = _relations.sparkSession
     import ss.implicits._
+    ss.withJTS
 
     val relations = preprocessRelations(_relations)
       .where(isMultiPolygon('tags))
@@ -547,6 +549,7 @@ object ProcessOSM {
   : DataFrame = {
     implicit val ss: SparkSession = _relations.sparkSession
     import ss.implicits._
+    ss.withJTS
 
     val relations = preprocessRelations(_relations)
       .where(isRoute('tags))
