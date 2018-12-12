@@ -75,6 +75,7 @@ object Footprints extends Logging {
     import nodes.sparkSession.implicits._
 
     val points = nodes
+      .repartition() // eliminate skew
       .as[CoordinatesWithKeyAndSequence]
       .asInstanceOf[Dataset[Coordinates with Key with Sequence]]
 
