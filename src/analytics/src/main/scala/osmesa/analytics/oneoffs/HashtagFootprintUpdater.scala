@@ -12,6 +12,7 @@ import osmesa.analytics.{Analytics, Footprints}
 import osmesa.common.ProcessOSM
 import osmesa.common.functions.osm._
 import osmesa.common.model.ElementWithSequence
+import osmesa.common.sources.Source
 
 /*
  * Usage example:
@@ -135,35 +136,37 @@ object HashtagFootprintUpdater
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
 
-            val changeOptions = Map("base_uri" -> changeSource.toString) ++
+            val changeOptions = Map(Source.BaseURI -> changeSource.toString,
+                                    Source.ProcessName -> "HashtagFootprintUpdater") ++
               changesStartSequence
-                .map(s => Map("start_sequence" -> s.toString))
+                .map(s => Map(Source .StartSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
               changesEndSequence
-                .map(s => Map("end_sequence" -> s.toString))
+                .map(s => Map(Source .EndSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
               changesBatchSize
-                .map(s => Map("batch_size" -> s.toString))
+                .map(s => Map(Source.BatchSize -> s.toString))
                 .getOrElse(Map.empty[String, String])
 
             val changes = spark.readStream
-              .format("changes")
+              .format(Source.Changes)
               .options(changeOptions)
               .load
 
-            val changesetOptions = Map("base_uri" -> changesetSource.toString) ++
+            val changesetOptions = Map(Source.BaseURI -> changesetSource.toString,
+                                       Source.ProcessName -> "HashtagFootprintUpdater") ++
               changesetsStartSequence
-                .map(s => Map("start_sequence" -> s.toString))
+                .map(s => Map(Source.StartSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
               changesetsEndSequence
-                .map(s => Map("end_sequence" -> s.toString))
+                .map(s => Map(Source.EndSequence -> s.toString))
                 .getOrElse(Map.empty[String, String])
             changesetsBatchSize
-              .map(s => Map("batch_size" -> s.toString))
+              .map(s => Map(Source.BatchSize -> s.toString))
               .getOrElse(Map.empty[String, String])
 
             val changesets = spark.readStream
-              .format("changesets")
+              .format(Source.Changesets)
               .options(changesetOptions)
               .load
               // changesets can remain open for 24 hours; buy some extra time

@@ -10,6 +10,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.model.ElementWithSequence
+import osmesa.common.sources.Source
 
 /*
  * Usage example:
@@ -103,32 +104,32 @@ object MergedChangesetStreamProcessor extends CommandApp(
         import ss.implicits._
 
         val augmentedDiffOptions = Map(
-          "base_uri"  -> augmentedDiffSource.toString,
-          "proc_name" -> "MergedChangesetStream"
+          Source.BaseURI -> augmentedDiffSource.toString,
+          Source.ProcessName -> "MergedChangesetStream"
         ) ++
           diffStartSequence
-            .map(s => Map("start_sequence" -> s.toString))
+            .map(s => Map(Source.StartSequence -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
           diffEndSequence
-            .map(s => Map("end_sequence" -> s.toString))
+            .map(s => Map(Source.EndSequence -> s.toString))
             .getOrElse(Map.empty[String, String])
 
         val geoms = ss.readStream
-          .format("augmented-diffs")
+          .format(Source.AugmentedDiffs)
           .options(augmentedDiffOptions)
           .load
 
-        val changesetOptions = Map("base_uri" -> changesetSource.toString) ++
+        val changesetOptions = Map(Source.BaseURI -> changesetSource.toString, Source.ProcessName -> "MergedChangesetStream") ++
           startSequence
-            .map(s => Map("start_sequence" -> s.toString))
+            .map(s => Map(Source.StartSequence -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
           endSequence
-            .map(s => Map("end_sequence" -> s.toString))
+            .map(s => Map(Source .EndSequence -> s.toString))
             .getOrElse(Map.empty[String, String])
 
         val changesets =
           ss.readStream
-            .format("changesets")
+            .format(Source.Changesets)
             .options(changesetOptions)
             .load
 

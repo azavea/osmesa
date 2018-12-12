@@ -1,4 +1,4 @@
-package osmesa.common.streaming
+package osmesa.common.sources
 
 import java.io.File
 import java.net.URI
@@ -10,12 +10,13 @@ import com.softwaremill.macmemo.memoize
 import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
+import geotrellis.vector.{Feature, Geometry}
 import io.circe.generic.auto._
 import io.circe.{yaml, _}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
-import osmesa.common.model.{AugmentedDiff, AugmentedDiffFeature}
+import osmesa.common.model.{AugmentedDiff, ElementWithSequence}
 
 import scala.concurrent.duration.{Duration, _}
 
@@ -41,9 +42,9 @@ object AugmentedDiffSource extends Logging {
           val features = line
             .replace("\u001e", "")
             .parseGeoJson[JsonFeatureCollectionMap]
-            .getAll[AugmentedDiffFeature]
+            .getAll[Feature[Geometry, ElementWithSequence]]
 
-          (features.get("old"), features("new"))
+          AugmentedDiff(sequence, features.get("old"), features("new"))
         }
         .toSeq
     } catch {

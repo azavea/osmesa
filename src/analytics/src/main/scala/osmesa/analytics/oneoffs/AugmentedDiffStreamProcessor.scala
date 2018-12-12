@@ -14,6 +14,7 @@ import osmesa.common.ProcessOSM
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.model.ElementWithSequence
+import osmesa.common.sources.Source
 import osmesa.common.util.DBUtils
 
 /*
@@ -70,18 +71,16 @@ object AugmentedDiffStreamProcessor extends CommandApp(
       import ss.implicits._
 
       val options = Map(
-        "base_uri"  -> augmentedDiffSource.toString,
-        "db_uri"    -> databaseUri.toString,
-        "proc_name" -> "AugmentedDiffStream"
+        Source.BaseURI -> augmentedDiffSource.toString,
+        Source.DatabaseURI -> databaseUri.toString,
+        Source.ProcessName -> "AugmentedDiffStream"
       ) ++
-        startSequence
-          .map(s => Map("start_sequence" -> s.toString))
+        startSequence.map(s => Map(Source.StartSequence -> s.toString))
           .getOrElse(Map.empty[String, String]) ++
-        endSequence
-          .map(s => Map("end_sequence" -> s.toString))
+        endSequence.map(s => Map(Source.EndSequence -> s.toString))
           .getOrElse(Map.empty[String, String])
 
-      val geoms = ss.readStream.format("augmented-diffs").options(options).load
+      val geoms = ss.readStream.format(Source.AugmentedDiffs).options(options).load
 
       // TODO update footprint MVTs
       // TODO update MVTs (possibly including data from changeset replication)
