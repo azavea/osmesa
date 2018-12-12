@@ -3,6 +3,7 @@ package osmesa.common
 import java.io._
 import java.sql.Timestamp
 
+import com.vividsolutions.jts.{geom => jts}
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
@@ -12,14 +13,12 @@ import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.jts.GeometryUDT
 import org.apache.spark.sql.types._
+import org.locationtech.geomesa.spark.jts._
 import osmesa.common.functions.osm._
 import osmesa.common.util.Caching
 import spray.json._
-
-import org.locationtech.geomesa.spark.jts._
-import org.apache.spark.sql.jts.GeometryUDT
-import com.vividsolutions.jts.{geom => jts}
 
 object ProcessOSM {
   val NodeType: Byte = 1
@@ -29,7 +28,7 @@ object ProcessOSM {
 
   lazy val logger: Logger = Logger.getLogger(getClass)
 
-  val BareElementSchema = StructType(
+  lazy val BareElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("version", IntegerType, nullable = false) ::
@@ -37,9 +36,9 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
+  lazy val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
 
-  val TaggedVersionedElementSchema = StructType(
+  lazy val TaggedVersionedElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("tags", MapType(StringType, StringType, valueContainsNull = false), nullable = false) ::
@@ -50,9 +49,9 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  val TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
+  lazy val TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
 
-  val VersionedElementSchema = StructType(
+  lazy val VersionedElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("version", IntegerType, nullable = false) ::
@@ -62,7 +61,7 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  val VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
+  lazy val VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
 
   /**
     * Snapshot pre-processed elements.
