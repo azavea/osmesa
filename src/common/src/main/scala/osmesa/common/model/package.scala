@@ -9,10 +9,10 @@ import org.apache.spark.sql.{Row, Encoder => SparkEncoder}
 import org.apache.spark.sql.jts._
 
 package object model {
-  type AugmentedDiff = (Option[AugmentedDiffFeature], AugmentedDiffFeature)
+  type AugmentedDiffType = (Option[AugmentedDiffFeature], AugmentedDiffFeature)
   type AugmentedDiffFeature = Feature[GTGeometry, ElementWithSequence]
 
-  val AugmentedDiffSchema = StructType(
+  def AugmentedDiffSchema = StructType(
     StructField("sequence", LongType) ::
       StructField("_type", ByteType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
@@ -45,7 +45,7 @@ package object model {
       Nil
   )
 
-  val ChangesetSchema = StructType(
+  def ChangesetSchema = StructType(
     StructField("sequence", IntegerType) ::
       StructField("id", LongType) ::
       StructField("created_at", TimestampType, nullable = false) ::
@@ -67,7 +67,7 @@ package object model {
       Nil
   )
 
-  val ChangeSchema = StructType(
+  def ChangeSchema = StructType(
     StructField("sequence", IntegerType) ::
       StructField("_type", ByteType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
@@ -100,7 +100,7 @@ package object model {
       Nil
   )
 
-  val AugmentedDiffEncoder: SparkEncoder[Row] = RowEncoder(AugmentedDiffSchema)
+  def AugmentedDiffEncoder: SparkEncoder[Row] = RowEncoder(AugmentedDiffSchema)
 
   trait Geometry {
     def geom: GTGeometry

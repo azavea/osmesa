@@ -28,7 +28,7 @@ object ProcessOSM {
 
   lazy val logger: Logger = Logger.getLogger(getClass)
 
-  lazy val BareElementSchema = StructType(
+  def BareElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("version", IntegerType, nullable = false) ::
@@ -36,9 +36,9 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  lazy val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
+  def BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
 
-  lazy val TaggedVersionedElementSchema = StructType(
+  def TaggedVersionedElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("tags", MapType(StringType, StringType, valueContainsNull = false), nullable = false) ::
@@ -49,9 +49,9 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  lazy val TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
+  def TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
 
-  lazy val VersionedElementSchema = StructType(
+  def VersionedElementSchema = StructType(
     StructField("changeset", LongType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
       StructField("version", IntegerType, nullable = false) ::
@@ -61,7 +61,7 @@ object ProcessOSM {
       StructField("geom", GeometryUDT) ::
       Nil)
 
-  lazy val VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
+  def VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
 
   /**
     * Snapshot pre-processed elements.
