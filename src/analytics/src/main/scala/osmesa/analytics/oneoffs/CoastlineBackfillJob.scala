@@ -12,15 +12,16 @@ import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
+import osmesa.common.sources.Source
 
 object CoastlineBackfillJob extends CommandApp(
   name = "coastline-backfill",
   header = "Generate coastline stats to merge into existing tables",
   main = {
     val historyOpt =
-      Opts.option[String]("history", help = "Location of the History ORC file to process.")
+      Opts.option[String]("history", help = "Location of the History ORC file to process")
     val changesetsOpt =
-      Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process.")
+      Opts.option[String]("changesets", help = "Location of the Changesets ORC file to process")
     val outputOpt =
       Opts.option[URI](long = "output", help = "Output URI prefix; trailing / must be included")
 
@@ -74,27 +75,38 @@ object CoastlineBackfillJob extends CommandApp(
         .withColumn("coastline_added", coalesce('coastline_added, lit(0)))
         .withColumn("coastline_modified", coalesce('coastline_modified, lit(0)))
 
-      val changesets = spark.read.orc(changesetSource)
+      // val changesets = spark.read
+      //                       .format("changesets")
+      //                       .option(Source.BaseURI, "http://10.0.1.244/replication/replication/changesets/")
+      //                       .option(Source.ProcessName, "CoastlineBackfillGenerator")
+      //                       .option(Source.StartSequence, startSequence.toString)
+      //                       .load
 
-      val changesetMetadata = changesets
-        .select(
-          'id as 'changeset,
-          'uid,
-          'user as 'name,
-          'tags.getItem("created_by") as 'editor,
-          'created_at,
-          'closed_at,
-          hashtags('tags) as 'hashtags
-        )
+      // val changesetMetadata = changesets
+      //   .select(
+      //     'id as 'changeset,
+      //     'uid,
+      //     'user as 'name,
+      //     'tags.getItem("created_by") as 'editor,
+      //     'createdAt,
+      //     'closedAt,
+      //     hashtags('tags) as 'hashtags
+      //   )
 
-      val changesetStats = rawChangesetStats
-        .join(changesetMetadata, Seq("changeset"), "left_outer")
+      // val changesetStats = rawChangesetStats
+      //   .join(changesetMetadata, Seq("changeset"), "left_outer")
 
-      changesetStats
+      // changesetStats
+      //   .repartition(50)
+      //   .write
+      //   .mode(SaveMode.Overwrite)
+      //   .orc(output.resolve("changesets").toString)
+
+      rawChangesetStats
         .repartition(50)
         .write
         .mode(SaveMode.Overwrite)
-        .orc(output.resolve("changesets").toString)
+        .orc(output.resolve("coastline-backfill.orc").toString)
 
       spark.stop()
     }
