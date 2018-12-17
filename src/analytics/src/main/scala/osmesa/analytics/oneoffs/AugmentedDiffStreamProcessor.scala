@@ -124,9 +124,9 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           when(isWaterway('tags) and !isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'waterways_modified,
           when(isCoastline('tags) and isNew('version, 'minorVersion), lit(1))
-            .otherwise(lit(0)) as 'coastline_added,
+            .otherwise(lit(0)) as 'coastlines_added,
           when(isCoastline('tags) and !isNew('version, 'minorVersion), lit(1))
-            .otherwise(lit(0)) as 'coastline_modified,
+            .otherwise(lit(0)) as 'coastlines_modified,
           when(isBuilding('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'buildings_added,
           when(isBuilding('tags) and !isNew('version, 'minorVersion), lit(1))
@@ -147,8 +147,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           sum('roads_modified) as 'roads_modified,
           sum('waterways_added) as 'waterways_added,
           sum('waterways_modified) as 'waterways_modified,
-          sum('coastline_added) as 'coastline_added,
-          sum('coastline_modified) as 'coastline_modified,
+          sum('coastlines_added) as 'coastlines_added,
+          sum('coastlines_modified) as 'coastlines_modified,
           sum('buildings_added) as 'buildings_added,
           sum('buildings_modified) as 'buildings_modified,
           sum('pois_added) as 'pois_added,
@@ -171,8 +171,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |    ? AS roads_modified,
               |    ? AS waterways_added,
               |    ? AS waterways_modified,
-              |    ? AS coastline_added,
-              |    ? AS coastline_modified,
+              |    ? AS coastlines_added,
+              |    ? AS coastlines_modified,
               |    ? AS buildings_added,
               |    ? AS buildings_modified,
               |    ? AS pois_added,
@@ -193,8 +193,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  roads_modified,
               |  waterways_added,
               |  waterways_modified,
-              |  coastline_added,
-              |  coastline_modified,
+              |  coastlines_added,
+              |  coastlines_modified,
               |  buildings_added,
               |  buildings_modified,
               |  pois_added,
@@ -214,8 +214,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  roads_modified = c.roads_modified + coalesce(EXCLUDED.roads_modified, 0),
               |  waterways_added = c.waterways_added + coalesce(EXCLUDED.waterways_added, 0),
               |  waterways_modified = c.waterways_modified + coalesce(EXCLUDED.waterways_modified, 0),
-              |  coastline_added = c.coastline_added + coalesce(EXCLUDED.coastline_added, 0),
-              |  coastline_modified = c.coastline_modified + coalesce(EXCLUDED.coastline_modified, 0),
+              |  coastlines_added = c.coastlines_added + coalesce(EXCLUDED.coastlines_added, 0),
+              |  coastlines_modified = c.coastlines_modified + coalesce(EXCLUDED.coastlines_modified, 0),
               |  buildings_added = c.buildings_added + coalesce(EXCLUDED.buildings_added, 0),
               |  buildings_modified = c.buildings_modified + coalesce(EXCLUDED.buildings_modified, 0),
               |  pois_added = c.pois_added + coalesce(EXCLUDED.pois_added, 0),
@@ -303,8 +303,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
             val roadsModified = row.getAs[Long]("roads_modified")
             val waterwaysAdded = row.getAs[Long]("waterways_added")
             val waterwaysModified = row.getAs[Long]("waterways_modified")
-            val coastlineAdded = row.getAs[Long]("coastline_added")
-            val coastlineModified = row.getAs[Long]("coastline_modified")
+            val coastlinesAdded = row.getAs[Long]("coastlines_added")
+            val coastlinesModified = row.getAs[Long]("coastlines_modified")
             val buildingsAdded = row.getAs[Long]("buildings_added")
             val buildingsModified = row.getAs[Long]("buildings_modified")
             val poisAdded = row.getAs[Long]("pois_added")
@@ -320,8 +320,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               updateChangesets.setLong(4, roadsModified)
               updateChangesets.setLong(5, waterwaysAdded)
               updateChangesets.setLong(6, waterwaysModified)
-              updateChangesets.setLong(7, coastlineAdded)
-              updateChangesets.setLong(8, coastlineModified)
+              updateChangesets.setLong(7, coastlinesAdded)
+              updateChangesets.setLong(8, coastlinesModified)
               updateChangesets.setLong(9, buildingsAdded)
               updateChangesets.setLong(10, buildingsModified)
               updateChangesets.setLong(11, poisAdded)
