@@ -53,17 +53,17 @@ object CoastlineBackfillJob extends CommandApp(
         .withColumn("coastline_m_modified",
           when(isCoastline('tags) and not('version === 1 and 'minorVersion === 0), 'delta)
             .otherwise(lit(0)))
-        .withColumn("coastline_added",
+        .withColumn("coastlines_added",
           when(isCoastline('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
             .otherwise(lit(0)))
-        .withColumn("coastline_modified",
+        .withColumn("coastlines_modified",
           when(isCoastline('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
             .otherwise(lit(0)))
         .groupBy('changeset)
         .agg(
           sum('coastline_m_added / 1000).as('coastline_km_added),
           sum('coastline_m_modified / 1000).as('coastline_km_modified),
-          sum('coastline_added).as('coastline_added),
+          sum('coastlines_added).as('coastlines_added),
           sum('coastline_modified).as('coastline_modified),
           count_values(flatten(collect_list('countries))) as 'countries
         )
@@ -72,8 +72,8 @@ object CoastlineBackfillJob extends CommandApp(
       val rawChangesetStats = wayChangesetStats
         .withColumn("coastline_km_added", coalesce('coastline_km_added, lit(0)))
         .withColumn("coastline_km_modified", coalesce('coastline_km_modified, lit(0)))
-        .withColumn("coastline_added", coalesce('coastline_added, lit(0)))
-        .withColumn("coastline_modified", coalesce('coastline_modified, lit(0)))
+        .withColumn("coastlines_added", coalesce('coastlines_added, lit(0)))
+        .withColumn("coastlines_modified", coalesce('coastlines_modified, lit(0)))
 
       // val changesets = spark.read
       //                       .format("changesets")
