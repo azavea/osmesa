@@ -7,7 +7,7 @@ import org.apache.spark.rdd.RDD
 import vectorpipe.osm._
 
 import monocle.macros.GenLens
-import org.locationtech.jts.algorithm.Centroid
+import com.vividsolutions.jts.algorithm.Centroid
 
 
 object Downsample {

@@ -3,7 +3,7 @@ package osmesa
 import java.sql.Timestamp
 
 import com.monovore.decline._
-import org.locationtech.jts.{geom => jts}
+import com.vividsolutions.jts.{geom => jts}
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark._
 import org.apache.spark.sql._
