@@ -1,6 +1,6 @@
 package osmesa.analytics
 
-import org.locationtech.jts.geom.Coordinate
+import com.vividsolutions.jts.geom.Coordinate
 import geotrellis.vector._
 import geotrellis.vector.io._
 import org.scalatest._

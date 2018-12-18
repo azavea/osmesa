@@ -3,8 +3,8 @@ package osmesa.bm
 import geotrellis.vector._
 import geotrellis.vector.io._
 
-import org.locationtech.jts.algorithm.{Centroid, CGAlgorithms}
-import org.locationtech.jts.geom.Coordinate
+import com.vividsolutions.jts.algorithm.{Centroid, CGAlgorithms}
+import com.vividsolutions.jts.geom.Coordinate
 
 
 object VertexMatching {
