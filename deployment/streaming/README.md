@@ -23,6 +23,14 @@ checkpoint (which lives on the table 'checkpoints' in the database being
 updated) to ensure that failures aren't fatal to the long-running
 process.
 
+Our ECS deployment process relies on the use of the `ecs-cli` tool, which is
+similar in spirit to `docker-compose`, but manages containers on ECS instead
+of on a local docker instance.  You can install `ecs-cli` by issuing the
+command
+```bash
+ curl -o /usr/local/bin/ecs-cli https://s3.amazonaws.com/amazon-ecs-cli/ecs-cli-linux-amd64-latest
+```
+
 ## Deployment Steps
 
 1. Copy `config-aws.mk.example` to `config-aws.mk` and
@@ -71,11 +79,17 @@ make push-image
 make cluster-up
 ```
 
-8. Deploy the service (this will create new task definitions as necessary):
+9. Deploy the service (this will create new task definitions as necessary):
 
 ```bash
 make start-service
 ```
+
+### Updating an Existing ECS Service
+
+If there is already a streaming task running on an ECS cluster that needs to
+be updated, then the procedure above can be abbreviated.  Please perform steps
+1, 2, 4, 7, and 9.
 
 ## Local Testing
 
