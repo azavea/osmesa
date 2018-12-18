@@ -64,7 +64,7 @@ object CoastlineBackfillJob extends CommandApp(
           sum('coastline_m_added / 1000).as('coastline_km_added),
           sum('coastline_m_modified / 1000).as('coastline_km_modified),
           sum('coastlines_added).as('coastlines_added),
-          sum('coastline_modified).as('coastline_modified),
+          sum('coastlines_modified).as('coastlines_modified),
           count_values(flatten(collect_list('countries))) as 'countries
         )
 
