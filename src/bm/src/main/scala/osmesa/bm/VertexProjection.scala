@@ -4,7 +4,7 @@ import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json.JsonFeatureCollection
 
-import org.locationtech.jts.algorithm.Centroid
+import com.vividsolutions.jts.algorithm.Centroid
 
 
 object VertexProjection {

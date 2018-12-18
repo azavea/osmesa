@@ -24,7 +24,7 @@ import monocle.macros.GenLens
 
 import osmesa.GenerateVT
 
-import org.locationtech.jts.algorithm.Centroid
+import com.vividsolutions.jts.algorithm.Centroid
 
 import scala.collection.mutable
 
