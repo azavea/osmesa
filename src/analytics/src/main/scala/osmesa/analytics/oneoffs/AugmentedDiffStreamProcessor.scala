@@ -289,7 +289,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           }
 
           def process(row: Row): Unit = {
-            val sequence = row.getAs[Long]("sequence")
+            val sequence = row.getAs[Int]("sequence")
             val changeset = row.getAs[Long]("changeset")
             val uid = row.getAs[Long]("uid")
             val user = row.getAs[String]("user")

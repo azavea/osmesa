@@ -374,7 +374,7 @@ object Footprints extends Logging {
           .flatMap { point =>
             val geom = point.geom
 
-            Option(geom).map(_.reproject(LatLng, WebMercator)) match {
+            Option(geom).map(GTGeometry(_).reproject(LatLng, WebMercator)) match {
               case Some(g) if g.isValid =>
                 layout.mapTransform
                   .keysForGeometry(g)
@@ -386,7 +386,7 @@ object Footprints extends Logging {
                                               baseZoom,
                                               sk.col,
                                               sk.row,
-                                              clipped.toWKB(3857)))
+                                              clipped.jtsGeom))
                       case _ =>
                         Seq.empty[GeometryTileWithKey]
                     }
@@ -407,7 +407,7 @@ object Footprints extends Logging {
           .flatMap { point =>
             val geom = point.geom
 
-            Option(geom).map(_.reproject(LatLng, WebMercator)) match {
+            Option(geom).map(GTGeometry(_).reproject(LatLng, WebMercator)) match {
               case Some(g) if g.isValid =>
                 layout.mapTransform
                   .keysForGeometry(g)
@@ -420,7 +420,7 @@ object Footprints extends Logging {
                                                          baseZoom,
                                                          sk.col,
                                                          sk.row,
-                                                         clipped.toWKB(3857)))
+                                                         clipped.jtsGeom))
                       case _ => Seq.empty[GeometryTileWithKeyAndSequence]
                     }
                   }
