@@ -17,6 +17,8 @@ import org.apache.spark.sql.jts.GeometryUDT
 import org.apache.spark.sql.types._
 import org.locationtech.geomesa.spark.jts._
 import osmesa.common.functions.osm._
+import osmesa.common.relations.MultiPolygons
+import osmesa.common.relations.Routes
 import osmesa.common.util.Caching
 import spray.json._
 
@@ -521,7 +523,7 @@ object ProcessOSM {
             val roles = members.map(_.getAs[String]("role"))
             val geoms = members.map(_.getAs[jts.Geometry]("geom"))
 
-            val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
+            val wkb = MultiPolygons.build(id, version, updated, types, roles, geoms).orNull
 
             new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb),
               VersionedElementSchema): Row
@@ -586,7 +588,7 @@ object ProcessOSM {
           val roles = members.map(_.getAs[String]("role"))
           val geoms = members.map(_.getAs[jts.Geometry]("geom"))
 
-          buildRoute(id, version, updated, types, roles, geoms) match {
+          Routes.build(id, version, updated, types, roles, geoms) match {
             case Some(components) =>
               components.map {
                 case ("", wkb) =>
