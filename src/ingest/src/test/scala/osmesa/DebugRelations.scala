@@ -12,6 +12,7 @@ import org.apache.spark.sql.types.IntegerType
 import org.locationtech.geomesa.spark.jts.st_asText
 import osmesa.common.ProcessOSM._
 import osmesa.common.functions.osm._
+import osmesa.common.relations.MultiPolygons.build
 
 /*
  * Usage example:
@@ -77,7 +78,7 @@ object DebugRelations extends CommandApp(
                 val roles = rows.map(_.getAs[String]("role"))
                 val geoms = rows.map(_.getAs[jts.Geometry]("geom"))
 
-                val wkb = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
+                val wkb = build(id, version, updated, types, roles, geoms).orNull
 
                 new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb), VersionedElementSchema): Row
             }
