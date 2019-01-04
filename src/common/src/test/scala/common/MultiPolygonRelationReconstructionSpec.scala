@@ -1,4 +1,4 @@
-package osmesa
+package common
 
 import java.sql.Timestamp
 
@@ -17,6 +17,7 @@ import osmesa.common.functions.osm._
 import com.vividsolutions.jts.{geom => jts}
 import com.vividsolutions.jts.io.WKTReader
 import org.locationtech.geomesa.spark.jts._
+import osmesa.common.relations.MultiPolygons.build
 
 import scala.io.Source
 
@@ -122,7 +123,7 @@ class MultiPolygonRelationReconstructionSpec extends PropSpec with TableDrivenPr
               val roles = members.map(_.getAs[String]("role"))
               //val geoms = members.map(_.getAs[jts.Geometry]("geom"))
               val geoms = members.map(_.getAs[jts.Geometry]("geometry"))
-              val mp = buildMultiPolygon(id, version, updated, types, roles, geoms).orNull
+              val mp = build(id, version, updated, types, roles, geoms).orNull
 
               new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, mp),
                 VersionedElementSchema): Row
