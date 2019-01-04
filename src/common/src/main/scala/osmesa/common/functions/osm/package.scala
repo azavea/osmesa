@@ -101,7 +101,9 @@ package object osm {
       "platform" -> true
     ),
     "shop" -> Map(),
-    "tourism" -> Map(),
+    "tourism" -> Map(
+      "artwork" -> true
+    ),
     "waterway" -> Map(
       "canal" -> true,
       "dam" -> true,
