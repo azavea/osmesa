@@ -292,7 +292,7 @@ object Footprints extends Logging {
           RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
             tiles
               .map(x => RasterWithSequence(x.raster, x.sequence))
-              .toSeq,
+              .toVector, // this CANNOT be toSeq, as that produces a stream, which is subsequently partially consumed
             z,
             x,
             y,
