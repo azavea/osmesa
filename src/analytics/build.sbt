@@ -15,7 +15,7 @@ libraryDependencies ++= Seq(
   "org.postgresql" % "postgresql" % "42.2.2",
 
   decline,
-  sparkHive % "provided",
+  sparkHive % Provided,
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
   gtS3 exclude("com.google.protobuf", "protobuf-java") exclude("com.amazonaws", "aws-java-sdk-s3"),
   gtSpark exclude("com.google.protobuf", "protobuf-java"),
@@ -29,7 +29,7 @@ libraryDependencies ++= Seq(
   logging,
   scalatest,
 
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % "provided"
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % Provided
 )
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */

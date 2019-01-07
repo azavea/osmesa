@@ -12,7 +12,7 @@ libraryDependencies ++= Seq(
   gtGeotools exclude ("com.google.protobuf", "protobuf-java"),
   "com.github.seratch" %% "awscala" % "0.6.1",
   "org.scalaj" %% "scalaj-http" % "2.3.0",
-  sparkHive % "provided",
+  sparkHive % Provided,
   sparkJts,
   gtS3 exclude ("com.google.protobuf", "protobuf-java") exclude ("com.amazonaws", "aws-java-sdk-s3"),
   gtSpark exclude ("com.google.protobuf", "protobuf-java"),
@@ -31,7 +31,7 @@ libraryDependencies ++= Seq(
   circeJava8,
   circeYaml,
   "com.softwaremill.macmemo" %% "macros" % "0.4",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % "provided"
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % Provided
 )
 
 Test / fork := true
