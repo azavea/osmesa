@@ -8,6 +8,7 @@ import com.monovore.decline._
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.DoubleType
 import osmesa.analytics.{Analytics, Footprints, S3Utils}
 import osmesa.common.functions.osm._
 
@@ -137,7 +138,7 @@ object Footprint extends Logging {
 
     val nodes = history
       .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
-      .select('lat, 'lon, 'key)
+      .select('lat.cast(DoubleType) as 'lat, 'lon.cast(DoubleType) as 'lon, 'key)
 
     val stats = Footprints.createFootprints(nodes, outputURI)
     stats.repartition(1).write.mode(SaveMode.Overwrite).csv("/tmp/footprints/")
