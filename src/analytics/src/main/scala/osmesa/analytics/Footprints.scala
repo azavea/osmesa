@@ -264,10 +264,8 @@ object Footprints extends Logging {
           val targetExtent =
             SpatialKey(tile.x, tile.y).extent(LayoutScheme.levelForZoom(tile.zoom).layout)
 
-          val newTile = MutableSparseIntTile(Cols, Rows)
-
-          rasters.foreach { raster => newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
-          }
+          val newTile = rasters.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, raster) =>
+            acc.merge(targetExtent, raster.extent, raster.tile, Sum))
 
           (tile.key,
            tile.zoom,
