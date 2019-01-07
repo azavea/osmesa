@@ -126,7 +126,7 @@ object Footprints extends Logging {
                   case updatedFeatures if (replacementFeatures.length + newFeatures.length) > 0 =>
                     val updatedLayer = makeLayer(key, extent, updatedFeatures)
                     val sequenceLayer =
-                      makeSequenceLayer(getCommittedSequences(tile) ++ sequences, extent)
+                      makeSequenceLayer(getCommittedSequences(tile) ++ sequences.toSet, extent)
 
                     Some(updatedLayer, sequenceLayer)
                   case _ =>
@@ -135,7 +135,7 @@ object Footprints extends Logging {
                 }
               case None =>
                 Some(makeLayer(key, extent, makeFeatures(feats)),
-                     makeSequenceLayer(sequences, extent))
+                     makeSequenceLayer(sequences.toSet, extent))
             }
 
             layers match {
@@ -156,10 +156,11 @@ object Footprints extends Logging {
             }
 
           case None =>
-            write(VectorTile(Map(makeLayer(key, extent, makeFeatures(feats)),
-                                 makeSequenceLayer(sequences, extent)),
-                             extent),
-                  uri)
+            val tile = VectorTile(Map(makeLayer(key, extent, makeFeatures(feats)),
+                                      makeSequenceLayer(sequences.toSet, extent)),
+                                  extent)
+
+            write(tile, uri)
         }
 
         CountWithTileCoordinatesAndKey(feats.size, z, sk.col, sk.row, key)
@@ -174,7 +175,7 @@ object Footprints extends Logging {
           Map("id" -> VInt64(id), "density" -> VInt64(density))
     })
 
-  def makeSequenceLayer(sequences: Seq[Int], extent: Extent): (String, Layer) = {
+  def makeSequenceLayer(sequences: Set[Int], extent: Extent): (String, Layer) = {
     // create a second layer w/ a feature corresponding to committed sequences (in the absence of
     // available tile / layer metadata)
     val updatedSequences =
@@ -194,46 +195,14 @@ object Footprints extends Logging {
     tileSource.resolve(filename)
   }
 
-  def getCommittedSequences(tile: VectorTile): Seq[Int] =
+  def getCommittedSequences(tile: VectorTile): Set[Int] =
     // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
     // single sequence may appear in different batches depending on when changeset metadata arrives
     tile.layers
       .get(SequenceLayerName)
       .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
-      .getOrElse(Seq.empty[Int])
-
-  def updateFootprints(tileSource: URI, nodes: DataFrame, baseZoom: Int = BaseZoom)(
-      implicit concurrentUploads: Option[Int] = None)
-    : Dataset[Count with TileCoordinates with Key] = {
-    import nodes.sparkSession.implicits._
-
-    val points = nodes
-      .as[CoordinatesWithKeyAndSequence]
-      .asInstanceOf[Dataset[Coordinates with Key with Sequence]]
-
-    val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
-
-    pyramid.groupByKeyAndTile
-      .mapPartitions { rows: Iterator[TileCoordinates with Key with RasterWithSequenceTileSeq] =>
-        // materialize the iterator so that its contents can be used multiple times
-        val tiles = rows.toList
-
-        // increase the number of concurrent network-bound tasks
-        implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
-          new ForkJoinPool(concurrentUploads.getOrElse(DefaultUploadConcurrency)))
-
-        try {
-          // TODO in the future, allow tiles to contain layers for multiple keys; this has knock-on effects
-          val urls = makeUrls(tileSource, tiles)
-          val mvts = loadMVTs(urls)
-          val uncommitted = getUncommittedTiles(tileSource, tiles, mvts)
-
-          updateTiles(tileSource, mvts, uncommitted.merge.vectorize).iterator
-        } finally {
-          taskSupport.environment.shutdown()
-        }
-      }
-  }
+      .map(_.toSet)
+      .getOrElse(Set.empty[Int])
 
   def makeUrls(tileSource: URI, tiles: Seq[TileCoordinates with Key]): Map[URI, Extent] =
     tiles.map { tile =>
