@@ -187,9 +187,8 @@ object HashtagFootprintUpdater
               .join(changedNodes, Seq("changeset"))
 
             val tiledNodes =
-              Footprints.updateFootprints(tileSource,
-                                          changedNodesWithHashtags
-                                            .withColumnRenamed("hashtag", "key"))
+              Footprints.updateFootprints(changedNodesWithHashtags
+                                            .withColumnRenamed("hashtag", "key"), tileSource)
 
             val query = tiledNodes.writeStream
               .queryName("tiled hashtag footprints")
