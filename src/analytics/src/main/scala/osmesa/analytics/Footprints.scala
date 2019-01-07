@@ -241,10 +241,10 @@ object Footprints extends Logging {
       .map(tile => {
         val sk = SpatialKey(tile.x, tile.y)
         val uri = makeURI(tileSource, tile.key, tile.zoom, sk)
+        val committedSequences = mvts.get(uri).map(getCommittedSequences).getOrElse(Set.empty[Int])
 
         RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
-          tile.tiles.filter(t =>
-            !mvts.get(uri).map(getCommittedSequences).exists(_.contains(t.sequence))),
+          tile.tiles.filterNot(t => committedSequences.contains(t.sequence)),
           tile.zoom,
           tile.x,
           tile.y,
