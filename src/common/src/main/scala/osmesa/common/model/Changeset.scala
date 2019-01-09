@@ -24,7 +24,7 @@ case class Changeset(sequence: Int,
                      comments: Seq[ChangesetComment])
 
 object Changeset {
-  val Schema = StructType(
+  lazy val Schema = StructType(
     StructField("sequence", IntegerType) ::
       StructField("id", LongType) ::
       StructField("createdAt", TimestampType, nullable = false) ::

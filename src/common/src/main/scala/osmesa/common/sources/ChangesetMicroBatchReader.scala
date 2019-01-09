@@ -23,7 +23,7 @@ class ChangesetStreamBatchReader(baseURI: URI, sequences: Seq[Int])
   override def getSequence(baseURI: URI, sequence: Int): Seq[Changeset] =
     ChangesetSource.getSequence(baseURI, sequence)
 
-  override val schema: StructType = Changeset.Schema
+  override def schema: StructType = Changeset.Schema
 }
 
 class ChangesetMicroBatchReader(options: DataSourceOptions,

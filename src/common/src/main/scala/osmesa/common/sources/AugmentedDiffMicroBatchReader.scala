@@ -21,7 +21,7 @@ case class AugmentedDiffStreamBatchTask(baseURI: URI, sequences: Seq[Int])
 case class AugmentedDiffStreamBatchReader(baseURI: URI, sequences: Seq[Int])
     extends ReplicationStreamBatchReader[AugmentedDiff](baseURI, sequences) {
 
-  override val schema: StructType = AugmentedDiff.Schema
+  override def schema: StructType = AugmentedDiff.Schema
 
   override def getSequence(baseURI: URI, sequence: Int): Seq[AugmentedDiff] =
     AugmentedDiffSource.getSequence(baseURI, sequence)
