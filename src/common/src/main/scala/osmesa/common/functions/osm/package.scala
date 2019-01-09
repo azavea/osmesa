@@ -171,7 +171,7 @@ package object osm {
     tags.contains("type") && tags("type") == "route"
   }
 
-  private val MemberSchema = ArrayType(
+  private lazy val MemberSchema = ArrayType(
     StructType(
       StructField("type", ByteType, nullable = false) ::
         StructField("ref", LongType, nullable = false) ::
@@ -191,7 +191,7 @@ package object osm {
       Row(t, ref, role)
     }
 
-  val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
+  lazy val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
 
   private val _hashtags = (comment: String) =>
     HashtagMatcher

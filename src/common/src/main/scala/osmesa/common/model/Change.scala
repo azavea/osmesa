@@ -26,7 +26,7 @@ case class Change(id: Long,
                   sequence: Int)
 
 object Change {
-  val Schema = StructType(
+  lazy val Schema = StructType(
     StructField("id", LongType) ::
       StructField("type", StringType) ::
       StructField(

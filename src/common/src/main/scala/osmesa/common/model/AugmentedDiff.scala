@@ -1,14 +1,14 @@
 package osmesa.common.model
-import java.sql.Timestamp
 
 import com.vividsolutions.jts.{geom => jts}
 import geotrellis.vector.io._
 import geotrellis.vector.{Feature, Geometry => GTGeometry}
-import org.apache.spark.sql.catalyst.encoders.RowEncoder
+import org.apache.spark.sql.catalyst.encoders.{ExpressionEncoder, RowEncoder}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Row, Encoder => SparkEncoder}
 import org.apache.spark.sql.jts._
 import osmesa.common.ProcessOSM
+import java.sql.Timestamp
 
 case class AugmentedDiff(sequence: Int,
                          `type`: Byte,
@@ -31,8 +31,22 @@ case class AugmentedDiff(sequence: Int,
                          version: Int,
                          minorVersion: Boolean)
 
+// trait AugmentedDiffEncoders {
+//   //implicit val jtsGeometryOptionEncoder = org.apache.spark.sql.Encoders.kryo[Option[Geometry]]
+//   implicit val AugmentedDiffEncoder = org.apache.spark.sql.Encoders.kryo[AugmentedDiff]
+//   implicit def jtsGeometryOptionEncoder: SparkEncoder[Option[jts.Geometry]] = ExpressionEncoder()
+//   implicit def jtsPointOptionEncoder: SparkEncoder[Option[jts.Point]] = ExpressionEncoder()
+//   implicit def jtsLineStringOptionEncoder: SparkEncoder[Option[jts.LineString]] = ExpressionEncoder()
+//   implicit def jtsPolygonOptionEncoder: SparkEncoder[Option[jts.Polygon]] = ExpressionEncoder()
+//   implicit def jtsMultiPointOptionEncoder: SparkEncoder[Option[jts.MultiPoint]] = ExpressionEncoder()
+//   implicit def jtsMultiLineStringOptionEncoder: SparkEncoder[Option[jts.MultiLineString]] = ExpressionEncoder()
+//   implicit def jtsMultiPolygonOptionEncoder: SparkEncoder[Option[jts.MultiPolygon]] = ExpressionEncoder()
+//   implicit def jtsGeometryCollectionOptionEncoder: SparkEncoder[Option[jts.GeometryCollection]] = ExpressionEncoder()
+//   //implicit def augmentedDiffEncoder: SparkEncoder[AugmentedDiff] = ExpressionEncoder()
+// }
+
 object AugmentedDiff {
-  val Schema: StructType = StructType(
+  lazy val Schema: StructType = StructType(
     StructField("sequence", IntegerType) ::
       StructField("type", ByteType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
@@ -63,7 +77,7 @@ object AugmentedDiff {
       StructField("minorVersion", BooleanType, nullable = false) ::
       Nil
   )
-  val Encoder: SparkEncoder[Row] = RowEncoder(Schema)
+  lazy val Encoder: SparkEncoder[Row] = RowEncoder(Schema)
 
   def apply(sequence: Int,
             prev: Option[Feature[GTGeometry, ElementWithSequence]],
