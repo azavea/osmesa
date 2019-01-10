@@ -22,13 +22,19 @@ object FootprintCommand
 
         val historyOpt = Opts
           .option[URI]("history", help = "URI of the history ORC file to process.")
-        val changesetsOpt = Opts
-          .option[URI]("changesets", help = "URI of the changesets ORC file to process.")
         val hashtagsOpt =
           Opts.option[URI]("include-hashtags", help = "URI containing hashtags to consider.").orNone
         val outputOpt = Opts.option[URI]("out", help = "Base URI for output.")
         val typeOpt =
-          Opts.option[String]("type", "Type of footprints to generate (users, hashtags)")
+          Opts
+            .option[String]("type", "Type of footprints to generate (users, hashtags)")
+            .withDefault("users")
+            .validate("Type must be users or hashtags") {
+              Set("users", "hashtags").contains
+            }
+        val changesetsOpt = Opts
+          .option[URI]("changesets", help = "URI of the changesets ORC file to process.")
+          .orNone
 
         (
           historyOpt,
@@ -44,7 +50,7 @@ object FootprintCommand
 
 object Footprint extends Logging {
   def run(historyURI: URI,
-          changesetsURI: URI,
+          changesetsURI: Option[URI],
           hashtagsURI: Option[URI],
           outputURI: URI,
           footprintType: String): Unit = {
@@ -81,7 +87,10 @@ object Footprint extends Logging {
           // for hashtag access
           val changesets =
             spark.read
-              .orc(changesetsURI.toString)
+              .orc(changesetsURI.getOrElse {
+                throw new RuntimeException(
+                  "Changesets are required when generating hashtag footprints")
+              }.toString)
 
           val targetUsers = changesets
             .withColumn("hashtag", explode(hashtags('tags)))
@@ -133,7 +142,6 @@ object Footprint extends Logging {
       case _ => throw new RuntimeException("Unrecognized footprint type")
     }
 
-    // TODO make changesets optional
     // TODO accept a list of users
 
     val nodes = history
