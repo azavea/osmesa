@@ -21,12 +21,13 @@ abstract class ReplicationStreamBatchReader[T <: Product: TypeTag](baseURI: URI,
     extends DataReader[Row]
     with Logging
     with org.locationtech.geomesa.spark.jts.encoders.SpatialEncoders {
+  org.apache.spark.sql.jts.registerTypes()
   private lazy val rowEncoder = RowEncoder(schema).resolveAndBind()
   protected var index: Int = -1
   protected var items: Vector[T] = _
   val Concurrency: Int = 8
   protected def schema: StructType
-  //private val encoder = ExpressionEncoder[T]
+  private val encoder = ExpressionEncoder[T]
 
   override def next(): Boolean = {
     index += 1
@@ -50,43 +51,7 @@ abstract class ReplicationStreamBatchReader[T <: Product: TypeTag](baseURI: URI,
   //
   // DataReader changes to InputPartitionReader in Spark 2.4 and T is further constrained to InternalRow (allowing
   // rowEncoder to be removed)
-  //override def get(): Row = rowEncoder.fromRow(encoder.toRow(items(index)))
-  override def get(): Row = {
-    implicit val encoder: Encoder[Row] = AugmentedDiff.Encoder
-
-    val augdiff = items(index).asInstanceOf[AugmentedDiff]
-
-    val minorVersion = if (augdiff.prevVersion.getOrElse(-1) == augdiff.version) 1 else 0
-
-    // generate Rows directly for more control over DataFrame schema; toDF will infer these, but let's be
-    // explicit
-    new GenericRowWithSchema(
-      Array(
-        augdiff.sequence,
-        augdiff.`type`,
-        augdiff.id,
-        augdiff.prevGeom,
-        augdiff.geom,
-        augdiff.prevTags,
-        augdiff.tags,
-        augdiff.prevChangeset,
-        augdiff.changeset,
-        augdiff.prevUid,
-        augdiff.uid,
-        augdiff.prevUser,
-        augdiff.user,
-        augdiff.prevUpdated,
-        augdiff.updated,
-        augdiff.prevVisible,
-        augdiff.visible,
-        augdiff.prevVersion,
-        augdiff.version,
-        -1, // previous minor version is unknown
-        minorVersion
-      ),
-      AugmentedDiff.Schema
-    ): Row
-  }
+  override def get(): Row = rowEncoder.fromRow(encoder.toRow(items(index)))
 
   override def close(): Unit = Unit
 

@@ -82,7 +82,7 @@ object CoastlineInfillJob
                            augdiffBatchSize,
                            databaseUri,
                            output) =>
-          val spark: SparkSession = Analytics.sparkSession("CoastlineInfill").withJTS
+          val spark: SparkSession = Analytics.sparkSession("CoastlineInfill")
           import spark.implicits._
 
           val options =
