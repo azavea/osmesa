@@ -19,8 +19,7 @@ import scala.reflect.runtime.universe.TypeTag
 abstract class ReplicationStreamBatchReader[T <: Product: TypeTag](baseURI: URI,
                                                                    sequences: Seq[Int])
     extends DataReader[Row]
-    with Logging
-    with org.locationtech.geomesa.spark.jts.encoders.SpatialEncoders {
+    with Logging {
   org.apache.spark.sql.jts.registerTypes()
   private lazy val rowEncoder = RowEncoder(schema).resolveAndBind()
   protected var index: Int = -1

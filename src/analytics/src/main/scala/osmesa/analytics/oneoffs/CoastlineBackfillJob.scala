@@ -75,33 +75,6 @@ object CoastlineBackfillJob extends CommandApp(
         .withColumn("coastlines_added", coalesce('coastlines_added, lit(0)))
         .withColumn("coastlines_modified", coalesce('coastlines_modified, lit(0)))
 
-      // val changesets = spark.read
-      //                       .format("changesets")
-      //                       .option(Source.BaseURI, "http://10.0.1.244/replication/replication/changesets/")
-      //                       .option(Source.ProcessName, "CoastlineBackfillGenerator")
-      //                       .option(Source.StartSequence, startSequence.toString)
-      //                       .load
-
-      // val changesetMetadata = changesets
-      //   .select(
-      //     'id as 'changeset,
-      //     'uid,
-      //     'user as 'name,
-      //     'tags.getItem("created_by") as 'editor,
-      //     'createdAt,
-      //     'closedAt,
-      //     hashtags('tags) as 'hashtags
-      //   )
-
-      // val changesetStats = rawChangesetStats
-      //   .join(changesetMetadata, Seq("changeset"), "left_outer")
-
-      // changesetStats
-      //   .repartition(50)
-      //   .write
-      //   .mode(SaveMode.Overwrite)
-      //   .orc(output.resolve("changesets").toString)
-
       rawChangesetStats
         .repartition(50)
         .write
