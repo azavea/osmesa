@@ -67,6 +67,10 @@ supported by OSMesa:
 - Number of modified waterways
 - Km of added waterways
 - Km of modified waterways
+- Number of added coastlines
+- Number of modified coastlines
+- Km of added coastline
+- Km of modified coastline
 - Number of added points of interest
 - Number of modified points of interest
 
@@ -133,5 +137,3 @@ marked with a given hashtag
 - [UserFootprintUpdater](src/analytics/src/main/scala/osmesa/analytics/oneoffs/UserFootprintUpdater.scala)
 updates a z/x/y stack of vector tiles which correspond to a user's
 modifications to OSM
-
-

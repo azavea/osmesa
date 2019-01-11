@@ -128,7 +128,7 @@ package object osm {
 
   private val POITags = Set("amenity", "shop", "craft", "office", "leisure", "aeroway")
 
-  private val HashtagMatcher = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
+  private val HashtagMatcher = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!\"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
 
   private val _isArea = (tags: Map[String, String]) =>
     tags match {
@@ -155,7 +155,7 @@ package object osm {
     tags.contains("type") && tags("type") == "route"
   }
 
-  private val MemberSchema = ArrayType(
+  private lazy val MemberSchema = ArrayType(
     StructType(
       StructField("type", ByteType, nullable = false) ::
         StructField("ref", LongType, nullable = false) ::
@@ -175,7 +175,7 @@ package object osm {
       Row(t, ref, role)
     }
 
-  val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
+  lazy val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
 
   private val _hashtags = (comment: String) =>
     HashtagMatcher
@@ -205,10 +205,13 @@ package object osm {
     (_: Map[String, String]).contains("highway")
   }
 
+  val isCoastline: UserDefinedFunction = udf {
+    (_: Map[String, String]).getOrElse("natural", "").toLowerCase == "coastline"
+  }
+
   val isWaterway: UserDefinedFunction = udf {
     tags: Map[String, String] => WaterwayValues.contains(tags.getOrElse("waterway", null))
   }
-
 
   def mergeTags: UserDefinedFunction = udf {
     (_: Map[String, String]) ++ (_: Map[String, String])

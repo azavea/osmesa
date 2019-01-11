@@ -1,8 +1,8 @@
 object Version {
   val scala = "2.11.11"
   val osmesa = "0.1.0"
-  val geotrellis = "2.0.0"
-  val geomesa = "2.0.2"
+  val geotrellis = "2.1.0"
+  val geomesa = "2.1.0"
   val vectorpipe = "0.2.2" //"1.0.0-SNAPSHOT"
   val decline = "0.5.0"
   val cats = "1.0.0"

@@ -23,6 +23,14 @@ checkpoint (which lives on the table 'checkpoints' in the database being
 updated) to ensure that failures aren't fatal to the long-running
 process.
 
+Our ECS deployment process relies on the use of the `ecs-cli` tool, which is
+similar in spirit to `docker-compose`, but manages containers on ECS instead
+of on a local docker instance.  You can install `ecs-cli` by issuing the
+command
+```bash
+ curl -o /usr/local/bin/ecs-cli https://s3.amazonaws.com/amazon-ecs-cli/ecs-cli-linux-amd64-latest
+```
+
 ## Deployment Steps
 
 1. Copy `config-aws.mk.example` to `config-aws.mk` and
@@ -71,8 +79,41 @@ make push-image
 make cluster-up
 ```
 
-8. Deploy the service (this will create new task definitions as necessary):
+9. Deploy the service (this will create new task definitions as necessary):
 
 ```bash
 make start-service
 ```
+
+### Updating an Existing ECS Service
+
+If there is already a streaming task running on an ECS cluster that needs to
+be updated, then the procedure above can be abbreviated.  Please perform steps
+1, 2, 4, 7, and 9.
+
+## Local Testing
+
+From a clean environment,
+
+1. In the `deployment/streaming` directory, update the missing values in
+   `config-local.mk.example` (LOCAL_AUGDIFF_SOURCE, LOCAL_AUGDIFF_START,
+   LOCAL_CHANGE_START, LOCAL_CHANGESET_START) and save to `config-local.mk`.
+
+2. In the same directory, ensure that `config-aws.mk` exists.  You may `touch`
+   the file if it does not.
+
+3. Execute `make build-container` followed by `make start-local`.  You should
+   observe a stream of log messages.  Any errors should appear in this window.
+
+4. If you want to verify that the system is operating up to spec, you may
+```bash
+docker exec -it streaming_db_1 bash
+psql -U postgres
+```
+(The trailing "1" may need to be incremented.  See `docker ps` for the proper
+name.)  From there, you may issue a `\d` directive and verify that the DB is
+populated with the correct tables.
+
+5. You may now test the operation of the system in the DB interface by issuing
+   queries against the available tables and observing the log output.  The
+   content of the tables will update as the system runs.
