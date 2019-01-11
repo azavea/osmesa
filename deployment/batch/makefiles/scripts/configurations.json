@@ -14,8 +14,8 @@
         "spark.shuffle.compress": "true",
         "spark.shuffle.spill.compress": "true",
         "spark.rdd.compress": "true",
-        "spark.yarn.executor.memoryOverhead": "1G",
-        "spark.yarn.driver.memoryOverhead": "1G",
+        "spark.executor.memoryOverhead": "1G",
+        "spark.driver.memoryOverhead": "1G",
         "spark.driver.maxResultSize": "3G",
         "spark.executor.extraJavaOptions" : "-XX:+UseParallelGC -Dgeotrellis.s3.threads.rdd.write=64"
     }

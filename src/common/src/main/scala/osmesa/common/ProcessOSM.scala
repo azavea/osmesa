@@ -3,7 +3,6 @@ package osmesa.common
 import java.io._
 import java.sql.Timestamp
 
-import com.vividsolutions.jts.{geom => jts}
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
@@ -16,6 +15,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.jts.GeometryUDT
 import org.apache.spark.sql.types._
 import org.locationtech.geomesa.spark.jts._
+import com.vividsolutions.jts.{geom => jts}
 import osmesa.common.functions.osm._
 import osmesa.common.relations.MultiPolygons
 import osmesa.common.relations.Routes

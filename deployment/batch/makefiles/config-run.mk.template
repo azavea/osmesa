@@ -3,5 +3,9 @@ export S3_URI:=s3://${S3_BUCKET}
 export S3_CATALOG := ${S3_URI}/[TARGET_CATALOG]
 
 export PLANET_ORC := s3://osm-pds/planet-history/history-latest.orc
+export OSM_HISTORY := [OSH_ORC_FILENAME_URI]
+export OUTPUT_LOCATION := [TARGET_BUCKET]
+
 export ORC_CACHE_LOCATION := ${S3_URI}/cache
 export VECTORTILE_CATALOG_LOCATION = ${S3_URI}/vectortiles
+export CHANGESET_URI := [REPLICATION URL]

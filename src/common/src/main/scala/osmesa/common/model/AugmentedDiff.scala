@@ -1,18 +1,20 @@
 package osmesa.common.model
-import java.sql.Timestamp
 
+import com.vividsolutions.jts.{geom => jts}
 import geotrellis.vector.io._
 import geotrellis.vector.{Feature, Geometry => GTGeometry}
-import org.apache.spark.sql.catalyst.encoders.RowEncoder
+import org.apache.spark.sql.catalyst.encoders.{ExpressionEncoder, RowEncoder}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Row, Encoder => SparkEncoder}
+import org.apache.spark.sql.jts._
 import osmesa.common.ProcessOSM
+import java.sql.Timestamp
 
 case class AugmentedDiff(sequence: Int,
                          `type`: Byte,
                          id: Long,
-                         prevGeom: Option[Array[Byte]],
-                         geom: Array[Byte],
+                         prevGeom: Option[jts.Geometry],
+                         geom: jts.Geometry,
                          prevTags: Option[Map[String, String]],
                          tags: Map[String, String],
                          prevChangeset: Option[Long],
@@ -30,12 +32,12 @@ case class AugmentedDiff(sequence: Int,
                          minorVersion: Boolean)
 
 object AugmentedDiff {
-  val Schema: StructType = StructType(
+  lazy val Schema: StructType = StructType(
     StructField("sequence", IntegerType) ::
       StructField("type", ByteType, nullable = false) ::
       StructField("id", LongType, nullable = false) ::
-      StructField("prevGeom", BinaryType, nullable = true) ::
-      StructField("geom", BinaryType, nullable = true) ::
+      StructField("prevGeom", GeometryUDT, nullable = true) ::
+      StructField("geom", GeometryUDT, nullable = true) ::
       StructField(
       "prevTags",
       MapType(StringType, StringType, valueContainsNull = false),
@@ -61,7 +63,7 @@ object AugmentedDiff {
       StructField("minorVersion", BooleanType, nullable = false) ::
       Nil
   )
-  val Encoder: SparkEncoder[Row] = RowEncoder(Schema)
+  lazy val Encoder: SparkEncoder[Row] = RowEncoder(Schema)
 
   def apply(sequence: Int,
             prev: Option[Feature[GTGeometry, ElementWithSequence]],
@@ -78,8 +80,8 @@ object AugmentedDiff {
       sequence,
       `type`,
       curr.data.id,
-      prev.map(_.geom.toWKB(4326)),
-      curr.geom.toWKB(4326),
+      prev.map(_.geom.jtsGeom),
+      curr.geom.jtsGeom,
       prev.map(_.data.tags),
       curr.data.tags,
       prev.map(_.data.changeset),
