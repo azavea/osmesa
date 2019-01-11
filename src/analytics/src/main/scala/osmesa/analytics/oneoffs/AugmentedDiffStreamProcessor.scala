@@ -66,7 +66,7 @@ object AugmentedDiffStreamProcessor extends CommandApp(
 
     (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt orElse databaseUriEnv).mapN {
       (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
-      implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor").withJTS
+      implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
       import ss.implicits._
 

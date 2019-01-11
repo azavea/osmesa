@@ -59,7 +59,7 @@ object ChangesetStreamProcessor extends CommandApp(
 
     (changesetSourceOpt, databaseUriOpt orElse databaseUriEnv, startSequenceOpt, endSequenceOpt).mapN {
       (changesetSource, databaseUri, startSequence, endSequence) =>
-        implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor").withJTS
+        implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 
         import ss.implicits._
 

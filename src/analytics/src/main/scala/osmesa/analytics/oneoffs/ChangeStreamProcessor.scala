@@ -61,7 +61,7 @@ object ChangeStreamProcessor extends CommandApp(
     (changeSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt orElse databaseUriEnv).mapN {
       (changeSource, startSequence, endSequence, databaseUri) =>
         implicit val ss: SparkSession =
-          Analytics.sparkSession("ChangeStreamProcessor").withJTS
+          Analytics.sparkSession("ChangeStreamProcessor")
 
         import ss.implicits._
 

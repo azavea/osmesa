@@ -31,20 +31,6 @@ case class AugmentedDiff(sequence: Int,
                          version: Int,
                          minorVersion: Boolean)
 
-// trait AugmentedDiffEncoders {
-//   //implicit val jtsGeometryOptionEncoder = org.apache.spark.sql.Encoders.kryo[Option[Geometry]]
-//   implicit val AugmentedDiffEncoder = org.apache.spark.sql.Encoders.kryo[AugmentedDiff]
-//   implicit def jtsGeometryOptionEncoder: SparkEncoder[Option[jts.Geometry]] = ExpressionEncoder()
-//   implicit def jtsPointOptionEncoder: SparkEncoder[Option[jts.Point]] = ExpressionEncoder()
-//   implicit def jtsLineStringOptionEncoder: SparkEncoder[Option[jts.LineString]] = ExpressionEncoder()
-//   implicit def jtsPolygonOptionEncoder: SparkEncoder[Option[jts.Polygon]] = ExpressionEncoder()
-//   implicit def jtsMultiPointOptionEncoder: SparkEncoder[Option[jts.MultiPoint]] = ExpressionEncoder()
-//   implicit def jtsMultiLineStringOptionEncoder: SparkEncoder[Option[jts.MultiLineString]] = ExpressionEncoder()
-//   implicit def jtsMultiPolygonOptionEncoder: SparkEncoder[Option[jts.MultiPolygon]] = ExpressionEncoder()
-//   implicit def jtsGeometryCollectionOptionEncoder: SparkEncoder[Option[jts.GeometryCollection]] = ExpressionEncoder()
-//   //implicit def augmentedDiffEncoder: SparkEncoder[AugmentedDiff] = ExpressionEncoder()
-// }
-
 object AugmentedDiff {
   lazy val Schema: StructType = StructType(
     StructField("sequence", IntegerType) ::
