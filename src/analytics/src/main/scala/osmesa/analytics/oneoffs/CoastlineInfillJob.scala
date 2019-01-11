@@ -105,13 +105,13 @@ object CoastlineInfillJob
 
           val coastlineStats = coastlines
             .withColumn("coastline_m_added",
-                        when('version === 1 and 'minorVersion === 0, 'length).otherwise(lit(0)))
+                        when(isNew('version, 'minorVersion), 'length).otherwise(lit(0)))
             .withColumn("coastline_m_modified",
-                        when(not('version === 1 and 'minorVersion === 0), 'delta).otherwise(lit(0)))
+                        when(not(isNew('version, 'minorVersion)), 'delta).otherwise(lit(0)))
             .withColumn("coastlines_added",
-                        when('version === 1 and 'minorVersion === 0, lit(1)).otherwise(lit(0)))
+                        when(isNew('version, 'minorVersion), lit(1)).otherwise(lit(0)))
             .withColumn("coastlines_modified",
-                        when(not('version === 1 and 'minorVersion === 0), lit(1)).otherwise(lit(0)))
+                        when(not(isNew('version, 'minorVersion)), lit(1)).otherwise(lit(0)))
             .groupBy('changeset)
             .agg(
               sum('coastline_m_added / 1000).as('coastline_km_added),

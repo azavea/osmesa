@@ -147,8 +147,8 @@ package object osm {
 
   val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
 
-  val isNew: UserDefinedFunction = udf { (version: Int, minorVersion: Boolean) =>
-    version == 1 && !minorVersion
+  val isNew: UserDefinedFunction = udf { (version: Int, minorVersion: Int) =>
+    version == 1 && minorVersion == 0
   }
 
   val isRoute: UserDefinedFunction = udf { tags: Map[String, String] =>

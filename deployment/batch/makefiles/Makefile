@@ -80,6 +80,29 @@ ${S3_URI}/${INGEST_JAR},\
 --zoom=${ZOOM}\
 ] | cut -f2 | tee last-step-id.txt
 
+generate-changesets:
+	aws emr add-steps --output text --cluster-id ${CLUSTER_ID} \
+--steps Type=CUSTOM_JAR,Name="Generate Changeset Stats",Jar=command-runner.jar,Args=[\
+spark-submit,--master,yarn,\
+--class,osmesa.analytics.oneoffs.ChangesetStats,\
+--driver-memory,${DRIVER_MEMORY},\
+--driver-cores,${DRIVER_CORES},\
+--executor-memory,${EXECUTOR_MEMORY},\
+--executor-cores,${EXECUTOR_CORES},\
+--conf,spark.driver.maxResultSize=3g,\
+--conf,spark.dynamicAllocation.enabled=true,\
+--conf,spark.executor.memoryOverhead=${YARN_OVERHEAD},\
+--conf,spark.driver.memoryOverhead=${YARN_OVERHEAD},\
+--conf,spark.shuffle.io.numConnectionsPerPeer=4,\
+--conf,spark.shuffle.io.connectionTimeout=18000s,\
+--conf,spark.shuffle.service.enabled=true,\
+--conf,spark.sql.shuffle.partitions=1024,\
+${S3_URI}/${ANALYTICS_JAR},\
+--history=${OSM_HISTORY},\
+--changesets=${CHANGESET_URI},\
+--output=${OUTPUT_LOCATION}\
+] | cut -f2 | tee last-step-id.txt
+
 backfill-coastline:
 	aws emr add-steps --output text --cluster-id ${CLUSTER_ID} \
 --steps Type=CUSTOM_JAR,Name="Coastline backfill generation",Jar=command-runner.jar,Args=[\
