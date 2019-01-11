@@ -10,6 +10,7 @@ import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.locationtech.geomesa.spark.jts.st_length
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
+import osmesa.common.sources.Source
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
 
@@ -52,52 +53,52 @@ object ChangesetStats extends CommandApp(
 
       val wayChangesetStats = augmentedWays
         .withColumn("road_m_added",
-          when(isRoad('tags) and 'version === 1 and 'minorVersion === 0, 'length)
+          when(isRoad('tags) and isNew('version, 'minorVersion), 'length)
             .otherwise(lit(0)))
         .withColumn("road_m_modified",
-          when(isRoad('tags) and not('version === 1 and 'minorVersion === 0), 'delta)
+          when(isRoad('tags) and not(isNew('version, 'minorVersion)), 'delta)
             .otherwise(lit(0)))
         .withColumn("waterway_m_added",
-          when(isWaterway('tags) and 'version === 1 and 'minorVersion === 0, 'length)
+          when(isWaterway('tags) and isNew('version, 'minorVersion), 'length)
             .otherwise(lit(0)))
         .withColumn("waterway_m_modified",
-          when(isWaterway('tags) and not('version === 1 and 'minorVersion === 0), 'delta)
+          when(isWaterway('tags) and not(isNew('version, 'minorVersion)), 'delta)
             .otherwise(lit(0)))
         .withColumn("coastline_m_added",
-          when(isCoastline('tags) and 'version === 1 and 'minorVersion === 0, 'length)
+          when(isCoastline('tags) and isNew('version, 'minorVersion), 'length)
             .otherwise(lit(0)))
         .withColumn("coastline_m_modified",
-          when(isCoastline('tags) and not('version === 1 and 'minorVersion === 0), 'delta)
+          when(isCoastline('tags) and not(isNew('version, 'minorVersion)), 'delta)
             .otherwise(lit(0)))
         .withColumn("roads_added",
-          when(isRoad('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
+          when(isRoad('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)))
         .withColumn("roads_modified",
-          when(isRoad('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
+          when(isRoad('tags) and not(isNew('version, 'minorVersion)), lit(1))
             .otherwise(lit(0)))
         .withColumn("waterways_added",
-          when(isWaterway('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
+          when(isWaterway('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)))
         .withColumn("waterways_modified",
-          when(isWaterway('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
+          when(isWaterway('tags) and not(isNew('version, 'minorVersion)), lit(1))
             .otherwise(lit(0)))
         .withColumn("coastlines_added",
-          when(isCoastline('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
+          when(isCoastline('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)))
         .withColumn("coastlines_modified",
-          when(isCoastline('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
+          when(isCoastline('tags) and not(isNew('version, 'minorVersion)), lit(1))
             .otherwise(lit(0)))
         .withColumn("buildings_added",
-          when(isBuilding('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
+          when(isBuilding('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)))
         .withColumn("buildings_modified",
-          when(isBuilding('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
+          when(isBuilding('tags) and not(isNew('version, 'minorVersion)), lit(1))
             .otherwise(lit(0)))
         .withColumn("pois_added",
-          when(isPOI('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
+          when(isPOI('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)))
         .withColumn("pois_modified",
-          when(isPOI('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
+          when(isPOI('tags) and not(isNew('version, 'minorVersion)), lit(1))
             .otherwise(lit(0)))
         .groupBy('changeset)
         .agg(
@@ -171,7 +172,12 @@ object ChangesetStats extends CommandApp(
         .drop('way_countries)
         .drop('node_countries)
 
-      val changesets = spark.read.orc(changesetSource)
+      val changesets = spark.read
+                            .format(Source.Changesets)
+                            .option(Source.BaseURI, "http://10.0.1.244/replication/replication/changesets/")
+                            .option(Source.ProcessName, "ChangesetStats")
+                            .load
+      // val changesets = spark.read.orc(changesetSource)
 
       val changesetMetadata = changesets
         .select(
@@ -179,8 +185,8 @@ object ChangesetStats extends CommandApp(
           'uid,
           'user as 'name,
           'tags.getItem("created_by") as 'editor,
-          'created_at,
-          'closed_at,
+          'createdAt as 'created_at,
+          'closedAt as 'closed_at,
           hashtags('tags) as 'hashtags
         )
 

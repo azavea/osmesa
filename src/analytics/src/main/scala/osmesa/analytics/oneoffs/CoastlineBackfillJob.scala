@@ -48,16 +48,16 @@ object CoastlineBackfillJob extends CommandApp(
 
       val wayChangesetStats = augmentedWays
         .withColumn("coastline_m_added",
-          when(isCoastline('tags) and 'version === 1 and 'minorVersion === 0, 'length)
+          when(isCoastline('tags) and isNew('version, 'minorVersion), 'length)
             .otherwise(lit(0)))
         .withColumn("coastline_m_modified",
-          when(isCoastline('tags) and not('version === 1 and 'minorVersion === 0), 'delta)
+          when(isCoastline('tags) and not(isNew('version, 'minorVersion)), 'delta)
             .otherwise(lit(0)))
         .withColumn("coastlines_added",
-          when(isCoastline('tags) and 'version === 1 and 'minorVersion === 0, lit(1))
+          when(isCoastline('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)))
         .withColumn("coastlines_modified",
-          when(isCoastline('tags) and not('version === 1 and 'minorVersion === 0), lit(1))
+          when(isCoastline('tags) and not(isNew('version, 'minorVersion)), lit(1))
             .otherwise(lit(0)))
         .groupBy('changeset)
         .agg(
