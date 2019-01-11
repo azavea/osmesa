@@ -4,6 +4,7 @@ import geotrellis.spark.io.kryo.KryoRegistrator
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql._
+import org.locationtech.geomesa.spark.jts._
 
 object Analytics {
   def sparkSession(appName: String): SparkSession = {
@@ -20,8 +21,9 @@ object Analytics {
       .set("spark.kryo.registrator", classOf[KryoRegistrator].getName)
 
     SparkSession.builder
-        .config(conf)
-        .enableHiveSupport
-        .getOrCreate
+      .config(conf)
+      .enableHiveSupport
+      .getOrCreate
+      .withJTS
   }
 }
