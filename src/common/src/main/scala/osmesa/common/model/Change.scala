@@ -2,7 +2,6 @@ package osmesa.common.model
 
 import java.sql.Timestamp
 
-import org.apache.spark.sql.types._
 import org.joda.time.DateTime
 import osmesa.common.model.Actions.Action
 
@@ -26,40 +25,6 @@ case class Change(id: Long,
                   sequence: Int)
 
 object Change {
-  lazy val Schema = StructType(
-    StructField("id", LongType) ::
-      StructField("type", StringType) ::
-      StructField(
-      "tags",
-      MapType(StringType, StringType, valueContainsNull = true)
-    ) ::
-      StructField("lat", DoubleType) ::
-      StructField("lon", DoubleType) ::
-      StructField(
-      "nds",
-      DataTypes.createArrayType(StructType(StructField("ref", LongType) :: Nil))
-    ) ::
-      StructField(
-      "members",
-      DataTypes.createArrayType(
-        StructType(
-          StructField("type", StringType) ::
-            StructField("ref", LongType) ::
-            StructField("role", StringType) ::
-            Nil
-        )
-      )
-    ) ::
-      StructField("changeset", LongType) ::
-      StructField("timestamp", TimestampType) ::
-      StructField("uid", LongType) ::
-      StructField("user", StringType) ::
-      StructField("version", LongType) ::
-      StructField("visible", BooleanType) ::
-      StructField("sequence", IntegerType) ::
-      Nil
-  )
-
   implicit def stringToTimestamp(s: String): Timestamp =
     Timestamp.from(DateTime.parse(s).toDate.toInstant)
 
@@ -78,7 +43,7 @@ object Change {
     }
     val nds = `type` match {
       case "way" =>
-      Some((node \ "nd").map(Nd.fromXML))
+        Some((node \ "nd").map(Nd.fromXML))
       case _ => None
     }
     val members = `type` match {

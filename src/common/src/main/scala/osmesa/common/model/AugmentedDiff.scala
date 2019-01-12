@@ -1,14 +1,10 @@
 package osmesa.common.model
 
-import com.vividsolutions.jts.{geom => jts}
-import geotrellis.vector.io._
-import geotrellis.vector.{Feature, Geometry => GTGeometry}
-import org.apache.spark.sql.catalyst.encoders.{ExpressionEncoder, RowEncoder}
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.{Row, Encoder => SparkEncoder}
-import org.apache.spark.sql.jts._
-import osmesa.common.ProcessOSM
 import java.sql.Timestamp
+
+import com.vividsolutions.jts.{geom => jts}
+import geotrellis.vector.{Feature, Geometry => GTGeometry}
+import osmesa.common.ProcessOSM
 
 case class AugmentedDiff(sequence: Int,
                          `type`: Byte,
@@ -32,39 +28,6 @@ case class AugmentedDiff(sequence: Int,
                          minorVersion: Boolean)
 
 object AugmentedDiff {
-  lazy val Schema: StructType = StructType(
-    StructField("sequence", IntegerType) ::
-      StructField("type", ByteType, nullable = false) ::
-      StructField("id", LongType, nullable = false) ::
-      StructField("prevGeom", GeometryUDT, nullable = true) ::
-      StructField("geom", GeometryUDT, nullable = true) ::
-      StructField(
-      "prevTags",
-      MapType(StringType, StringType, valueContainsNull = false),
-      nullable = true
-    ) ::
-      StructField(
-      "tags",
-      MapType(StringType, StringType, valueContainsNull = false),
-      nullable = false
-    ) ::
-      StructField("prevChangeset", LongType, nullable = true) ::
-      StructField("changeset", LongType, nullable = false) ::
-      StructField("prevUid", LongType, nullable = true) ::
-      StructField("uid", LongType, nullable = false) ::
-      StructField("prevUser", StringType, nullable = true) ::
-      StructField("user", StringType, nullable = false) ::
-      StructField("prevUpdated", TimestampType, nullable = true) ::
-      StructField("updated", TimestampType, nullable = false) ::
-      StructField("prevVisible", BooleanType, nullable = true) ::
-      StructField("visible", BooleanType, nullable = false) ::
-      StructField("prevVersion", IntegerType, nullable = true) ::
-      StructField("version", IntegerType, nullable = false) ::
-      StructField("minorVersion", BooleanType, nullable = false) ::
-      Nil
-  )
-  lazy val Encoder: SparkEncoder[Row] = RowEncoder(Schema)
-
   def apply(sequence: Int,
             prev: Option[Feature[GTGeometry, ElementWithSequence]],
             curr: Feature[GTGeometry, ElementWithSequence]): AugmentedDiff = {

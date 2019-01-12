@@ -1,21 +1,26 @@
 package osmesa.common.sources
 
 import org.apache.spark.SparkEnv
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.DataSourceReader
 import org.apache.spark.sql.types.StructType
-import osmesa.common.model.Change
 
 import scala.compat.java8.OptionConverters._
+import scala.reflect.runtime.universe.TypeTag
 
-abstract class ReplicationReader(options: DataSourceOptions) extends DataSourceReader {
+abstract class ReplicationReader[T <: Product: TypeTag](options: DataSourceOptions)
+    extends DataSourceReader {
+  private lazy val schema: StructType = ExpressionEncoder[T].schema
+
   val DefaultPartitionCount: Int =
     SparkEnv.get.conf
       .getInt(SQLConf.SHUFFLE_PARTITIONS.key, SQLConf.SHUFFLE_PARTITIONS.defaultValue.get)
 
   protected val partitionCount: Int =
     options.getInt(Source.PartitionCount, DefaultPartitionCount)
+
   protected var endSequence: Int =
     options
       .get(Source.EndSequence)
@@ -24,7 +29,7 @@ abstract class ReplicationReader(options: DataSourceOptions) extends DataSourceR
       .getOrElse(getCurrentSequence
         .getOrElse(throw new RuntimeException("Could not determine end sequence.")))
 
-  override def readSchema(): StructType = Change.Schema
+  override def readSchema(): StructType = schema
 
   protected def startSequence: Int =
     options

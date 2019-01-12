@@ -8,65 +8,25 @@ import cats.implicits._
 import io.circe.parser._
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
+import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.streaming.{MicroBatchReader, Offset}
+import org.apache.spark.sql.types.StructType
 import osmesa.common.util.DBUtils
 
 import scala.compat.java8.OptionConverters._
+import scala.reflect.runtime.universe.TypeTag
 
-abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
-                                                 checkpointLocation: String)
+abstract class ReplicationStreamMicroBatchReader[T <: Product: TypeTag](options: DataSourceOptions,
+                                                                        checkpointLocation: String)
     extends MicroBatchReader
     with Logging {
-
-  private def recoverSequence(dbUri: URI, procName: String): Option[Int] = {
-    var sequence: Option[Int] = None
-    // Odersky endorses the following.
-    // https://issues.scala-lang.org/browse/SI-4437
-    var connection = null.asInstanceOf[Connection]
-    try {
-      connection = DBUtils.getJdbcConnection(dbUri)
-      val preppedStatement = connection.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
-      preppedStatement.setString(1, procName)
-      val rs = preppedStatement.executeQuery()
-      sequence = if (rs.next()) Some(rs.getInt("sequence")) else None
-    } finally {
-      if (connection != null) connection.close()
-    }
-
-    sequence match {
-      case Some(0) => None
-      case elsewise => elsewise
-    }
-  }
-
-  private def checkpointSequence(dbUri: URI, sequence: Int): Unit = {
-    // Odersky endorses the following.
-    // https://issues.scala-lang.org/browse/SI-4437
-    var connection = null.asInstanceOf[Connection]
-    try {
-      connection = DBUtils.getJdbcConnection(dbUri)
-      val upsertSequence =
-        connection.prepareStatement(
-          """
-            |INSERT INTO checkpoints (proc_name, sequence)
-            |VALUES (?, ?)
-            |ON CONFLICT (proc_name)
-            |DO UPDATE SET sequence = ?
-          """.stripMargin
-        )
-      upsertSequence.setString(1, procName)
-      upsertSequence.setInt(2, sequence)
-      upsertSequence.setInt(3, sequence)
-      upsertSequence.execute()
-    } finally {
-      if (connection != null) connection.close()
-    }
-  }
+  private lazy val schema: StructType = ExpressionEncoder[T].schema
 
   val DefaultBatchSize: Int =
-    SparkEnv.get.conf.getInt(SQLConf.SHUFFLE_PARTITIONS.key, SQLConf.SHUFFLE_PARTITIONS.defaultValue.get)
+    SparkEnv.get.conf
+      .getInt(SQLConf.SHUFFLE_PARTITIONS.key, SQLConf.SHUFFLE_PARTITIONS.defaultValue.get)
 
   protected val batchSize: Int =
     options.getInt(Source.BatchSize, DefaultBatchSize)
@@ -74,7 +34,9 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
   protected val databaseUri: Option[URI] =
     options.get(Source.DatabaseURI).asScala.map(new URI(_))
 
-  protected val procName: String = options.get(Source.ProcessName).asScala
+  protected val procName: String = options
+    .get(Source.ProcessName)
+    .asScala
     .getOrElse(throw new IllegalStateException("Process name required to recover sequence"))
 
   protected var startSequence: Option[Int] = {
@@ -95,8 +57,9 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
 
   protected var endOffset: Option[SequenceOffset] = None
 
-  override def setOffsetRange(start: Optional[Offset],
-                              stop: Optional[Offset]): Unit = {
+  override def readSchema(): StructType = schema
+
+  override def setOffsetRange(start: Optional[Offset], stop: Optional[Offset]): Unit = {
     getCurrentSequence match {
       case Some(currentSequence) =>
         val begin =
@@ -178,6 +141,30 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
     logInfo(s"Commit: $end")
   }
 
+  private def checkpointSequence(dbUri: URI, sequence: Int): Unit = {
+    // Odersky endorses the following.
+    // https://issues.scala-lang.org/browse/SI-4437
+    var connection = null.asInstanceOf[Connection]
+    try {
+      connection = DBUtils.getJdbcConnection(dbUri)
+      val upsertSequence =
+        connection.prepareStatement(
+          """
+            |INSERT INTO checkpoints (proc_name, sequence)
+            |VALUES (?, ?)
+            |ON CONFLICT (proc_name)
+            |DO UPDATE SET sequence = ?
+          """.stripMargin
+        )
+      upsertSequence.setString(1, procName)
+      upsertSequence.setInt(2, sequence)
+      upsertSequence.setInt(3, sequence)
+      upsertSequence.execute()
+    } finally {
+      if (connection != null) connection.close()
+    }
+  }
+
   override def deserializeOffset(json: String): Offset = {
     val t = parse(json) match {
       case Left(failure) => throw failure
@@ -200,6 +187,28 @@ abstract class ReplicationStreamMicroBatchReader(options: DataSourceOptions,
       throw new IllegalStateException("Can't determine sequence range")
     } else {
       startOffset.get.sequence + 1 to endOffset.get.sequence
+    }
+  }
+
+  private def recoverSequence(dbUri: URI, procName: String): Option[Int] = {
+    var sequence: Option[Int] = None
+    // Odersky endorses the following.
+    // https://issues.scala-lang.org/browse/SI-4437
+    var connection = null.asInstanceOf[Connection]
+    try {
+      connection = DBUtils.getJdbcConnection(dbUri)
+      val preppedStatement =
+        connection.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
+      preppedStatement.setString(1, procName)
+      val rs = preppedStatement.executeQuery()
+      sequence = if (rs.next()) Some(rs.getInt("sequence")) else None
+    } finally {
+      if (connection != null) connection.close()
+    }
+
+    sequence match {
+      case Some(0)  => None
+      case elsewise => elsewise
     }
   }
 }
