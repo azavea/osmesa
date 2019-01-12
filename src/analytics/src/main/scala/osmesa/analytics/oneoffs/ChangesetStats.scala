@@ -10,7 +10,6 @@ import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.locationtech.geomesa.spark.jts.st_length
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
-import osmesa.common.sources.Source
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
 
@@ -172,12 +171,7 @@ object ChangesetStats extends CommandApp(
         .drop('way_countries)
         .drop('node_countries)
 
-      val changesets = spark.read
-                            .format(Source.Changesets)
-                            .option(Source.BaseURI, "http://10.0.1.244/replication/replication/changesets/")
-                            .option(Source.ProcessName, "ChangesetStats")
-                            .load
-      // val changesets = spark.read.orc(changesetSource)
+       val changesets = spark.read.orc(changesetSource)
 
       val changesetMetadata = changesets
         .select(
@@ -185,91 +179,69 @@ object ChangesetStats extends CommandApp(
           'uid,
           'user as 'name,
           'tags.getItem("created_by") as 'editor,
-          'createdAt as 'created_at,
-          'closedAt as 'closed_at,
+          'created_at,
+          'closed_at,
           hashtags('tags) as 'hashtags
         )
 
       val changesetStats = rawChangesetStats
         .join(changesetMetadata, Seq("changeset"), "left_outer")
+        .withColumnRenamed("changeset", "id")
+        .cache
 
-      changesetStats
-        .repartition(50)
+      val changesetsCountriesTable = changesetStats
+        .select('id as 'changeset_id, explode('countries) as Seq("country", "edit_count"))
+
+      val hashtagsTable = changesetStats
+        .select(explode('hashtags) as 'hashtag)
+        .distinct
+        .select(row_number() over Window.orderBy('hashtag) as 'id, 'hashtag)
+        .cache
+
+      val changesetsHashtagsTable = changesetStats
+        .select('id as 'changeset_id, explode('hashtags) as 'hashtag)
+        .join(broadcast(hashtagsTable.withColumnRenamed("id", "hashtag_id")), Seq("hashtag"))
+        .drop('hashtag)
+
+      val usersTable = changesetStats
+        .select('uid as 'id, 'name)
+        .distinct
+
+      val changesetsTable = changesetStats
+        .withColumnRenamed("uid", "user_id")
+        .drop('countries)
+        .drop('hashtags)
+        .drop('name)
+
+      changesetsTable
+        .repartition(1)
         .write
         .mode(SaveMode.Overwrite)
-        .orc(output.resolve("changesets").toString)
-      //
-      //      val userStats = changesetStats
-      //        .groupBy('uid, 'name)
-      //        .agg(
-      //          sum('road_km_added) as 'road_km_added,
-      //          sum('road_km_modified) as 'road_km_modified,
-      //          sum('waterway_km_added) as 'waterway_km_added,
-      //          sum('waterway_km_modified) as 'waterway_km_modified,
-      //          sum('coastline_km_added) as 'coastline_km_added,
-      //          sum('coastline_km_modified) as 'coastline_km_modified,
-      //          sum('roads_added) as 'roads_added,
-      //          sum('roads_modified) as 'roads_modified,
-      //          sum('waterways_added) as 'waterways_added,
-      //          sum('waterways_modified) as 'waterways_modified,
-      //          sum('coastlines_added) as 'coastlines_added,
-      //          sum('coastlines_modified) as 'coastlines_modified,
-      //          sum('buildings_added) as 'buildings_added,
-      //          sum('buildings_modified) as 'buildings_modified,
-      //          sum('pois_added) as 'pois_added,
-      //          sum('pois_modified) as 'pois_modified,
-      //          count('changeset) as 'changeset_count,
-      //          // TODO more efficient as a UDAF; even more efficient using mapPartitions
-      //          count_values(collect_list('editor)) as 'editors,
-      //          count_values(collect_list(to_date(date_trunc("day", 'created_at)))) as 'edit_times,
-      //          count_values(flatten(collect_list('hashtags))) as 'hashtags,
-      //          sum_counts(collect_list('countries)) as 'countries
-      //        )
-      //        .withColumn("edit_count", ('roads_added + 'roads_modified + 'waterways_added + 'waterways_modified +
-      //          'coastlines_added + 'coastlines_modified + 'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
-      //
-      //      val hashtagStats = changesetStats
-      //        .withColumn("hashtag", explode('hashtags))
-      //        .groupBy('hashtag)
-      //        .agg(
-      //          sum('road_km_added) as 'road_km_added,
-      //          sum('road_km_modified) as 'road_km_modified,
-      //          sum('waterway_km_added) as 'waterway_km_added,
-      //          sum('waterway_km_modified) as 'waterway_km_modified,
-      //          sum('coastline_km_added) as 'coastline_km_added,
-      //          sum('coastline_km_modified) as 'coastline_km_modified,
-      //          sum('roads_added) as 'roads_added,
-      //          sum('roads_modified) as 'roads_modified,
-      //          sum('waterways_added) as 'waterways_added,
-      //          sum('waterways_modified) as 'waterways_modified,
-      //          sum('coastlines_added) as 'coastlines_added,
-      //          sum('coastlines_modified) as 'coastlines_modified,
-      //          sum('buildings_added) as 'buildings_added,
-      //          sum('buildings_modified) as 'buildings_modified,
-      //          sum('pois_added) as 'pois_added,
-      //          sum('pois_modified) as 'pois_modified,
-      //          count('changeset) as 'changeset_count,
-      //          count_values(collect_list('editor)) as 'editors,
-      //          count_values(collect_list(to_date(date_trunc("day", 'created_at)))) as 'edit_times,
-      //          flatten(collect_list('hashtags)) as 'hashtags,
-      //          sum_counts(collect_list('countries)) as 'countries
-      //        )
-      //        .withColumn("edit_count", ('roads_added + 'roads_modified + 'waterways_added + 'waterways_modified +
-      //          'coastlines_added + 'coastlines_modified + 'buildings_added + 'buildings_modified + 'pois_added + 'pois_modified) as 'edit_count)
-      //        .withColumn("related_hashtags", count_values(without('hashtags, 'hashtag)))
-      //        .drop('hashtags)
-      //
-      //      userStats
-      //        .repartition(1)
-      //        .write
-      //        .mode(SaveMode.Overwrite)
-      //        .orc(output.resolve("user-stats").toString)
-      //
-      //      hashtagStats
-      //        .repartition(1)
-      //        .write
-      //        .mode(SaveMode.Overwrite)
-      //        .orc(output.resolve("hashtag-stats").toString)
+        .csv(output.resolve("changesets").toString)
+
+      changesetsCountriesTable
+        .repartition(1)
+        .write
+        .mode(SaveMode.Overwrite)
+        .csv(output.resolve("changesets_countries").toString)
+
+      changesetsHashtagsTable
+        .repartition(1)
+        .write
+        .mode(SaveMode.Overwrite)
+        .csv(output.resolve("changesets_hashtags").toString)
+
+      hashtagsTable
+        .repartition(1)
+        .write
+        .mode(SaveMode.Overwrite)
+        .csv(output.resolve("hashtags").toString)
+
+      usersTable
+        .repartition(1)
+        .write
+        .mode(SaveMode.Overwrite)
+        .csv(output.resolve("users").toString)
 
       spark.stop()
     }
