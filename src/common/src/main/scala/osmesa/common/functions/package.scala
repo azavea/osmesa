@@ -1,9 +1,9 @@
 package osmesa.common
 
-import java.math.BigDecimal
-
+import org.apache.spark.sql.Column
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.udf
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.{DoubleType, FloatType}
 import osmesa.common.util._
 
 package object functions {
@@ -19,15 +19,15 @@ package object functions {
 
   // Convert BigDecimals to doubles
   // Reduces size taken for representation at the expense of some precision loss.
-  val asDouble: UserDefinedFunction = udf {
-    Option(_: BigDecimal).map(_.doubleValue).getOrElse(Double.NaN)
-  }
+  def asDouble(value: Column): Column =
+    when(value.isNotNull, value.cast(DoubleType))
+      .otherwise(lit(Double.NaN)) as s"asDouble($value)"
 
   // Convert BigDecimals to floats
   // Reduces size taken for representation at the expense of more precision loss.
-  val asFloat: UserDefinedFunction = udf {
-    Option(_: BigDecimal).map(_.floatValue).getOrElse(Float.NaN)
-  }
+  def asFloat(value: Column): Column =
+    when(value.isNotNull, value.cast(FloatType))
+      .otherwise(lit(Float.NaN)) as s"asFloat($value)"
 
   val count_values: UserDefinedFunction = udf {
     (_: Seq[String]).groupBy(identity).mapValues(_.size)
