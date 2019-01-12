@@ -2,63 +2,27 @@ package osmesa.common.model
 
 import java.sql.Timestamp
 
-import org.apache.spark.sql.types._
 import org.joda.time.DateTime
 
 import scala.util.Try
 
-case class Changeset(sequence: Int,
-                     id: Long,
-                     createdAt: Timestamp,
-                     closedAt: Option[Timestamp],
-                     open: Boolean,
-                     numChanges: Int,
-                     user: String,
-                     uid: Long,
-                     minLat: Option[Float],
-                     maxLat: Option[Float],
-                     minLon: Option[Float],
-                     maxLon: Option[Float],
-                     commentsCount: Int,
+case class Changeset(id: Long,
                      tags: Map[String, String],
-                     comments: Seq[ChangesetComment])
+                     createdAt: Timestamp,
+                     open: Boolean,
+                     closedAt: Option[Timestamp],
+                     commentsCount: Int,
+                     minLat: Option[Double],
+                     maxLat: Option[Double],
+                     minLon: Option[Double],
+                     maxLon: Option[Double],
+                     numChanges: Int,
+                     uid: Long,
+                     user: String,
+                     comments: Seq[ChangesetComment],
+                     sequence: Int)
 
 object Changeset {
-  lazy val Schema = StructType(
-    StructField("sequence", IntegerType) ::
-      StructField("id", LongType) ::
-      StructField("createdAt", TimestampType, nullable = false) ::
-      StructField("closedAt", TimestampType, nullable = true) ::
-      StructField("open", BooleanType, nullable = false) ::
-      StructField("numChanges", IntegerType, nullable = false) ::
-      StructField("user", StringType, nullable = false) ::
-      StructField("uid", LongType, nullable = false) ::
-      StructField("minLat", FloatType, nullable = true) ::
-      StructField("maxLat", FloatType, nullable = true) ::
-      StructField("minLon", FloatType, nullable = true) ::
-      StructField("maxLon", FloatType, nullable = true) ::
-      StructField("commentsCount", IntegerType, nullable = false) ::
-      StructField(
-        "tags",
-        MapType(StringType, StringType, valueContainsNull = false),
-        nullable = false
-    ) ::
-      StructField(
-      "comments",
-      DataTypes.createArrayType(
-        StructType(
-          StructField("date", TimestampType, nullable = false) ::
-            StructField("user", StringType, nullable = false) ::
-            StructField("uid", LongType, nullable = false) ::
-            StructField("body", StringType, nullable = false) ::
-              Nil
-        )
-      ),
-      nullable = true
-    ) ::
-      Nil
-  )
-
   implicit def stringToTimestamp(s: String): Timestamp =
     Timestamp.from(DateTime.parse(s).toDate.toInstant)
 
@@ -68,10 +32,10 @@ object Changeset {
       case ts => Some(ts)
     }
 
-  implicit def stringToOptionalFloat(s: String): Option[Float] =
+  implicit def stringToOptionalDouble(s: String): Option[Double] =
     s match {
       case "" => None
-      case c  => Some(c.toFloat)
+      case c  => Some(c.toDouble)
     }
 
   def fromXML(node: scala.xml.Node, sequence: Int): Changeset = {
@@ -93,20 +57,22 @@ object Changeset {
       (node \ "tag").map(tag => (tag \@ "k", tag \@ "v")).toMap
     val comments = (node \ "discussion" \ "comment").map(ChangesetComment.fromXML)
 
-    Changeset(sequence,
-              id,
-              createdAt,
-              closedAt,
-              open,
-              numChanges,
-              user,
-              uid,
-              minLat,
-              maxLat,
-              minLon,
-              maxLon,
-              commentsCount,
-              tags,
-              comments)
+    Changeset(
+      id,
+      tags,
+      createdAt,
+      open,
+      closedAt,
+      commentsCount,
+      minLat,
+      maxLat,
+      minLon,
+      maxLon,
+      numChanges,
+      uid,
+      user,
+      comments,
+      sequence
+    )
   }
 }
