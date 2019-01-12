@@ -198,9 +198,9 @@ package object osm {
       .toList // prevent a Stream from being returned
   }
 
-  def hashtags(tags: Column): Column =
+  def hashtags(comment: Column): Column =
     // only call the UDF when necessary
-    when(tags.getField("comment").isNotNull, extractHashtags(tags.getField("comment")))
+    when(comment.isNotNull and length(comment) > 0, extractHashtags(comment))
       .otherwise(typedLit(Seq.empty[String])) as "hashtags"
 
   def isBuilding(tags: Column): Column =
