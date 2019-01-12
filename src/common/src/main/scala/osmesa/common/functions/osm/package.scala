@@ -6,6 +6,8 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, Row}
 import osmesa.common.ProcessOSM._
 
+import scala.util.matching.Regex
+
 package object osm {
   // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys) @ v2.8.0.
   private val AreaKeys: Map[String, Map[String, Boolean]] = Map(
@@ -128,7 +130,7 @@ package object osm {
 
   private val POITags = Set("amenity", "shop", "craft", "office", "leisure", "aeroway")
 
-  private val HashtagMatcher = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!\"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
+  private val HashtagMatcher: Regex = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!\"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
 
   private val _isArea = (tags: Map[String, String]) =>
     tags match {
@@ -180,14 +182,20 @@ package object osm {
 
   lazy val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
 
-  private val extractHashtags: UserDefinedFunction = udf { comment: String =>
+  // matches letters or emoji (no numbers or punctuation)
+  private val ContentMatcher: Regex = """[\p{L}\uD83C-\uDBFF\uDC00-\uDFFF]""".r
+  private val TrailingPunctuationMatcher: Regex = """[:]$""".r
+
+  val extractHashtags: UserDefinedFunction = udf { comment: String =>
     HashtagMatcher
       .findAllMatchIn(comment)
       // fetch the first group (after #)
       .map(_.group(1).toLowerCase)
-      // check that each group contains at least one letter
-      .filter("""\p{L}""".r.findFirstIn(_).isDefined)
-      .toSeq
+      // check that each group contains at least one substantive character
+      .filter(ContentMatcher.findFirstIn(_).isDefined)
+      // strip trailing punctuation
+      .map(TrailingPunctuationMatcher.replaceAllIn(_, ""))
+      .toList // prevent a Stream from being returned
   }
 
   def hashtags(tags: Column): Column =
