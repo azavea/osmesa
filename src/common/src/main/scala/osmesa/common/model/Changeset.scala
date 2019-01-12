@@ -6,21 +6,21 @@ import org.joda.time.DateTime
 
 import scala.util.Try
 
-case class Changeset(sequence: Int,
-                     id: Long,
-                     createdAt: Timestamp,
-                     closedAt: Option[Timestamp],
-                     open: Boolean,
-                     numChanges: Int,
-                     user: String,
-                     uid: Long,
-                     minLat: Option[Float],
-                     maxLat: Option[Float],
-                     minLon: Option[Float],
-                     maxLon: Option[Float],
-                     commentsCount: Int,
+case class Changeset(id: Long,
                      tags: Map[String, String],
-                     comments: Seq[ChangesetComment])
+                     createdAt: Timestamp,
+                     open: Boolean,
+                     closedAt: Option[Timestamp],
+                     commentsCount: Int,
+                     minLat: Option[Double],
+                     maxLat: Option[Double],
+                     minLon: Option[Double],
+                     maxLon: Option[Double],
+                     numChanges: Int,
+                     uid: Long,
+                     user: String,
+                     comments: Seq[ChangesetComment],
+                     sequence: Int)
 
 object Changeset {
   implicit def stringToTimestamp(s: String): Timestamp =
@@ -32,10 +32,10 @@ object Changeset {
       case ts => Some(ts)
     }
 
-  implicit def stringToOptionalFloat(s: String): Option[Float] =
+  implicit def stringToOptionalDouble(s: String): Option[Double] =
     s match {
       case "" => None
-      case c  => Some(c.toFloat)
+      case c  => Some(c.toDouble)
     }
 
   def fromXML(node: scala.xml.Node, sequence: Int): Changeset = {
@@ -57,20 +57,22 @@ object Changeset {
       (node \ "tag").map(tag => (tag \@ "k", tag \@ "v")).toMap
     val comments = (node \ "discussion" \ "comment").map(ChangesetComment.fromXML)
 
-    Changeset(sequence,
-              id,
-              createdAt,
-              closedAt,
-              open,
-              numChanges,
-              user,
-              uid,
-              minLat,
-              maxLat,
-              minLon,
-              maxLon,
-              commentsCount,
-              tags,
-              comments)
+    Changeset(
+      id,
+      tags,
+      createdAt,
+      open,
+      closedAt,
+      commentsCount,
+      minLat,
+      maxLat,
+      minLon,
+      maxLon,
+      numChanges,
+      uid,
+      user,
+      comments,
+      sequence
+    )
   }
 }
