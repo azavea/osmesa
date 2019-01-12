@@ -181,7 +181,7 @@ object ChangesetStats extends CommandApp(
           'tags.getItem("created_by") as 'editor,
           'created_at,
           'closed_at,
-          hashtags('tags) as 'hashtags
+          hashtags('tags.getField("comment")) as 'hashtags
         )
 
       val changesetStats = rawChangesetStats

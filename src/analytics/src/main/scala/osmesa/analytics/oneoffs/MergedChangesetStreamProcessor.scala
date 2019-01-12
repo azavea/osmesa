@@ -141,7 +141,7 @@ object MergedChangesetStreamProcessor extends CommandApp(
           .select(
             'id as 'changeset,
             'tags.getField("created_by") as 'editor,
-            hashtags('tags) as 'hashtags
+            hashtags('tags.getField("comment")) as 'hashtags
           )
 
         val geomsWithWatermark = geoms
