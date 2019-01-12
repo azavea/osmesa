@@ -6,16 +6,14 @@ import java.util
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader.DataReaderFactory
-import org.apache.spark.sql.types.StructType
 import osmesa.common.model.AugmentedDiff
 
 import scala.collection.JavaConverters._
 import scala.compat.java8.OptionConverters._
 import scala.util.Random
 
-case class AugmentedDiffReader(options: DataSourceOptions) extends ReplicationReader(options) {
-  override def readSchema(): StructType = AugmentedDiff.Schema
-
+case class AugmentedDiffReader(options: DataSourceOptions)
+    extends ReplicationReader[AugmentedDiff](options) {
   override def createDataReaderFactories(): util.List[DataReaderFactory[Row]] = {
     // prevent sequential diffs from being assigned to the same task
     val sequences = Random.shuffle((startSequence to endSequence).toList)

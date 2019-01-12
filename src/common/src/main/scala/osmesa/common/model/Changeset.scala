@@ -2,7 +2,6 @@ package osmesa.common.model
 
 import java.sql.Timestamp
 
-import org.apache.spark.sql.types._
 import org.joda.time.DateTime
 
 import scala.util.Try
@@ -24,41 +23,6 @@ case class Changeset(sequence: Int,
                      comments: Seq[ChangesetComment])
 
 object Changeset {
-  lazy val Schema = StructType(
-    StructField("sequence", IntegerType) ::
-      StructField("id", LongType) ::
-      StructField("createdAt", TimestampType, nullable = false) ::
-      StructField("closedAt", TimestampType, nullable = true) ::
-      StructField("open", BooleanType, nullable = false) ::
-      StructField("numChanges", IntegerType, nullable = false) ::
-      StructField("user", StringType, nullable = false) ::
-      StructField("uid", LongType, nullable = false) ::
-      StructField("minLat", FloatType, nullable = true) ::
-      StructField("maxLat", FloatType, nullable = true) ::
-      StructField("minLon", FloatType, nullable = true) ::
-      StructField("maxLon", FloatType, nullable = true) ::
-      StructField("commentsCount", IntegerType, nullable = false) ::
-      StructField(
-        "tags",
-        MapType(StringType, StringType, valueContainsNull = false),
-        nullable = false
-    ) ::
-      StructField(
-      "comments",
-      DataTypes.createArrayType(
-        StructType(
-          StructField("date", TimestampType, nullable = false) ::
-            StructField("user", StringType, nullable = false) ::
-            StructField("uid", LongType, nullable = false) ::
-            StructField("body", StringType, nullable = false) ::
-              Nil
-        )
-      ),
-      nullable = true
-    ) ::
-      Nil
-  )
-
   implicit def stringToTimestamp(s: String): Timestamp =
     Timestamp.from(DateTime.parse(s).toDate.toInstant)
 
