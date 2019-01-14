@@ -1,10 +1,12 @@
 package osmesa.common.functions
 
-import org.apache.spark.sql.Row
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.udf
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.{Column, Row}
 import osmesa.common.ProcessOSM._
+
+import scala.util.matching.Regex
 
 package object osm {
   // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys) @ v2.8.0.
@@ -115,20 +117,20 @@ package object osm {
     )
   )
 
-  private val MultiPolygonTypes = Set("multipolygon", "boundary")
+  private val MultiPolygonTypes = Seq("multipolygon", "boundary")
 
-  private val BooleanValues = Set("yes", "no", "true", "false", "1", "0")
+  private val BooleanValues = Seq("yes", "no", "true", "false", "1", "0")
 
-  private val TruthyValues = Set("yes", "true", "1")
+  private val TruthyValues = Seq("yes", "true", "1")
 
   private val WaterwayValues =
-    Set(
+    Seq(
       "river", "canal", "stream", "brook", "drain", "ditch"
     )
 
   private val POITags = Set("amenity", "shop", "craft", "office", "leisure", "aeroway")
 
-  private val HashtagMatcher = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!\"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
+  private val HashtagMatcher: Regex = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!\"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
 
   private val _isArea = (tags: Map[String, String]) =>
     tags match {
@@ -140,20 +142,23 @@ package object osm {
         matchingKeys.exists(k => !AreaKeys(k).contains(tags(k)))
     }
 
-  val isArea: UserDefinedFunction = udf(_isArea)
+  val isAreaUDF: UserDefinedFunction = udf(_isArea)
 
-  private val _isMultiPolygon = (tags: Map[String, String]) =>
-    tags.contains("type") && MultiPolygonTypes.contains(tags("type").toLowerCase)
+  def isArea(tags: Column): Column =
+    when(lower(coalesce(tags.getField("area"), lit(""))).isin(BooleanValues: _*),
+         lower(tags.getField("area")).isin(TruthyValues: _*))
+      // only call the UDF when necessary
+      .otherwise(isAreaUDF(tags)) as 'isArea
 
-  val isMultiPolygon: UserDefinedFunction = udf(_isMultiPolygon)
+  def isMultiPolygon(tags: Column): Column =
+    lower(coalesce(tags.getItem("type"), lit("")))
+      .isin(MultiPolygonTypes: _*) as 'isMultiPolygon
 
-  val isNew: UserDefinedFunction = udf { (version: Int, minorVersion: Int) =>
-    version == 1 && minorVersion == 0
-  }
+  def isNew(version: Column, minorVersion: Column): Column =
+    version <=> 1 && minorVersion <=> 0 as 'isNew
 
-  val isRoute: UserDefinedFunction = udf { tags: Map[String, String] =>
-    tags.contains("type") && tags("type") == "route"
-  }
+  def isRoute(tags: Column): Column =
+    lower(tags.getItem("type")) <=> "route" as 'isRoute
 
   private lazy val MemberSchema = ArrayType(
     StructType(
@@ -177,41 +182,43 @@ package object osm {
 
   lazy val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
 
-  private val _hashtags = (comment: String) =>
+  // matches letters or emoji (no numbers or punctuation)
+  private val ContentMatcher: Regex = """[\p{L}\uD83C-\uDBFF\uDC00-\uDFFF]""".r
+  private val TrailingPunctuationMatcher: Regex = """[:]$""".r
+
+  val extractHashtags: UserDefinedFunction = udf { comment: String =>
     HashtagMatcher
       .findAllMatchIn(comment)
       // fetch the first group (after #)
       .map(_.group(1).toLowerCase)
-      // check that each group contains at least one letter
-      .filter("""\p{L}""".r.findFirstIn(_).isDefined)
-      .toSeq
-
-  val hashtags: UserDefinedFunction = udf { tags: Map[String, String] =>
-    tags.get("comment") match {
-      case Some(comment) => _hashtags(comment)
-      case None => Seq.empty[String]
-    }
+      // check that each group contains at least one substantive character
+      .filter(ContentMatcher.findFirstIn(_).isDefined)
+      // strip trailing punctuation
+      .map(TrailingPunctuationMatcher.replaceAllIn(_, ""))
+      .toList // prevent a Stream from being returned
   }
 
-  val isBuilding: UserDefinedFunction = udf {
-    (_: Map[String, String]).getOrElse("building", "no").toLowerCase != "no"
-  }
+  def hashtags(comment: Column): Column =
+    // only call the UDF when necessary
+    when(comment.isNotNull and length(comment) > 0, extractHashtags(comment))
+      .otherwise(typedLit(Seq.empty[String])) as 'hashtags
+
+  def isBuilding(tags: Column): Column =
+    lower(coalesce(tags.getItem("building"), lit("no"))) =!= "no" as 'isBuilding
 
   val isPOI: UserDefinedFunction = udf {
     tags: Map[String, String] => POITags.intersect(tags.keySet).nonEmpty
   }
 
-  val isRoad: UserDefinedFunction = udf {
-    (_: Map[String, String]).contains("highway")
-  }
+  def isRoad(tags: Column): Column =
+    tags.getItem("highway").isNotNull as 'isRoad
 
-  val isCoastline: UserDefinedFunction = udf {
-    (_: Map[String, String]).getOrElse("natural", "").toLowerCase == "coastline"
-  }
+  def isCoastline(tags: Column): Column =
+    lower(tags.getItem("natural")) <=> "coastline" as 'isCoastline
 
-  val isWaterway: UserDefinedFunction = udf {
-    tags: Map[String, String] => WaterwayValues.contains(tags.getOrElse("waterway", null))
-  }
+  def isWaterway(tags: Column): Column =
+    lower(coalesce(tags.getItem("waterway"), lit("")))
+      .isin(WaterwayValues: _*) as 'isWaterway
 
   def mergeTags: UserDefinedFunction = udf {
     (_: Map[String, String]) ++ (_: Map[String, String])
