@@ -93,7 +93,7 @@ object Footprint extends Logging {
               }.toString)
 
           val targetUsers = changesets
-            .withColumn("hashtag", explode(hashtags('tags)))
+            .withColumn("hashtag", explode(hashtags('tags.getField("comment"))))
             .where('hashtag isin (targetHashtags.toSeq: _*))
             .select('uid)
             .distinct
@@ -111,8 +111,8 @@ object Footprint extends Logging {
           val changesets =
             spark.read
               .orc(changesetsURI.toString)
-              .where(size(hashtags('tags)) > 0)
-              .withColumn("hashtag", explode(hashtags('tags)))
+              .where(size(hashtags('tags.getField("comment"))) > 0)
+              .withColumn("hashtag", explode(hashtags('tags.getField("comment"))))
               .withColumnRenamed("id", "changeset")
 
           spark.read
@@ -128,7 +128,7 @@ object Footprint extends Logging {
               .withColumnRenamed("id", "changeset")
 
           val targetChangesets = changesets
-            .withColumn("hashtag", explode(hashtags('tags)))
+            .withColumn("hashtag", explode(hashtags('tags.getField("comment"))))
             .where('hashtag isin (targetHashtags.toSeq: _*))
             .select('changeset, 'hashtag)
             .distinct

@@ -6,7 +6,6 @@ import java.sql.{Connection, Timestamp}
 import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
-import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
 import osmesa.common.functions.osm._
 import osmesa.common.sources.Source
@@ -85,7 +84,7 @@ object ChangesetStreamProcessor extends CommandApp(
                   'user,
                   'uid,
                   'tags.getField("created_by") as 'editor,
-                  hashtags('tags) as 'hashtags)
+                  hashtags('tags.getField("comment")) as 'hashtags)
           .writeStream
           .queryName("update changeset metadata")
           .foreach(new ForeachWriter[Row] {
