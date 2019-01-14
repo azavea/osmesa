@@ -148,17 +148,17 @@ package object osm {
     when(lower(coalesce(tags.getField("area"), lit(""))).isin(BooleanValues: _*),
          lower(tags.getField("area")).isin(TruthyValues: _*))
       // only call the UDF when necessary
-      .otherwise(isAreaUDF(tags)) as "isArea"
+      .otherwise(isAreaUDF(tags)) as 'isArea
 
   def isMultiPolygon(tags: Column): Column =
     lower(coalesce(tags.getItem("type"), lit("")))
-      .isin(MultiPolygonTypes: _*) as "isMultiPolygon"
+      .isin(MultiPolygonTypes: _*) as 'isMultiPolygon
 
   def isNew(version: Column, minorVersion: Column): Column =
-    version <=> 1 && minorVersion <=> 0 as "isNew"
+    version <=> 1 && minorVersion <=> 0 as 'isNew
 
   def isRoute(tags: Column): Column =
-    lower(tags.getItem("type")) <=> "route" as "isRoute"
+    lower(tags.getItem("type")) <=> "route" as 'isRoute
 
   private lazy val MemberSchema = ArrayType(
     StructType(
@@ -201,24 +201,24 @@ package object osm {
   def hashtags(comment: Column): Column =
     // only call the UDF when necessary
     when(comment.isNotNull and length(comment) > 0, extractHashtags(comment))
-      .otherwise(typedLit(Seq.empty[String])) as "hashtags"
+      .otherwise(typedLit(Seq.empty[String])) as 'hashtags
 
   def isBuilding(tags: Column): Column =
-    lower(coalesce(tags.getItem("building"), lit("no"))) =!= "no" as "isBuilding"
+    lower(coalesce(tags.getItem("building"), lit("no"))) =!= "no" as 'isBuilding
 
   val isPOI: UserDefinedFunction = udf {
     tags: Map[String, String] => POITags.intersect(tags.keySet).nonEmpty
   }
 
   def isRoad(tags: Column): Column =
-    array_contains(map_keys(tags), "highway") as "isRoad"
+    tags.getItem("highway").isNotNull as 'isRoad
 
   def isCoastline(tags: Column): Column =
-    lower(tags.getItem("natural")) <=> "coastline" as "isCoastline"
+    lower(tags.getItem("natural")) <=> "coastline" as 'isCoastline
 
   def isWaterway(tags: Column): Column =
     lower(coalesce(tags.getItem("waterway"), lit("")))
-      .isin(WaterwayValues: _*) as "isWaterway"
+      .isin(WaterwayValues: _*) as 'isWaterway
 
   def mergeTags: UserDefinedFunction = udf {
     (_: Map[String, String]) ++ (_: Map[String, String])
