@@ -187,21 +187,14 @@ object ChangesetStats extends CommandApp(
       val changesetStats = rawChangesetStats
         .join(changesetMetadata, Seq("changeset"), "left_outer")
         .withColumnRenamed("changeset", "id")
+        .repartition(1)
         .cache
 
       val changesetsCountriesTable = changesetStats
         .select('id as 'changeset_id, explode('countries) as Seq("country", "edit_count"))
 
-      val hashtagsTable = changesetStats
-        .select(explode('hashtags) as 'hashtag)
-        .distinct
-        .select(row_number() over Window.orderBy('hashtag) as 'id, 'hashtag)
-        .cache
-
       val changesetsHashtagsTable = changesetStats
         .select('id as 'changeset_id, explode('hashtags) as 'hashtag)
-        .join(broadcast(hashtagsTable.withColumnRenamed("id", "hashtag_id")), Seq("hashtag"))
-        .drop('hashtag)
 
       val usersTable = changesetStats
         .select('uid as 'id, 'name)
@@ -214,31 +207,21 @@ object ChangesetStats extends CommandApp(
         .drop('name)
 
       changesetsTable
-        .repartition(1)
         .write
         .mode(SaveMode.Overwrite)
         .csv(output.resolve("changesets").toString)
 
       changesetsCountriesTable
-        .repartition(1)
         .write
         .mode(SaveMode.Overwrite)
         .csv(output.resolve("changesets_countries").toString)
 
       changesetsHashtagsTable
-        .repartition(1)
         .write
         .mode(SaveMode.Overwrite)
         .csv(output.resolve("changesets_hashtags").toString)
 
-      hashtagsTable
-        .repartition(1)
-        .write
-        .mode(SaveMode.Overwrite)
-        .csv(output.resolve("hashtags").toString)
-
       usersTable
-        .repartition(1)
         .write
         .mode(SaveMode.Overwrite)
         .csv(output.resolve("users").toString)
