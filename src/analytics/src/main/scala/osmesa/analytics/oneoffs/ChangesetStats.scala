@@ -174,6 +174,8 @@ object ChangesetStats extends CommandApp(
        val changesets = spark.read.orc(changesetSource)
 
       val changesetMetadata = changesets
+        .groupBy('id, 'tags, 'uid, 'user, 'created_at)
+        .agg(first('closed_at, ignoreNulls = true) as 'closed_at)
         .select(
           'id as 'changeset,
           'uid,
