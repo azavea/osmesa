@@ -178,9 +178,9 @@ object ChangesetStats extends CommandApp(
         .agg(first('closed_at, ignoreNulls = true) as 'closed_at)
         .select(
           'id as 'changeset,
+          'tags.getItem("created_by") as 'editor,
           'uid,
           'user as 'name,
-          'tags.getItem("created_by") as 'editor,
           'created_at,
           'closed_at,
           hashtags('tags.getField("comment")) as 'hashtags
