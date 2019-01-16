@@ -12,8 +12,8 @@ import org.joda.time.DateTime
 import osmesa.common.model.{Actions, Change}
 import scalaj.http.Http
 
+import javax.xml.parsers.{SAXParser, SAXParserFactory}
 import scala.concurrent.duration.{Duration, _}
-import scala.xml.XML
 
 object ChangeSource extends Logging {
   val Delay: Duration = 15 seconds
@@ -34,20 +34,21 @@ object ChangeSource extends Logging {
         Thread.sleep(Delay.toMillis)
         getSequence(baseURI, sequence)
       } else {
-        // NOTE: if diff bodies get really large, switch to a SAX parser to help with the memory footprint
         val bais = new ByteArrayInputStream(response.body)
         val gzis = new GZIPInputStream(bais)
+        val factory = SAXParserFactory.newInstance
+        val parser = factory.newSAXParser
+        val handler = new Change.ChangeHandler(sequence)
         try {
-          val data = XML.loadString(IOUtils.toString(gzis))
 
-          val changes = (data \ "_").flatMap { node =>
-            val action = node.label match {
-              case "create" => Actions.Create
-              case "modify" => Actions.Modify
-              case "delete" => Actions.Delete
-            }
-            (node \ "_").map(Change.fromXML(_, action, sequence))
-          }
+          // val data = XML.loadString(IOUtils.toString(gzis))
+
+          //val changes = (data \ "_").flatMap { node =>
+            //(node \ "_").map(Change.fromXML(_, Actions.fromString(node.label), sequence))
+          //}
+
+          parser.parse(gzis, handler)
+          val changes = handler.changeSeq
 
           logDebug(s"Received ${changes.length} changes")
 
