@@ -41,12 +41,6 @@ object ChangeSource extends Logging {
         val handler = new Change.ChangeHandler(sequence)
         try {
 
-          // val data = XML.loadString(IOUtils.toString(gzis))
-
-          //val changes = (data \ "_").flatMap { node =>
-            //(node \ "_").map(Change.fromXML(_, Actions.fromString(node.label), sequence))
-          //}
-
           parser.parse(gzis, handler)
           val changes = handler.changeSeq
 
