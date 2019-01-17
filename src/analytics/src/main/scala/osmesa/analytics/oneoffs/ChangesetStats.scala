@@ -174,16 +174,16 @@ object ChangesetStats extends CommandApp(
        val changesets = spark.read.orc(changesetSource)
 
       val changesetMetadata = changesets
-        .groupBy('id, 'tags, 'uid, 'user, 'created_at)
+        .groupBy('id, 'tags.getItem("created_by") as 'editor, 'uid, 'user, 'created_at, 'tags.getItem("comment") as 'comment)
         .agg(first('closed_at, ignoreNulls = true) as 'closed_at)
         .select(
           'id as 'changeset,
-          'tags.getItem("created_by") as 'editor,
+          'editor,
           'uid,
           'user as 'name,
           'created_at,
           'closed_at,
-          hashtags('tags.getField("comment")) as 'hashtags
+          hashtags('comment) as 'hashtags
         )
 
       val changesetStats = rawChangesetStats
@@ -199,8 +199,12 @@ object ChangesetStats extends CommandApp(
         .select('id as 'changeset_id, explode('hashtags) as 'hashtag)
 
       val usersTable = changesetStats
-        .select('uid as 'id, 'name)
-        .distinct
+        .select('id as 'changeset, 'uid as 'id, 'name)
+        .groupByKey(_.getAs[Long]("id"))
+        .mapGroups((id, rows) =>
+          // get a user's last-used username
+          (id, rows.map(x => (x.getAs[Long]("changeset"), x.getAs[String]("name"))).maxBy(_._1)._2))
+        .toDF("id", "name")
 
       val changesetsTable = changesetStats
         .withColumnRenamed("uid", "user_id")
