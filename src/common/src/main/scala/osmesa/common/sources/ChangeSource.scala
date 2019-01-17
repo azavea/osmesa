@@ -6,19 +6,18 @@ import java.util.Properties
 import java.util.zip.GZIPInputStream
 
 import com.softwaremill.macmemo.memoize
-import org.apache.commons.io.IOUtils
+import javax.xml.parsers.SAXParserFactory
 import org.apache.spark.internal.Logging
 import org.joda.time.DateTime
-import osmesa.common.model.{Actions, Change}
+import osmesa.common.model
+import osmesa.common.model.Change
 import scalaj.http.Http
 
-import javax.xml.parsers.{SAXParser, SAXParserFactory}
 import scala.concurrent.duration.{Duration, _}
 
 object ChangeSource extends Logging {
   val Delay: Duration = 15 seconds
-  private val saxParser = SAXParserFactory.newInstance.newSAXParser
-  private val saxHandler = new Change.ChangeHandler
+  private val saxParserFactory = SAXParserFactory.newInstance
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Change] = {
     val s = f"$sequence%09d".toArray
@@ -38,14 +37,13 @@ object ChangeSource extends Logging {
       } else {
         val bais = new ByteArrayInputStream(response.body)
         val gzis = new GZIPInputStream(bais)
+        val parser = saxParserFactory.newSAXParser
+        val handler = new model.Change.ChangeHandler(sequence)
         try {
+          parser.parse(gzis, handler)
+          val changes = handler.changes
 
-          saxParser.reset
-          saxHandler.reset(sequence)
-          saxParser.parse(gzis, saxHandler)
-          val changes = saxHandler.changeSeq
-
-          logDebug(s"Received ${changes.length} changes")
+          logDebug(s"Received ${changes.length} changes from sequence $sequence")
 
           changes
         } finally {
