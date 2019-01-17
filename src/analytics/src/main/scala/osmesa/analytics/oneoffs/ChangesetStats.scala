@@ -205,6 +205,7 @@ object ChangesetStats extends CommandApp(
           // get a user's last-used username
           (id, rows.map(x => (x.getAs[Long]("changeset"), x.getAs[String]("name"))).maxBy(_._1)._2))
         .toDF("id", "name")
+        .repartition(1)
 
       val changesetsTable = changesetStats
         .withColumnRenamed("uid", "user_id")
