@@ -70,6 +70,8 @@ object Change {
         case "member" =>
           members.append(
             Member(Member.typeFromString(attrs("type")), attrs("ref").toLong, attrs("role")))
+
+        case _ => () // no-op
       }
     }
 
@@ -89,7 +91,7 @@ object Change {
             attrs.get("lat").map(_.toDouble),
             attrs.get("lon").map(_.toDouble),
             Option(nds).filter(_.nonEmpty),
-            Option(members).filter(_.nonEmpty),
+            Option(members).filter(_.nonEmpty).map(_.toSeq),
             attrs.get("changeset").map(_.toLong).getOrElse(-1L),
             stringToTimestamp(attrs.getOrElse("timestamp", "1970-01-01T00:00:00Z")),
             attrs.get("uid").map(_.toLong).getOrElse(-1L),
