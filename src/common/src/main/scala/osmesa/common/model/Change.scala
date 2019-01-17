@@ -33,19 +33,28 @@ object Change {
   implicit def stringToTimestamp(s: String): Timestamp =
     Timestamp.from(DateTime.parse(s).toDate.toInstant)
 
-  class ChangeHandler(sequence: Int) extends DefaultHandler {
+  class ChangeHandler extends DefaultHandler {
     val changeSeq = Queue.empty[Change]
     var action: Actions.Action = Actions.Delete
     var working: Change = null
+    private var sequence: Int = -1
+    final val actionLabels = Set("create", "delete", "modify")
+    final val elementLabels = Set("node", "way", "relation")
+    def reset(seq: Int) = {
+      changeSeq.clear
+      working = null
+      action = Actions.Delete
+      sequence = seq
+    }
     override def startElement(uri: String, localName: String, qName: String, attributes: sax.Attributes) = {
       val attrs =
         (for {
            i <- Range(0, attributes.getLength).toSeq
          } yield (attributes.getQName(i) -> attributes.getValue(i))).toMap
       qName.toLowerCase match {
-        case label if Set("create", "delete", "modify").contains(label) =>
+        case label if actionLabels.contains(label) =>
           action = Actions.fromString(qName)
-        case label if Set("node", "way", "relation").contains(label) =>
+        case label if elementLabels.contains(label) =>
           working = Change(attrs("id").toLong,
                            qName,
                            Map.empty,
@@ -82,7 +91,7 @@ object Change {
       }
     }
     override def endElement(uri: String, localName: String, qName: String) = {
-      if (Set("node", "way", "relation").contains(qName.toLowerCase)) {
+      if (elementLabels.contains(qName.toLowerCase)) {
         changeSeq.enqueue(working)
         working = null
       }

@@ -17,6 +17,8 @@ import scala.concurrent.duration.{Duration, _}
 
 object ChangeSource extends Logging {
   val Delay: Duration = 15 seconds
+  private val saxParser = SAXParserFactory.newInstance.newSAXParser
+  private val saxHandler = new Change.ChangeHandler
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Change] = {
     val s = f"$sequence%09d".toArray
@@ -36,13 +38,12 @@ object ChangeSource extends Logging {
       } else {
         val bais = new ByteArrayInputStream(response.body)
         val gzis = new GZIPInputStream(bais)
-        val factory = SAXParserFactory.newInstance
-        val parser = factory.newSAXParser
-        val handler = new Change.ChangeHandler(sequence)
         try {
 
-          parser.parse(gzis, handler)
-          val changes = handler.changeSeq
+          saxParser.reset
+          saxHandler.reset(sequence)
+          saxParser.parse(gzis, saxHandler)
+          val changes = saxHandler.changeSeq
 
           logDebug(s"Received ${changes.length} changes")
 
