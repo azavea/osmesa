@@ -32,7 +32,7 @@ stop-local:
 login-aws-registry:
 	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
-tag-image: login-aws-registry
+tag-image:
 	docker tag ${LOCAL_IMG} ${ECR_REPO}
 
 push-image: login-aws-registry tag-image
