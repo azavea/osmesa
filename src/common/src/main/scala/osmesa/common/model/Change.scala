@@ -7,8 +7,7 @@ import osmesa.common.model.Actions.Action
 
 import org.xml.sax
 import org.xml.sax.helpers.DefaultHandler
-import scala.collection.mutable.{Queue, Stack}
-import scala.xml.{Elem, Node, Null, Text, Attribute}
+import scala.collection.mutable.Queue
 
 // TODO at some point user metadata (changeset, uid, user, timestamp?) should become options, as they may not be
 // available
