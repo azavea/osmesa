@@ -70,6 +70,8 @@ object Change {
         case "member" =>
           members.append(
             Member(Member.typeFromString(attrs("type")), attrs("ref").toLong, attrs("role")))
+
+        case _ => () // no-op
       }
     }
 
