@@ -8,7 +8,6 @@ import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import osmesa.analytics.{Analytics, Footprints}
-import osmesa.common.ProcessOSM
 import osmesa.common.model._
 import osmesa.common.sources.Source
 
@@ -113,7 +112,7 @@ object UserFootprintUpdater
               .load
 
             val changedNodes = changes
-              .where('_type === ProcessOSM.NodeType and 'lat.isNotNull and 'lon.isNotNull)
+              .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
               .select('sequence, 'uid, 'lat, 'lon)
 
             val tiledNodes =
