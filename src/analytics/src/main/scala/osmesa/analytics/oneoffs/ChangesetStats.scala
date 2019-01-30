@@ -28,16 +28,30 @@ object ChangesetStats extends CommandApp(
       implicit val spark: SparkSession = Analytics.sparkSession("ChangesetStats")
       import spark.implicits._
 
+      @transient val idByVersion = Window.partitionBy('id).orderBy('version)
+
       val history = spark.read.orc(historySource)
+
+      val nodes = history.where('type === "node")
+        .withColumn("tags", when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
+          lag('tags, 1) over idByVersion)
+          .otherwise('tags))
+        .withColumn("lat", when(!'visible, lit(Double.NaN)).otherwise('lat))
+        .withColumn("lon", when(!'visible, lit(Double.NaN)).otherwise('lon))
+
+      val ways = history.where('type === "way")
+        .withColumn("tags", when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
+          lag('tags, 1) over idByVersion)
+          .otherwise('tags))
 
       val pointGeoms = ProcessOSM.geocode(ProcessOSM.constructPointGeometries(
         // pre-filter to POI nodes
-        history.where('type === "node" and isPOI('tags))
+        nodes.where(isPOI('tags))
       ).withColumn("minorVersion", lit(0)))
 
       val wayGeoms = ProcessOSM.geocode(ProcessOSM.reconstructWayGeometries(
         // pre-filter to interesting ways
-        history.where('type === "way" and (isBuilding('tags) or isRoad('tags) or isWaterway('tags) or isCoastline('tags) or isPOI('tags))),
+        ways.where(isBuilding('tags) or isRoad('tags) or isWaterway('tags) or isCoastline('tags) or isPOI('tags)),
         // let reconstructWayGeometries do its thing; nodes are cheap
         history.where('type === "node")
       ).drop('geometryChanged))
