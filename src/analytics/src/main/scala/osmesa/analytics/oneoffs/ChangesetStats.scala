@@ -250,7 +250,7 @@ object ChangesetStats extends CommandApp(
         )
 
       val changesetStats = rawChangesetStats
-        .join(changesetMetadata, Seq("changeset"), "left_outer")
+        .join(changesetMetadata, Seq("changeset"), "outer")
         .withColumnRenamed("changeset", "id")
         .repartition(1)
         .cache
