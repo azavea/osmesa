@@ -105,24 +105,21 @@ object AugmentedDiffStreamProcessor extends CommandApp(
           when(isRoad('tags) and !isNew('version, 'minorVersion) and 'visible,
                abs(st_length('geom) - st_length('prevGeom)))
             .otherwise(lit(0)) as 'road_m_modified,
-          when(isRoad('tags) and  !'visible,
-               abs(st_length('geom) - st_length('prevGeom)))
+          when(isRoad('tags) and  !'visible, st_length('geom))
             .otherwise(lit(0)) as 'road_m_deleted,
           when(isWaterway('tags) and isNew('version, 'minorVersion), st_length('geom))
             .otherwise(lit(0)) as 'waterway_m_added,
           when(isWaterway('tags) and !isNew('version, 'minorVersion) and 'visible,
             abs(st_length('geom) - st_length('prevGeom)))
             .otherwise(lit(0)) as 'waterway_m_modified,
-          when(isWaterway('tags) and !'visible,
-               abs(st_length('geom) - st_length('prevGeom)))
+          when(isWaterway('tags) and !'visible, st_length('geom))
             .otherwise(lit(0)) as 'waterway_m_deleted,
           when(isCoastline('tags) and isNew('version, 'minorVersion), st_length('geom))
             .otherwise(lit(0)) as 'coastline_m_added,
           when(isCoastline('tags) and !isNew('version, 'minorVersion) and 'visible,
             abs(st_length('geom) - st_length('prevGeom)))
             .otherwise(lit(0)) as 'coastline_m_modified,
-          when(isCoastline('tags) and !'visible,
-               abs(st_length('geom) - st_length('prevGeom)))
+          when(isCoastline('tags) and !'visible, st_length('geom))
             .otherwise(lit(0)) as 'coastline_m_deleted,
           when(isRoad('tags) and isNew('version, 'minorVersion), lit(1))
             .otherwise(lit(0)) as 'roads_added,
