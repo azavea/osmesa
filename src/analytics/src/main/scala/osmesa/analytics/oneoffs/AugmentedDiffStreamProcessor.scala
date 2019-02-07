@@ -28,164 +28,180 @@ import osmesa.common.util.DBUtils
  *   --augmented-diff-source s3://somewhere/diffs/ \
  *   --database-uri $DATABASE_URL
  */
-object AugmentedDiffStreamProcessor extends CommandApp(
-  name = "osmesa-augmented-diff-stream-processor",
-  header = "Update statistics from streaming augmented diffs",
-  main = {
-    type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
+object AugmentedDiffStreamProcessor
+    extends CommandApp(
+      name = "osmesa-augmented-diff-stream-processor",
+      header = "Update statistics from streaming augmented diffs",
+      main = {
+        type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
 
-    val augmentedDiffSourceOpt =
-      Opts.option[URI](
-        "augmented-diff-source",
-        short = "a",
-        metavar = "uri",
-        help = "Location of augmented diffs to process"
-      )
-    val databaseUriEnv =
-      Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
-    val databaseUriOpt =
-      Opts.option[URI](
-        "database-uri",
-        short = "d",
-        metavar = "database URL",
-        help = "Database URL (default: $DATABASE_URL environment variable)"
-      )
-    val startSequenceOpt =
-      Opts.option[Int](
-        "start-sequence",
-        short = "s",
-        metavar = "sequence",
-        help = "Starting sequence. If absent, the current (remote) sequence will be used."
-      ).orNone
-    val endSequenceOpt =
-      Opts.option[Int]("end-sequence",
-        short = "e",
-        metavar = "sequence",
-        help = "Ending sequence. If absent, this will be an infinite stream."
-      ).orNone
+        val augmentedDiffSourceOpt =
+          Opts.option[URI](
+            "augmented-diff-source",
+            short = "a",
+            metavar = "uri",
+            help = "Location of augmented diffs to process"
+          )
+        val databaseUriEnv =
+          Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
+        val databaseUriOpt =
+          Opts.option[URI](
+            "database-uri",
+            short = "d",
+            metavar = "database URL",
+            help = "Database URL (default: $DATABASE_URL environment variable)"
+          )
+        val startSequenceOpt =
+          Opts
+            .option[Int](
+              "start-sequence",
+              short = "s",
+              metavar = "sequence",
+              help = "Starting sequence. If absent, the current (remote) sequence will be used."
+            )
+            .orNone
+        val endSequenceOpt =
+          Opts
+            .option[Int]("end-sequence",
+                         short = "e",
+                         metavar = "sequence",
+                         help = "Ending sequence. If absent, this will be an infinite stream.")
+            .orNone
 
-    (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt orElse databaseUriEnv).mapN {
-      (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
-      implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
+        (augmentedDiffSourceOpt,
+         startSequenceOpt,
+         endSequenceOpt,
+         databaseUriOpt orElse databaseUriEnv).mapN {
+          (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
+            implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
-      import ss.implicits._
+            import ss.implicits._
 
-      val options = Map(
-        Source.BaseURI -> augmentedDiffSource.toString,
-        Source.DatabaseURI -> databaseUri.toString,
-        Source.ProcessName -> "AugmentedDiffStream"
-      ) ++
-        startSequence.map(s => Map(Source.StartSequence -> s.toString))
-          .getOrElse(Map.empty[String, String]) ++
-        endSequence.map(s => Map(Source.EndSequence -> s.toString))
-          .getOrElse(Map.empty[String, String])
+            val options = Map(
+              Source.BaseURI -> augmentedDiffSource.toString,
+              Source.DatabaseURI -> databaseUri.toString,
+              Source.ProcessName -> "AugmentedDiffStream"
+            ) ++
+              startSequence
+                .map(s => Map(Source.StartSequence -> s.toString))
+                .getOrElse(Map.empty[String, String]) ++
+              endSequence
+                .map(s => Map(Source.EndSequence -> s.toString))
+                .getOrElse(Map.empty[String, String])
 
-      val geoms = ss.readStream.format(Source.AugmentedDiffs).options(options).load
+            val geoms = ss.readStream.format(Source.AugmentedDiffs).options(options).load
 
-      // TODO update footprint MVTs
-      // TODO update MVTs (possibly including data from changeset replication)
+            // TODO update footprint MVTs
+            // TODO update MVTs (possibly including data from changeset replication)
 
-      // aggregations are triggered when an event with a later timestamp ("event time") is received
-      // in practice, this means that aggregation doesn't occur until the *next* sequence is received
+            // aggregations are triggered when an event with a later timestamp ("event time") is received
+            // in practice, this means that aggregation doesn't occur until the *next* sequence is received
 
-      val query = ProcessOSM.geocode(geoms)
-        .withColumn("timestamp", to_timestamp('sequence * 60 + 1347432900))
-        // if sequences are received sequentially (and atomically), 0 seconds should suffice; anything received with an
-        // earlier timestamp after that point will be dropped
-        .withWatermark("timestamp", "0 seconds")
-        .select(
-          'timestamp,
-          'sequence,
-          'changeset,
-          'uid,
-          'user,
-          'countries,
-          when(isRoad('tags) and isNew('version, 'minorVersion), st_length('geom))
-            .otherwise(lit(0)) as 'road_m_added,
-          when(isRoad('tags) and !isNew('version, 'minorVersion) and 'visible,
-               abs(st_length('geom) - st_length('prevGeom)))
-            .otherwise(lit(0)) as 'road_m_modified,
-          when(isRoad('tags) and  !'visible, st_length('geom))
-            .otherwise(lit(0)) as 'road_m_deleted,
-          when(isWaterway('tags) and isNew('version, 'minorVersion), st_length('geom))
-            .otherwise(lit(0)) as 'waterway_m_added,
-          when(isWaterway('tags) and !isNew('version, 'minorVersion) and 'visible,
-            abs(st_length('geom) - st_length('prevGeom)))
-            .otherwise(lit(0)) as 'waterway_m_modified,
-          when(isWaterway('tags) and !'visible, st_length('geom))
-            .otherwise(lit(0)) as 'waterway_m_deleted,
-          when(isCoastline('tags) and isNew('version, 'minorVersion), st_length('geom))
-            .otherwise(lit(0)) as 'coastline_m_added,
-          when(isCoastline('tags) and !isNew('version, 'minorVersion) and 'visible,
-            abs(st_length('geom) - st_length('prevGeom)))
-            .otherwise(lit(0)) as 'coastline_m_modified,
-          when(isCoastline('tags) and !'visible, st_length('geom))
-            .otherwise(lit(0)) as 'coastline_m_deleted,
-          when(isRoad('tags) and isNew('version, 'minorVersion), lit(1))
-            .otherwise(lit(0)) as 'roads_added,
-          when(isRoad('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
-            .otherwise(lit(0)) as 'roads_modified,
-          when(isRoad('tags) and !'visible, lit(1))
-            .otherwise(lit(0)) as 'roads_deleted,
-          when(isWaterway('tags) and isNew('version, 'minorVersion), lit(1))
-            .otherwise(lit(0)) as 'waterways_added,
-          when(isWaterway('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
-            .otherwise(lit(0)) as 'waterways_modified,
-          when(isWaterway('tags) and !'visible, lit(1))
-            .otherwise(lit(0)) as 'waterways_deleted,
-          when(isCoastline('tags) and isNew('version, 'minorVersion), lit(1))
-            .otherwise(lit(0)) as 'coastlines_added,
-          when(isCoastline('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
-            .otherwise(lit(0)) as 'coastlines_modified,
-          when(isCoastline('tags) and !'visible, lit(1))
-            .otherwise(lit(0)) as 'coastlines_deleted,
-          when(isBuilding('tags) and isNew('version, 'minorVersion), lit(1))
-            .otherwise(lit(0)) as 'buildings_added,
-          when(isBuilding('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
-            .otherwise(lit(0)) as 'buildings_modified,
-          when(isBuilding('tags) and !'visible, lit(1))
-            .otherwise(lit(0)) as 'buildings_deleted,
-          when(isPOI('tags) and isNew('version, 'minorVersion), lit(1))
-            .otherwise(lit(0)) as 'pois_added,
-          when(isPOI('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
-            .otherwise(lit(0)) as 'pois_modified,
-          when(isPOI('tags) and !'visible, lit(1))
-            .otherwise(lit(0)) as 'pois_deleted)
-        .groupBy('timestamp, 'sequence, 'changeset, 'uid, 'user)
-        .agg(
-          sum('road_m_added / 1000) as 'road_km_added,
-          sum('road_m_modified / 1000) as 'road_km_modified,
-          sum('road_m_deleted / 1000) as 'road_km_deleted,
-          sum('waterway_m_added / 1000) as 'waterway_km_added,
-          sum('waterway_m_modified / 1000) as 'waterway_km_modified,
-          sum('waterway_m_deleted / 1000) as 'waterway_km_deleted,
-          sum('coastline_m_added / 1000) as 'coastline_km_added,
-          sum('coastline_m_modified / 1000) as 'coastline_km_modified,
-          sum('coastline_m_deleted / 1000) as 'coastline_km_deleted,
-          sum('roads_added) as 'roads_added,
-          sum('roads_modified) as 'roads_modified,
-          sum('roads_deleted) as 'roads_deleted,
-          sum('waterways_added) as 'waterways_added,
-          sum('waterways_modified) as 'waterways_modified,
-          sum('waterways_deleted) as 'waterways_deleted,
-          sum('coastlines_added) as 'coastlines_added,
-          sum('coastlines_modified) as 'coastlines_modified,
-          sum('coastlines_deleted) as 'coastlines_deleted,
-          sum('buildings_added) as 'buildings_added,
-          sum('buildings_modified) as 'buildings_modified,
-          sum('buildings_deleted) as 'buildings_deleted,
-          sum('pois_added) as 'pois_added,
-          sum('pois_modified) as 'pois_modified,
-          sum('pois_deleted) as 'pois_deleted,
-          count_values(flatten(collect_list('countries))) as 'countries)
-        .writeStream
-        .queryName("aggregate statistics by sequence")
-        .foreach(new ForeachWriter[Row] {
-          var partitionId: Long = _
-          var version: Long = _
-          var connection: Connection = _
-          val UpdateChangesetsQuery: String =
-            """
+            val query = ProcessOSM
+              .geocode(geoms)
+              .withColumn("timestamp", to_timestamp('sequence * 60 + 1347432900))
+              // if sequences are received sequentially (and atomically), 0 seconds should suffice; anything received with an
+              // earlier timestamp after that point will be dropped
+              .withWatermark("timestamp", "0 seconds")
+              .withColumn(
+                "delta",
+                when(
+                  isRoad('tags) or isWaterway('tags) or isCoastline('tags),
+                  abs(coalesce(st_length('geom), lit(0) - coalesce(st_length('prevGeom), lit(0)))))
+                  .otherwise(lit(0))
+              )
+              .select(
+                'timestamp,
+                'sequence,
+                'changeset,
+                'uid,
+                'user,
+                'countries,
+                when(isRoad('tags) and isNew('version, 'minorVersion), 'delta)
+                  .otherwise(lit(0)) as 'road_m_added,
+                when(isRoad('tags) and !isNew('version, 'minorVersion) and 'visible, 'delta)
+                  .otherwise(lit(0)) as 'road_m_modified,
+                when(isRoad('tags) and !'visible, 'delta)
+                  .otherwise(lit(0)) as 'road_m_deleted,
+                when(isWaterway('tags) and isNew('version, 'minorVersion), 'delta)
+                  .otherwise(lit(0)) as 'waterway_m_added,
+                when(isWaterway('tags) and !isNew('version, 'minorVersion) and 'visible, 'delta)
+                  .otherwise(lit(0)) as 'waterway_m_modified,
+                when(isWaterway('tags) and !'visible, 'delta)
+                  .otherwise(lit(0)) as 'waterway_m_deleted,
+                when(isCoastline('tags) and isNew('version, 'minorVersion), 'delta)
+                  .otherwise(lit(0)) as 'coastline_m_added,
+                when(isCoastline('tags) and !isNew('version, 'minorVersion) and 'visible, 'delta)
+                  .otherwise(lit(0)) as 'coastline_m_modified,
+                when(isCoastline('tags) and !'visible, 'delta)
+                  .otherwise(lit(0)) as 'coastline_m_deleted,
+                when(isRoad('tags) and isNew('version, 'minorVersion), lit(1))
+                  .otherwise(lit(0)) as 'roads_added,
+                when(isRoad('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
+                  .otherwise(lit(0)) as 'roads_modified,
+                when(isRoad('tags) and !'visible, lit(1))
+                  .otherwise(lit(0)) as 'roads_deleted,
+                when(isWaterway('tags) and isNew('version, 'minorVersion), lit(1))
+                  .otherwise(lit(0)) as 'waterways_added,
+                when(isWaterway('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
+                  .otherwise(lit(0)) as 'waterways_modified,
+                when(isWaterway('tags) and !'visible, lit(1))
+                  .otherwise(lit(0)) as 'waterways_deleted,
+                when(isCoastline('tags) and isNew('version, 'minorVersion), lit(1))
+                  .otherwise(lit(0)) as 'coastlines_added,
+                when(isCoastline('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
+                  .otherwise(lit(0)) as 'coastlines_modified,
+                when(isCoastline('tags) and !'visible, lit(1))
+                  .otherwise(lit(0)) as 'coastlines_deleted,
+                when(isBuilding('tags) and isNew('version, 'minorVersion), lit(1))
+                  .otherwise(lit(0)) as 'buildings_added,
+                when(isBuilding('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
+                  .otherwise(lit(0)) as 'buildings_modified,
+                when(isBuilding('tags) and !'visible, lit(1))
+                  .otherwise(lit(0)) as 'buildings_deleted,
+                when(isPOI('tags) and isNew('version, 'minorVersion), lit(1))
+                  .otherwise(lit(0)) as 'pois_added,
+                when(isPOI('tags) and !isNew('version, 'minorVersion) and 'visible, lit(1))
+                  .otherwise(lit(0)) as 'pois_modified,
+                when(isPOI('tags) and !'visible, lit(1))
+                  .otherwise(lit(0)) as 'pois_deleted
+              )
+              .groupBy('timestamp, 'sequence, 'changeset, 'uid, 'user)
+              .agg(
+                sum('road_m_added / 1000) as 'road_km_added,
+                sum('road_m_modified / 1000) as 'road_km_modified,
+                sum('road_m_deleted / 1000) as 'road_km_deleted,
+                sum('waterway_m_added / 1000) as 'waterway_km_added,
+                sum('waterway_m_modified / 1000) as 'waterway_km_modified,
+                sum('waterway_m_deleted / 1000) as 'waterway_km_deleted,
+                sum('coastline_m_added / 1000) as 'coastline_km_added,
+                sum('coastline_m_modified / 1000) as 'coastline_km_modified,
+                sum('coastline_m_deleted / 1000) as 'coastline_km_deleted,
+                sum('roads_added) as 'roads_added,
+                sum('roads_modified) as 'roads_modified,
+                sum('roads_deleted) as 'roads_deleted,
+                sum('waterways_added) as 'waterways_added,
+                sum('waterways_modified) as 'waterways_modified,
+                sum('waterways_deleted) as 'waterways_deleted,
+                sum('coastlines_added) as 'coastlines_added,
+                sum('coastlines_modified) as 'coastlines_modified,
+                sum('coastlines_deleted) as 'coastlines_deleted,
+                sum('buildings_added) as 'buildings_added,
+                sum('buildings_modified) as 'buildings_modified,
+                sum('buildings_deleted) as 'buildings_deleted,
+                sum('pois_added) as 'pois_added,
+                sum('pois_modified) as 'pois_modified,
+                sum('pois_deleted) as 'pois_deleted,
+                count_values(flatten(collect_list('countries))) as 'countries
+              )
+              .writeStream
+              .queryName("aggregate statistics by sequence")
+              .foreach(new ForeachWriter[Row] {
+                var partitionId: Long = _
+                var version: Long = _
+                var connection: Connection = _
+                val UpdateChangesetsQuery: String =
+                  """
               |-- pre-shape the data to avoid repetition
               |WITH data AS (
               |  SELECT
@@ -280,8 +296,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |  AND NOT coalesce(c.augmented_diffs, ARRAY[]::integer[]) && EXCLUDED.augmented_diffs
             """.stripMargin
 
-          val UpdateUsersQuery: String =
-            """
+                val UpdateUsersQuery: String =
+                  """
               |--pre-shape the data to avoid repetition
               |WITH data AS (
               |  SELECT
@@ -299,8 +315,8 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |WHERE u.id = EXCLUDED.id
             """.stripMargin
 
-          val UpdateChangesetCountriesQuery: String =
-            """
+                val UpdateChangesetCountriesQuery: String =
+                  """
               |-- pre-shape the data to avoid repetition
               |WITH data AS (
               |  SELECT
@@ -321,124 +337,126 @@ object AugmentedDiffStreamProcessor extends CommandApp(
               |WHERE cc.changeset_id = EXCLUDED.changeset_id
             """.stripMargin
 
-          def open(partitionId: Long, version: Long): Boolean = {
-            // Called when starting to process one partition of new data in the executor. The version is for data
-            // deduplication when there are failures. When recovering from a failure, some data may be generated
-            // multiple times but they will always have the same version.
-            //
-            //If this method finds using the partitionId and version that this partition has already been processed,
-            // it can return false to skip the further data processing. However, close still will be called for
-            // cleaning up resources.
+                def open(partitionId: Long, version: Long): Boolean = {
+                  // Called when starting to process one partition of new data in the executor. The version is for data
+                  // deduplication when there are failures. When recovering from a failure, some data may be generated
+                  // multiple times but they will always have the same version.
+                  //
+                  //If this method finds using the partitionId and version that this partition has already been processed,
+                  // it can return false to skip the further data processing. However, close still will be called for
+                  // cleaning up resources.
 
-            this.partitionId = partitionId
-            this.version = version
-            connection = DBUtils.getJdbcConnection(databaseUri)
-            true
-          }
+                  this.partitionId = partitionId
+                  this.version = version
+                  connection = DBUtils.getJdbcConnection(databaseUri)
+                  true
+                }
 
-          def process(row: Row): Unit = {
-            val sequence = row.getAs[Int]("sequence")
-            val changeset = row.getAs[Long]("changeset")
-            val uid = row.getAs[Long]("uid")
-            val user = row.getAs[String]("user")
-            val roadKmAdded = row.getAs[Double]("road_km_added")
-            val roadKmModified = row.getAs[Double]("road_km_modified")
-            val roadKmDeleted = row.getAs[Double]("road_km_deleted")
-            val waterwayKmAdded = row.getAs[Double]("waterway_km_added")
-            val waterwayKmModified = row.getAs[Double]("waterway_km_modified")
-            val waterwayKmDeleted = row.getAs[Double]("waterway_km_deleted")
-            val coastlineKmAdded = row.getAs[Double]("coastline_km_added")
-            val coastlineKmModified = row.getAs[Double]("coastline_km_modified")
-            val coastlineKmDeleted = row.getAs[Double]("coastline_km_deleted")
-            val roadsAdded = row.getAs[Long]("roads_added")
-            val roadsModified = row.getAs[Long]("roads_modified")
-            val roadsDeleted = row.getAs[Long]("roads_deleted")
-            val waterwaysAdded = row.getAs[Long]("waterways_added")
-            val waterwaysModified = row.getAs[Long]("waterways_modified")
-            val waterwaysDeleted = row.getAs[Long]("waterways_deleted")
-            val coastlinesAdded = row.getAs[Long]("coastlines_added")
-            val coastlinesModified = row.getAs[Long]("coastlines_modified")
-            val coastlinesDeleted = row.getAs[Long]("coastlines_deleted")
-            val buildingsAdded = row.getAs[Long]("buildings_added")
-            val buildingsModified = row.getAs[Long]("buildings_modified")
-            val buildingsDeleted = row.getAs[Long]("buildings_deleted")
-            val poisAdded = row.getAs[Long]("pois_added")
-            val poisModified = row.getAs[Long]("pois_modified")
-            val poisDeleted = row.getAs[Long]("pois_deleted")
-            val countries = row.getAs[Map[String, Int]]("countries")
+                def process(row: Row): Unit = {
+                  val sequence = row.getAs[Int]("sequence")
+                  val changeset = row.getAs[Long]("changeset")
+                  val uid = row.getAs[Long]("uid")
+                  val user = row.getAs[String]("user")
+                  val roadKmAdded = row.getAs[Double]("road_km_added")
+                  val roadKmModified = row.getAs[Double]("road_km_modified")
+                  val roadKmDeleted = row.getAs[Double]("road_km_deleted")
+                  val waterwayKmAdded = row.getAs[Double]("waterway_km_added")
+                  val waterwayKmModified = row.getAs[Double]("waterway_km_modified")
+                  val waterwayKmDeleted = row.getAs[Double]("waterway_km_deleted")
+                  val coastlineKmAdded = row.getAs[Double]("coastline_km_added")
+                  val coastlineKmModified = row.getAs[Double]("coastline_km_modified")
+                  val coastlineKmDeleted = row.getAs[Double]("coastline_km_deleted")
+                  val roadsAdded = row.getAs[Long]("roads_added")
+                  val roadsModified = row.getAs[Long]("roads_modified")
+                  val roadsDeleted = row.getAs[Long]("roads_deleted")
+                  val waterwaysAdded = row.getAs[Long]("waterways_added")
+                  val waterwaysModified = row.getAs[Long]("waterways_modified")
+                  val waterwaysDeleted = row.getAs[Long]("waterways_deleted")
+                  val coastlinesAdded = row.getAs[Long]("coastlines_added")
+                  val coastlinesModified = row.getAs[Long]("coastlines_modified")
+                  val coastlinesDeleted = row.getAs[Long]("coastlines_deleted")
+                  val buildingsAdded = row.getAs[Long]("buildings_added")
+                  val buildingsModified = row.getAs[Long]("buildings_modified")
+                  val buildingsDeleted = row.getAs[Long]("buildings_deleted")
+                  val poisAdded = row.getAs[Long]("pois_added")
+                  val poisModified = row.getAs[Long]("pois_modified")
+                  val poisDeleted = row.getAs[Long]("pois_deleted")
+                  val countries = row.getAs[Map[String, Int]]("countries")
 
-            val updateChangesets = connection.prepareStatement(UpdateChangesetsQuery)
+                  val updateChangesets = connection.prepareStatement(UpdateChangesetsQuery)
 
-            try {
-              updateChangesets.setLong(1, changeset)
-              updateChangesets.setLong(2, uid)
-              updateChangesets.setLong(3, roadsAdded)
-              updateChangesets.setLong(4, roadsModified)
-              updateChangesets.setLong(5, roadsDeleted)
-              updateChangesets.setLong(6, waterwaysAdded)
-              updateChangesets.setLong(7, waterwaysModified)
-              updateChangesets.setLong(8, waterwaysDeleted)
-              updateChangesets.setLong(9, coastlinesAdded)
-              updateChangesets.setLong(10, coastlinesModified)
-              updateChangesets.setLong(11, coastlinesDeleted)
-              updateChangesets.setLong(12, buildingsAdded)
-              updateChangesets.setLong(13, buildingsModified)
-              updateChangesets.setLong(14, buildingsDeleted)
-              updateChangesets.setLong(15, poisAdded)
-              updateChangesets.setLong(16, poisModified)
-              updateChangesets.setLong(17, poisDeleted)
-              updateChangesets.setDouble(18, roadKmAdded)
-              updateChangesets.setDouble(19, roadKmModified)
-              updateChangesets.setDouble(20, roadKmDeleted)
-              updateChangesets.setDouble(21, waterwayKmAdded)
-              updateChangesets.setDouble(22, waterwayKmModified)
-              updateChangesets.setDouble(23, waterwayKmDeleted)
-              updateChangesets.setDouble(24, coastlineKmAdded)
-              updateChangesets.setDouble(25, coastlineKmModified)
-              updateChangesets.setDouble(26, coastlineKmDeleted)
-              updateChangesets.setArray(
-                27, connection.createArrayOf("integer", Array(sequence.underlying)))
+                  try {
+                    updateChangesets.setLong(1, changeset)
+                    updateChangesets.setLong(2, uid)
+                    updateChangesets.setLong(3, roadsAdded)
+                    updateChangesets.setLong(4, roadsModified)
+                    updateChangesets.setLong(5, roadsDeleted)
+                    updateChangesets.setLong(6, waterwaysAdded)
+                    updateChangesets.setLong(7, waterwaysModified)
+                    updateChangesets.setLong(8, waterwaysDeleted)
+                    updateChangesets.setLong(9, coastlinesAdded)
+                    updateChangesets.setLong(10, coastlinesModified)
+                    updateChangesets.setLong(11, coastlinesDeleted)
+                    updateChangesets.setLong(12, buildingsAdded)
+                    updateChangesets.setLong(13, buildingsModified)
+                    updateChangesets.setLong(14, buildingsDeleted)
+                    updateChangesets.setLong(15, poisAdded)
+                    updateChangesets.setLong(16, poisModified)
+                    updateChangesets.setLong(17, poisDeleted)
+                    updateChangesets.setDouble(18, roadKmAdded)
+                    updateChangesets.setDouble(19, roadKmModified)
+                    updateChangesets.setDouble(20, roadKmDeleted)
+                    updateChangesets.setDouble(21, waterwayKmAdded)
+                    updateChangesets.setDouble(22, waterwayKmModified)
+                    updateChangesets.setDouble(23, waterwayKmDeleted)
+                    updateChangesets.setDouble(24, coastlineKmAdded)
+                    updateChangesets.setDouble(25, coastlineKmModified)
+                    updateChangesets.setDouble(26, coastlineKmDeleted)
+                    updateChangesets
+                      .setArray(27, connection.createArrayOf("integer", Array(sequence.underlying)))
 
-              updateChangesets.execute
-            } finally {
-              updateChangesets.close()
-            }
+                    updateChangesets.execute
+                  } finally {
+                    updateChangesets.close()
+                  }
 
-            val updateUsers = connection.prepareStatement(UpdateUsersQuery)
+                  val updateUsers = connection.prepareStatement(UpdateUsersQuery)
 
-            try {
-              updateUsers.setLong(1, uid)
-              updateUsers.setString(2, user)
+                  try {
+                    updateUsers.setLong(1, uid)
+                    updateUsers.setString(2, user)
 
-              updateUsers.execute
-            } finally {
-              updateUsers.close()
-            }
+                    updateUsers.execute
+                  } finally {
+                    updateUsers.close()
+                  }
 
-            countries foreach { case (code, count) =>
-              val updateChangesetCountries = connection.prepareStatement(UpdateChangesetCountriesQuery)
+                  countries foreach {
+                    case (code, count) =>
+                      val updateChangesetCountries =
+                        connection.prepareStatement(UpdateChangesetCountriesQuery)
 
-              try {
-                updateChangesetCountries.setLong(1, changeset)
-                updateChangesetCountries.setLong(2, count)
-                updateChangesetCountries.setString(3, code)
+                      try {
+                        updateChangesetCountries.setLong(1, changeset)
+                        updateChangesetCountries.setLong(2, count)
+                        updateChangesetCountries.setString(3, code)
 
-                updateChangesetCountries.execute
-              } finally {
-                updateChangesetCountries.close()
-              }
-            }
-          }
+                        updateChangesetCountries.execute
+                      } finally {
+                        updateChangesetCountries.close()
+                      }
+                  }
+                }
 
-          def close(errorOrNull: Throwable): Unit = {
-            connection.close()
-          }
-        })
-        .start
+                def close(errorOrNull: Throwable): Unit = {
+                  connection.close()
+                }
+              })
+              .start
 
-      query.awaitTermination()
+            query.awaitTermination()
 
-      ss.stop()
-    }
-  }
-)
+            ss.stop()
+        }
+      }
+    )
