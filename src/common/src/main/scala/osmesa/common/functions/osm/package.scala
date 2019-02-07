@@ -196,6 +196,7 @@ package object osm {
       // strip trailing punctuation
       .map(TrailingPunctuationMatcher.replaceAllIn(_, ""))
       .toList // prevent a Stream from being returned
+      .distinct
   }
 
   def hashtags(comment: Column): Column =
