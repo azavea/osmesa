@@ -72,7 +72,7 @@ object ChangesetStats extends CommandApp(
           when(isRoad('tags) and not(isNew('version, 'minorVersion)) and 'visible, 'delta)
             .otherwise(lit(0)))
         .withColumn("road_m_deleted",
-          when(isRoad('tags) and !'visible, 'delta)
+          when(isRoad('tags) and !'visible, 'length)
             .otherwise(lit(0)))
         .withColumn("waterway_m_added",
           when(isWaterway('tags) and isNew('version, 'minorVersion), 'length)
@@ -81,7 +81,7 @@ object ChangesetStats extends CommandApp(
           when(isWaterway('tags) and not(isNew('version, 'minorVersion)) and 'visible, 'delta)
             .otherwise(lit(0)))
         .withColumn("waterway_m_deleted",
-          when(isWaterway('tags) and !'visible, 'delta)
+          when(isWaterway('tags) and !'visible, 'length)
             .otherwise(lit(0)))
         .withColumn("coastline_m_added",
           when(isCoastline('tags) and isNew('version, 'minorVersion), 'length)
@@ -90,7 +90,7 @@ object ChangesetStats extends CommandApp(
           when(isCoastline('tags) and not(isNew('version, 'minorVersion)) and 'visible, 'delta)
             .otherwise(lit(0)))
         .withColumn("coastline_m_deleted",
-          when(isCoastline('tags) and !'visible, 'delta)
+          when(isCoastline('tags) and !'visible, 'length)
             .otherwise(lit(0)))
         .withColumn("roads_added",
           when(isRoad('tags) and isNew('version, 'minorVersion), lit(1))
