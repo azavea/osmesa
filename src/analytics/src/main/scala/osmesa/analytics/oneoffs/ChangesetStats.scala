@@ -7,7 +7,7 @@ import com.monovore.decline.{CommandApp, Opts}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{SaveMode, SparkSession}
-import org.locationtech.geomesa.spark.jts.st_length
+import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
 import osmesa.common.ProcessOSM
 import osmesa.common.functions._
@@ -58,15 +58,19 @@ object ChangesetStats extends CommandApp(
 
       @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
 
-      val augmentedWays = wayGeoms.withColumn("length", coalesce(st_length('geom), lit(0)))
+      val augmentedWays = wayGeoms
+        .withColumn("prevGeom", lag('geom, 1) over idByUpdated)
         .withColumn("delta",
           when(isRoad('tags) or isWaterway('tags) or isCoastline('tags),
-            coalesce(abs('length - (lag('length, 1) over idByUpdated)), lit(0)))
+            abs(
+              coalesce(when(st_geometryType('geom) === "LineString", st_lengthSphere(st_castToLineString('geom))), lit(0)) -
+              coalesce(when(st_geometryType('prevGeom) === "LineString", st_lengthSphere(st_castToLineString('prevGeom))), lit(0))
+            ))
             .otherwise(lit(0)))
 
       val wayChangesetStats = augmentedWays
         .withColumn("road_m_added",
-          when(isRoad('tags) and isNew('version, 'minorVersion), 'length)
+          when(isRoad('tags) and isNew('version, 'minorVersion), 'delta)
             .otherwise(lit(0)))
         .withColumn("road_m_modified",
           when(isRoad('tags) and not(isNew('version, 'minorVersion)) and 'visible, 'delta)
@@ -75,7 +79,7 @@ object ChangesetStats extends CommandApp(
           when(isRoad('tags) and !'visible, 'delta)
             .otherwise(lit(0)))
         .withColumn("waterway_m_added",
-          when(isWaterway('tags) and isNew('version, 'minorVersion), 'length)
+          when(isWaterway('tags) and isNew('version, 'minorVersion), 'delta)
             .otherwise(lit(0)))
         .withColumn("waterway_m_modified",
           when(isWaterway('tags) and not(isNew('version, 'minorVersion)) and 'visible, 'delta)
@@ -84,7 +88,7 @@ object ChangesetStats extends CommandApp(
           when(isWaterway('tags) and !'visible, 'delta)
             .otherwise(lit(0)))
         .withColumn("coastline_m_added",
-          when(isCoastline('tags) and isNew('version, 'minorVersion), 'length)
+          when(isCoastline('tags) and isNew('version, 'minorVersion), 'delta)
             .otherwise(lit(0)))
         .withColumn("coastline_m_modified",
           when(isCoastline('tags) and not(isNew('version, 'minorVersion)) and 'visible, 'delta)
