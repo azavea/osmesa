@@ -106,9 +106,15 @@ object AugmentedDiffStreamProcessor
               .withColumn(
                 "delta",
                 when(
-                  isRoad('tags) or isWaterway('tags) or isCoastline('tags),
-                  abs(coalesce(st_length('geom), lit(0) - coalesce(st_length('prevGeom), lit(0)))))
-                  .otherwise(lit(0))
+                  (isRoad('tags) or isWaterway('tags) or isCoastline('tags)),
+                  abs(coalesce(
+                    when(st_geometryType('geom) === "LineString",
+                         st_lengthSphere(st_castToLineString('geom))),
+                    lit(0) - coalesce(when(st_geometryType('prevGeom) === "LineString",
+                                           st_lengthSphere(st_castToLineString('prevGeom))),
+                                      lit(0))
+                  ))
+                ).otherwise(lit(0))
               )
               .select(
                 'timestamp,
