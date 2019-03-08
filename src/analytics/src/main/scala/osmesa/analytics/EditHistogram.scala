@@ -15,13 +15,11 @@ import geotrellis.vectortile.{Layer, VInt64, Value, VectorTile}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
+import osmesa.analytics.footprints._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, read, write}
-import osmesa.common.model._
-import osmesa.common.model.impl._
 import osmesa.common.raster.MutableSparseIntTile
 
 import scala.collection.mutable.ArrayBuffer
@@ -44,13 +42,10 @@ object EditHistogram extends Logging {
   def createTiles(nodes: DataFrame, tileSource: URI, baseZoom: Int = BaseZoom)(
       implicit concurrentUploads: Option[Int] = None): DataFrame = {
     import nodes.sparkSession.implicits._
-    implicit val featureEncoder: Encoder[PointFeature[Map[String, Long]]] =
-      ExpressionEncoder[PointFeature[Map[String, Long]]]
 
     val points = nodes
       .repartition() // eliminate skew
       .as[CoordinatesWithKey]
-      .asInstanceOf[Dataset[Coordinates with Key]]
 
     val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
 
@@ -144,7 +139,8 @@ object EditHistogram extends Logging {
 
                 val replacementFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
                   modifiedFeatures.map { f =>
-                    f.mapData { d => d ++ newFeaturesById(d("__id")).data.mapValues(VInt64)
+                    f.mapData { d =>
+                      d ++ newFeaturesById(d("__id")).data.mapValues(VInt64)
                     }
                   }
 
@@ -200,18 +196,17 @@ object EditHistogram extends Logging {
   def makeFeatures(features: Iterable[PointFeature[Map[String, Long]]])
     : Iterable[Feature[Point, Map[String, VInt64]]] =
     features
-      .map(
-        f =>
-          f.mapData(
-            d => {
-              val dates = d.filterKeys(!_.startsWith("__"))
+      .map(f =>
+        f.mapData(d => {
+          val dates = d.filterKeys(!_.startsWith("__"))
 
-              // convert values
-              d.mapValues(VInt64) ++ Map(
-                // sum all edit counts
-                "__total" -> VInt64(dates.values.sum),
-                "__lastEdit" -> VInt64(dates.keys.max.toLong)
-          )}))
+          // convert values
+          d.mapValues(VInt64) ++ Map(
+            // sum all edit counts
+            "__total" -> VInt64(dates.values.sum),
+            "__lastEdit" -> VInt64(dates.keys.max.toLong)
+          )
+        }))
       .toSeq
       // put recently-edited features first
       .sortBy(_.data.keys.toSeq.max)
@@ -231,53 +226,7 @@ object EditHistogram extends Logging {
     makeLayer(SequenceLayerName, extent, Seq(sequenceFeature))
   }
 
-  def makeURI(tileSource: URI, zoom: Int, sk: SpatialKey): URI = {
-    val filename = s"${path(zoom, sk)}"
-    tileSource.resolve(filename)
-  }
-
-  def getCommittedSequences(tile: VectorTile): Seq[Int] =
-    // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
-    // single sequence may appear in different batches depending on when changeset metadata arrives
-    tile.layers
-      .get(SequenceLayerName)
-      .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
-      .getOrElse(Seq.empty[Int])
-
-//  def updateFootprints(tileSource: URI, nodes: DataFrame, baseZoom: Int = BaseZoom)(
-//      implicit concurrentUploads: Option[Int] = None)
-//    : Dataset[Count with TileCoordinates with Key] = {
-//    import nodes.sparkSession.implicits._
-//
-//    val points = nodes
-//      .as[CoordinatesWithKeyAndSequence]
-//      .asInstanceOf[Dataset[Coordinates with Key with Sequence]]
-//
-//    val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
-//
-//    pyramid.groupByKeyAndTile
-//      .mapPartitions { rows: Iterator[TileCoordinates with Key with RasterWithSequenceTileSeq] =>
-//        // materialize the iterator so that its contents can be used multiple times
-//        val tiles = rows.toList
-//
-//        // increase the number of concurrent network-bound tasks
-//        implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
-//          new ForkJoinPool(concurrentUploads.getOrElse(DefaultUploadConcurrency)))
-//
-//        try {
-//          // TODO in the future, allow tiles to contain layers for multiple keys; this has knock-on effects
-//          val urls = makeUrls(tileSource, tiles)
-//          val mvts = loadMVTs(urls)
-//          val uncommitted = getUncommittedTiles(tileSource, tiles, mvts)
-//
-//          updateTiles(tileSource, mvts, uncommitted.merge.vectorize).iterator
-//        } finally {
-//          taskSupport.environment.shutdown()
-//        }
-//      }
-//  }
-
-  def makeUrls(tileSource: URI, tiles: Seq[TileCoordinates with Key]): Map[URI, Extent] =
+  def makeUrls(tileSource: URI, tiles: Seq[GeometryTileWithKey]): Map[URI, Extent] =
     tiles.map { tile =>
       val sk = SpatialKey(tile.x, tile.y)
 
@@ -305,10 +254,42 @@ object EditHistogram extends Logging {
     }
   }
 
+//  def updateFootprints(tileSource: URI, nodes: DataFrame, baseZoom: Int = BaseZoom)(
+//      implicit concurrentUploads: Option[Int] = None)
+//    : Dataset[Count with TileCoordinates with Key] = {
+//    import nodes.sparkSession.implicits._
+//
+//    val points = nodes
+//      .as[CoordinatesWithKeyAndSequence]
+//
+//    val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
+//
+//    pyramid.groupByKeyAndTile
+//      .mapPartitions { rows: Iterator[TileCoordinates with Key with RasterWithSequenceTileSeq] =>
+//        // materialize the iterator so that its contents can be used multiple times
+//        val tiles = rows.toList
+//
+//        // increase the number of concurrent network-bound tasks
+//        implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
+//          new ForkJoinPool(concurrentUploads.getOrElse(DefaultUploadConcurrency)))
+//
+//        try {
+//          // TODO in the future, allow tiles to contain layers for multiple keys; this has knock-on effects
+//          val urls = makeUrls(tileSource, tiles)
+//          val mvts = loadMVTs(urls)
+//          val uncommitted = getUncommittedTiles(tileSource, tiles, mvts)
+//
+//          updateTiles(tileSource, mvts, uncommitted.merge.vectorize).iterator
+//        } finally {
+//          taskSupport.environment.shutdown()
+//        }
+//      }
+//  }
+
   def getUncommittedTiles(
       tileSource: URI,
-      tiles: Seq[TileCoordinates with Key with RasterWithSequenceTileSeq],
-      mvts: GenMap[URI, VectorTile]): Seq[TileCoordinates with Key with RasterWithSequenceTileSeq] =
+      tiles: Seq[RasterWithSequenceTileSeqWithTileCoordinatesAndKey],
+      mvts: GenMap[URI, VectorTile]): Seq[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =
     tiles
       .map(tile => {
         val sk = SpatialKey(tile.x, tile.y)
@@ -324,7 +305,20 @@ object EditHistogram extends Logging {
       })
       .filter(tileSeq => tileSeq.tiles.nonEmpty)
 
-  def merge(uncommitted: Seq[TileCoordinates with Key with RasterWithSequenceTileSeq])
+  def makeURI(tileSource: URI, zoom: Int, sk: SpatialKey): URI = {
+    val filename = s"${path(zoom, sk)}"
+    tileSource.resolve(filename)
+  }
+
+  def getCommittedSequences(tile: VectorTile): Seq[Int] =
+    // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
+    // single sequence may appear in different batches depending on when changeset metadata arrives
+    tile.layers
+      .get(SequenceLayerName)
+      .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
+      .getOrElse(Seq.empty[Int])
+
+  def merge(uncommitted: Seq[RasterWithSequenceTileSeqWithTileCoordinatesAndKey])
     : Seq[(String, Int, Int, Int, GTRaster[Tile], List[Int])] =
     uncommitted
       .map {
@@ -338,7 +332,8 @@ object EditHistogram extends Logging {
 
           val newTile = MutableSparseIntTile(Cols, Rows)
 
-          rasters.foreach { raster => newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
+          rasters.foreach { raster =>
+            newTile.merge(targetExtent, raster.extent, raster.tile, Sum)
           }
 
           (tile.key,
@@ -355,60 +350,31 @@ object EditHistogram extends Logging {
     * @param tiles Tiles to group.
     * @return Tiles grouped by key and tile coordinates.
     */
-  def groupByKeyAndTile(tiles: Dataset[RasterTile with Key with Sequence])
-    : Dataset[TileCoordinates with Key with RasterWithSequenceTileSeq] = {
+  def groupByKeyAndTile(tiles: Dataset[RasterTileWithKeyAndSequence])
+    : Dataset[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] = {
     import tiles.sparkSession.implicits._
 
     tiles
       .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
       .mapGroups {
-        case ((k, z, x, y), tiles: Iterator[RasterTile with Key with Sequence]) =>
+        case ((k, z, x, y), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
           RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
             tiles
               .map(x => RasterWithSequence(x.raster, x.sequence))
-              .toSeq,
+              .toVector, // this CANNOT be toSeq, as that produces a stream, which is subsequently partially consumed
             z,
             x,
             y,
-            k)
+            k
+          )
       }
   }
 
   object implicits {
-    implicit val CountWithTileCoordinatesAndKeyEncoder
-      : Encoder[Count with TileCoordinates with Key] = Encoders
-      .product[CountWithTileCoordinatesAndKey]
-      .asInstanceOf[Encoder[Count with TileCoordinates with Key]]
+    implicit class ExtendedCoordinatesWithKey(val coords: Dataset[CoordinatesWithKey]) {
+      import coords.sparkSession.implicits._
 
-    implicit val GeometryTileWithKeyEncoder: Encoder[GeometryTile with Key] =
-      Encoders
-        .product[GeometryTileWithKey]
-        .asInstanceOf[Encoder[GeometryTile with Key]]
-
-    implicit val GeometryTileWithKeyAndSequenceEncoder
-      : Encoder[GeometryTile with Key with Sequence] =
-      Encoders
-        .product[GeometryTileWithKeyAndSequence]
-        .asInstanceOf[Encoder[GeometryTile with Key with Sequence]]
-
-    implicit val RasterTileWithKeyEncoder: Encoder[RasterTile with Key] =
-      Encoders
-        .product[RasterTileWithKey]
-        .asInstanceOf[Encoder[RasterTile with Key]]
-
-    implicit val RasterTileWithKeyAndSequenceEncoder: Encoder[RasterTile with Key with Sequence] =
-      Encoders
-        .product[RasterTileWithKeyAndSequence]
-        .asInstanceOf[Encoder[RasterTile with Key with Sequence]]
-
-    implicit val RasterWithSequenceTileSeqWithTileCoordinatesAndKeyEncoder
-      : Encoder[TileCoordinates with Key with RasterWithSequenceTileSeq] = Encoders
-      .product[RasterWithSequenceTileSeqWithTileCoordinatesAndKey]
-      .asInstanceOf[Encoder[TileCoordinates with Key with RasterWithSequenceTileSeq]]
-
-    implicit class ExtendedCoordinatesWithKey(val coords: Dataset[Coordinates with Key]) {
-
-      def tile(baseZoom: Int = BaseZoom): Dataset[GeometryTile with Key] = {
+      def tile(baseZoom: Int = BaseZoom): Dataset[GeometryTileWithKey] = {
         val layout = LayoutScheme.levelForZoom(baseZoom).layout
         val xs = 0 until Math.pow(2, baseZoom).intValue()
         val ys = 0 until Math.pow(2, baseZoom).intValue()
@@ -426,7 +392,11 @@ object EditHistogram extends Logging {
                       case Some(clipped) if clipped.isValid =>
                         if (xs.contains(sk.col) && ys.contains(sk.row)) {
                           Seq(
-                            GeometryTileWithKey(point.key, baseZoom, sk.col, sk.row, clipped.jtsGeom))
+                            GeometryTileWithKey(point.key,
+                                                baseZoom,
+                                                sk.col,
+                                                sk.row,
+                                                clipped.jtsGeom))
                         } else {
                           log.warn(s"Out of range: ${sk.col}, ${sk.row}, ${clipped}")
                           Seq.empty[GeometryTileWithKey]
@@ -442,9 +412,10 @@ object EditHistogram extends Logging {
     }
 
     implicit class ExtendedCoordinatesWithKeyAndSequence(
-        val coords: Dataset[Coordinates with Key with Sequence]) {
+        val coords: Dataset[CoordinatesWithKeyAndSequence]) {
+      import coords.sparkSession.implicits._
 
-      def tile(baseZoom: Int = BaseZoom): Dataset[GeometryTile with Key with Sequence] = {
+      def tile(baseZoom: Int = BaseZoom): Dataset[GeometryTileWithKeyAndSequence] = {
         val layout = LayoutScheme.levelForZoom(baseZoom).layout
 
         coords
@@ -483,9 +454,10 @@ object EditHistogram extends Logging {
        math.floor(sk.getAs[Int]("col") / math.pow(2, dz)).intValue)
     }
 
-    implicit class ExtendedRasterTileWithKey(val rasterTiles: Dataset[RasterTile with Key]) {
+    implicit class ExtendedRasterTileWithKey(val rasterTiles: Dataset[RasterTileWithKey]) {
+      import rasterTiles.sparkSession.implicits._
 
-      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key] = {
+      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTileWithKey] = {
         // Δz between levels of the pyramid; point at which 1 tile becomes 1 pixel
         val dz = (math.log(Cols) / math.log(2)).toInt
 
@@ -498,13 +470,13 @@ object EditHistogram extends Logging {
         *
         * @return Merged tiles.
         */
-      def merge: Dataset[RasterTile with Key] = {
+      def merge: Dataset[RasterTileWithKey] = {
         import rasterTiles.sparkSession.implicits._
 
         rasterTiles
           .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
           .mapGroups {
-            case ((k, z, x, y), tiles: Iterator[RasterTile with Key]) =>
+            case ((k, z, x, y), tiles: Iterator[RasterTileWithKey]) =>
               val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
 
               val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
@@ -527,7 +499,7 @@ object EditHistogram extends Logging {
         * @param baseZoom Zoom level for the base of the pyramid.
         * @return Base + downsampled tiles.
         */
-      def downsample(steps: Int, baseZoom: Int = BaseZoom): Dataset[RasterTile with Key] =
+      def downsample(steps: Int, baseZoom: Int = BaseZoom): Dataset[RasterTileWithKey] =
         rasterTiles
           .flatMap(tile =>
             if (tile.zoom == baseZoom) {
@@ -555,7 +527,7 @@ object EditHistogram extends Logging {
                                           tile.y / factor,
                                           GTRaster.tupToRaster(parent, raster.extent)))
                     } else {
-                      Seq.empty[RasterTile with Key]
+                      Seq.empty[RasterTileWithKey]
                     }
                   }
               }
@@ -565,12 +537,13 @@ object EditHistogram extends Logging {
     }
 
     implicit class ExtendedRasterTileWithKeyAndSequence(
-        val rasterTiles: Dataset[RasterTile with Key with Sequence]) {
+        val rasterTiles: Dataset[RasterTileWithKeyAndSequence]) {
+      import rasterTiles.sparkSession.implicits._
 
-      def groupByKeyAndTile: Dataset[TileCoordinates with Key with RasterWithSequenceTileSeq] =
+      def groupByKeyAndTile: Dataset[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =
         Footprints.groupByKeyAndTile(rasterTiles)
 
-      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] = {
+      def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTileWithKeyAndSequence] = {
         // Δz between levels of the pyramid; point at which 1 tile becomes 1 pixel
         val dz = (math.log(Cols) / math.log(2)).toInt
 
@@ -585,8 +558,7 @@ object EditHistogram extends Logging {
         * @param baseZoom Zoom level for the base of the pyramid.
         * @return Base + downsampled tiles.
         */
-      def downsample(steps: Int,
-                     baseZoom: Int = BaseZoom): Dataset[RasterTile with Key with Sequence] =
+      def downsample(steps: Int, baseZoom: Int = BaseZoom): Dataset[RasterTileWithKeyAndSequence] =
         rasterTiles
           .flatMap(tile =>
             if (tile.zoom == baseZoom) {
@@ -624,13 +596,13 @@ object EditHistogram extends Logging {
         *
         * @return Merged tiles.
         */
-      def merge: Dataset[RasterTile with Key with Sequence] = {
+      def merge: Dataset[RasterTileWithKeyAndSequence] = {
         import rasterTiles.sparkSession.implicits._
 
         rasterTiles
           .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
           .mapGroups {
-            case ((sequence, k, z, x, y), tiles: Iterator[RasterTile with Key with Sequence]) =>
+            case ((sequence, k, z, x, y), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
               val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
 
               val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
@@ -652,8 +624,8 @@ object EditHistogram extends Logging {
       }
     }
 
-    implicit class ExtendedGeometryTileWithKey(val geometryTiles: Dataset[GeometryTile with Key]) {
-      def rasterize(cols: Int = Cols, rows: Int = Rows): Dataset[RasterTile with Key] = {
+    implicit class ExtendedGeometryTileWithKey(val geometryTiles: Dataset[GeometryTileWithKey]) {
+      def rasterize(cols: Int = Cols, rows: Int = Rows): Dataset[RasterTileWithKey] = {
         import geometryTiles.sparkSession.implicits._
 
         geometryTiles
@@ -680,9 +652,8 @@ object EditHistogram extends Logging {
     }
 
     implicit class ExtendedGeometryTileWithKeyAndSequence(
-        val geometryTiles: Dataset[GeometryTile with Key with Sequence]) {
-      def rasterize(cols: Int = Cols,
-                    rows: Int = Rows): Dataset[RasterTile with Key with Sequence] = {
+        val geometryTiles: Dataset[GeometryTileWithKeyAndSequence]) {
+      def rasterize(cols: Int = Cols, rows: Int = Rows): Dataset[RasterTileWithKeyAndSequence] = {
         import geometryTiles.sparkSession.implicits._
 
         geometryTiles
@@ -714,12 +685,12 @@ object EditHistogram extends Logging {
     }
 
     implicit class ExtendedTileCoordinatesWithKeyAndRasterWithSequenceTileSeq(
-        uncommitted: Seq[TileCoordinates with Key with RasterWithSequenceTileSeq]) {
+        uncommitted: Seq[RasterWithSequenceTileSeqWithTileCoordinatesAndKey]) {
       def merge: Seq[(String, Int, Int, Int, GTRaster[Tile], List[Int])] =
         Footprints.merge(uncommitted)
     }
 
-    implicit class RasterTileWithKeyExtension(tiles: Dataset[RasterTile with Key]) {
+    implicit class RasterTileWithKeyExtension(tiles: Dataset[RasterTileWithKey]) {
       import tiles.sparkSession.implicits._
 
       def vectorize: Dataset[(String,
