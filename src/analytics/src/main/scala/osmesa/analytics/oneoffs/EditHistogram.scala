@@ -5,6 +5,7 @@ import java.net.URI
 import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import osmesa.analytics.{Analytics, EditHistogram}
 import org.locationtech.geomesa.spark.jts._
@@ -31,6 +32,8 @@ object EditHistogramCommand
 
           val nodes = history
             .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
+            .withColumn("lat", 'lat.cast(DoubleType))
+            .withColumn("lon", 'lon.cast(DoubleType))
             .where('uid > 1)
             .select('lat, 'lon, year('timestamp) * 100 + weekofyear('timestamp) as 'key)
 
