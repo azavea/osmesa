@@ -398,6 +398,9 @@ object EditHistogram extends Logging {
                                                 sk.row,
                                                 clipped.jtsGeom))
                         } else {
+                          // TODO figure out why this happens (0/0/-5)
+                          // it might be features extending outside Web Mercator bounds, in which case those features
+                          // belong in valid tiles (but need to have their coordinates adjusted to account for that)
                           log.warn(s"Out of range: ${sk.col}, ${sk.row}, ${clipped}")
                           Seq.empty[GeometryTileWithKey]
                         }
