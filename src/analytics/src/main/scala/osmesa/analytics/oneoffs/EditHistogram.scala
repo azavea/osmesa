@@ -24,7 +24,7 @@ object EditHistogramCommand
           historyOpt,
           outputOpt
         ).mapN { (historyURI, outputURI) =>
-          implicit val spark: SparkSession = Analytics.sparkSession("Edit Histogram")
+          implicit val spark: SparkSession = Analytics.sparkSession("State of the Data tile generation")
           import spark.implicits._
           spark.withJTS
 
