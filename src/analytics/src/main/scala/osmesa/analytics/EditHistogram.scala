@@ -376,8 +376,8 @@ object EditHistogram extends Logging {
 
       def tile(baseZoom: Int = BaseZoom): Dataset[GeometryTileWithKey] = {
         val layout = LayoutScheme.levelForZoom(baseZoom).layout
-        val xs = 0 until Math.pow(2, baseZoom).intValue()
-        val ys = 0 until Math.pow(2, baseZoom).intValue()
+        val xs = 0 until layout.layoutCols
+        val ys = 0 until layout.layoutRows
 
         coords
           .flatMap { point =>
