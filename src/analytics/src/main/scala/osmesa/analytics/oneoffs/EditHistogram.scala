@@ -35,7 +35,7 @@ object EditHistogramCommand
             .withColumn("lat", 'lat.cast(DoubleType))
             .withColumn("lon", 'lon.cast(DoubleType))
             .where('uid > 1)
-            .select('lat, 'lon, year('timestamp) * 100 + weekofyear('timestamp) as 'key)
+            .select('lat, 'lon, year('timestamp) * 1000 + dayofyear('timestamp) as 'key)
 
           val stats = EditHistogram.createTiles(nodes, outputURI)
           stats.repartition(1).write.mode(SaveMode.Overwrite).csv("/tmp/currency/")
