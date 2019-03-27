@@ -5,11 +5,9 @@ import java.net.URI
 
 import cats.implicits._
 import com.monovore.decline._
-import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.analytics.{Analytics, EditHistogram}
-import osmesa.common.model._
 import osmesa.common.sources.Source
 
 /*
@@ -26,9 +24,6 @@ object EditHistogramTileUpdater
       name = "osmesa-edit-histogram-tile-updater",
       header = "Consume minutely diffs to update edit histogram MVTs",
       main = {
-        type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
-        val rootURI = new File("").toURI
-
         val changeSourceOpt = Opts
           .option[URI]("source",
                        short = "d",
@@ -50,7 +45,7 @@ object EditHistogramTileUpdater
             "end-sequence",
             short = "e",
             metavar = "sequence",
-            help = "Minutely diff ending sequence. If absent, this will be an infinite stream.")
+            help = "Minutely diff ending sequence. If absent, the current (remote) sequence will be used.")
           .orNone
 
         val batchSizeOpt = Opts
@@ -67,7 +62,7 @@ object EditHistogramTileUpdater
             metavar = "uri",
             help = "URI prefix of MVTs to update"
           )
-          .withDefault(rootURI)
+          .withDefault(new File("").toURI)
 
         val concurrentUploadsOpt = Opts
           .option[Int]("concurrent-uploads",

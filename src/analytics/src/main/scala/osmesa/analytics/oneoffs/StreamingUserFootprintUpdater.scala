@@ -6,8 +6,7 @@ import java.net.URI
 import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions._
-import osmesa.analytics.{Analytics, EditHistogram}
+import osmesa.analytics.{Analytics, Footprints}
 import osmesa.common.sources.Source
 
 /*
@@ -16,16 +15,16 @@ import osmesa.common.sources.Source
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.StreamingEditHistogramTileUpdater \
+ *   --class osmesa.analytics.oneoffs.StreamingUserFootprintUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar
  */
-object StreamingEditHistogramTileUpdater
+object StreamingUserFootprintUpdater
     extends CommandApp(
-      name = "osmesa-edit-histogram-tile-updater",
-      header = "Consume minutely diffs to update edit histogram MVTs",
+      name = "osmesa-user-footprint-updater",
+      header = "Consume minutely diffs to update user footprint MVTs",
       main = {
         val changeSourceOpt = Opts
-          .option[URI]("source",
+          .option[URI]("change-source",
                        short = "d",
                        metavar = "uri",
                        help = "Location of minutely diffs to process")
@@ -52,7 +51,7 @@ object StreamingEditHistogramTileUpdater
             "tile-source",
             short = "t",
             metavar = "uri",
-            help = "URI prefix of MVTs to update"
+            help = "URI prefix for vector tiles to update"
           )
           .withDefault(new File("").toURI)
 
@@ -76,28 +75,14 @@ object StreamingEditHistogramTileUpdater
         val databaseUrlEnv =
           Opts.env[URI]("DATABASE_URL", help = "The URL of the database").orNone
 
-        val baseZoomOpt = Opts
-          .option[Int]("base-zoom",
-                       short = "z",
-                       metavar = "Base zoom",
-                       help = "Most detailed zoom level")
-          .orNone
-
         (changeSourceOpt,
          startSequenceOpt,
          batchSizeOpt,
          tileSourceOpt,
          concurrentUploadsOpt,
-         databaseUrlOpt orElse databaseUrlEnv,
-         baseZoomOpt).mapN {
-          (changeSource,
-           startSequence,
-           batchSize,
-           tileSource,
-           _concurrentUploads,
-           databaseUrl,
-           baseZoom) =>
-            val AppName = "EditHistogramTileUpdater"
+         databaseUrlOpt orElse databaseUrlEnv).mapN {
+          (changeSource, startSequence, batchSize, tileSource, _concurrentUploads, databaseUrl) =>
+            val AppName = "UserFootprintUpdater"
 
             val spark: SparkSession = Analytics.sparkSession(AppName)
             import spark.implicits._
@@ -122,17 +107,13 @@ object StreamingEditHistogramTileUpdater
 
             val changedNodes = changes
               .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
-              .select('sequence,
-                      year('timestamp) * 1000 + dayofyear('timestamp) as 'key,
-                      'lat,
-                      'lon)
+              .select('sequence, 'uid as 'key, 'lat, 'lon)
 
-            val tiledNodes = EditHistogram.update(changedNodes,
-                                                  tileSource,
-                                                  baseZoom.getOrElse(EditHistogram.BaseZoom))
+            val tiledNodes =
+              Footprints.updateFootprints(changedNodes, tileSource)
 
             val query = tiledNodes.writeStream
-              .queryName("edit histogram tiles")
+              .queryName("tiled user footprints")
               .format("console")
               .start
 
