@@ -2,6 +2,7 @@ package osmesa.analytics
 
 import com.vividsolutions.jts.geom.{Coordinate, Geometry, Point}
 import geotrellis.raster.{Raster, Tile}
+import geotrellis.spark.SpatialKey
 import geotrellis.vector.{Extent, GeomFactory, PointFeature}
 import osmesa.common.raster._
 
@@ -23,20 +24,18 @@ package object footprints {
     def y: Double = lat.map(_.doubleValue).getOrElse(Double.NaN)
   }
 
-  case class GeometryTileWithKey(key: String, zoom: Int, x: Int, y: Int, geom: Geometry)
+  case class GeometryTileWithKey(key: String, zoom: Int, sk: SpatialKey, geom: Geometry)
 
   case class GeometryTileWithKeyAndSequence(sequence: Int,
                                             key: String,
                                             zoom: Int,
-                                            x: Int,
-                                            y: Int,
+                                            sk: SpatialKey,
                                             geom: Geometry)
 
   case class RasterTileWithKeyAndSequence(sequence: Int,
                                           key: String,
                                           zoom: Int,
-                                          x: Int,
-                                          y: Int,
+                                          sk: SpatialKey,
                                           values: Map[Long, Int],
                                           cols: Int,
                                           rows: Int,
@@ -50,7 +49,7 @@ package object footprints {
     )
   }
 
-  case class CountWithTileCoordinatesAndKey(count: Long, zoom: Int, x: Int, y: Int, key: String)
+  case class CountWithTileCoordinatesAndKey(count: Long, zoom: Int, sk: SpatialKey, key: String)
 
   case class RasterWithSequence(values: Map[Long, Int],
                                 cols: Int,
@@ -66,21 +65,14 @@ package object footprints {
     )
   }
 
-  case class RasterWithSequenceTileSeqWithTileCoordinates(tiles: Seq[RasterWithSequence],
-                                                          zoom: Int,
-                                                          x: Int,
-                                                          y: Int)
-
   case class RasterWithSequenceTileSeqWithTileCoordinatesAndKey(tiles: Seq[RasterWithSequence],
                                                                 zoom: Int,
-                                                                x: Int,
-                                                                y: Int,
+                                                                sk: SpatialKey,
                                                                 key: String)
 
   case class RasterTileWithKey(key: String,
                                zoom: Int,
-                               x: Int,
-                               y: Int,
+                               sk: SpatialKey,
                                values: Map[Long, Int],
                                cols: Int,
                                rows: Int,
@@ -96,37 +88,31 @@ package object footprints {
 
   case class VectorTileWithKey(key: String,
                                zoom: Int,
-                               x: Int,
-                               y: Int,
+                               sk: SpatialKey,
                                features: Seq[PointFeature[Map[String, Long]]])
 
   case class VectorTileWithKeyAndSequence(sequence: Int,
                                           key: String,
                                           zoom: Int,
-                                          x: Int,
-                                          y: Int,
+                                          sk: SpatialKey,
                                           features: Seq[PointFeature[Map[String, Long]]])
 
   case class VectorTileWithSequence(sequence: Int,
                                     zoom: Int,
-                                    x: Int,
-                                    y: Int,
+                                    sk: SpatialKey,
                                     features: Seq[PointFeature[Map[String, Long]]])
 
   case class VectorTileWithSequences(zoom: Int,
-                                     x: Int,
-                                     y: Int,
+                                     sk: SpatialKey,
                                      features: Seq[PointFeature[Map[String, Long]]],
                                      sequences: Seq[Int])
 
-
   object RasterTileWithKey {
-    def apply(key: String, zoom: Int, x: Int, y: Int, raster: Raster[Tile]): RasterTileWithKey =
+    def apply(key: String, zoom: Int, sk: SpatialKey, raster: Raster[Tile]): RasterTileWithKey =
       RasterTileWithKey(
         key,
         zoom,
-        x,
-        y,
+        sk,
         raster.toMap,
         raster.cols,
         raster.rows,
@@ -155,15 +141,13 @@ package object footprints {
     def apply(sequence: Int,
               key: String,
               zoom: Int,
-              x: Int,
-              y: Int,
+              sk: SpatialKey,
               raster: Raster[Tile]): RasterTileWithKeyAndSequence =
       RasterTileWithKeyAndSequence(
         sequence,
         key,
         zoom,
-        x,
-        y,
+        sk,
         raster.toMap,
         raster.cols,
         raster.rows,

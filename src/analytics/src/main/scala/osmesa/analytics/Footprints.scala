@@ -75,7 +75,8 @@ object Footprints extends Logging {
 
     val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
 
-    pyramid.groupByKeyAndTile()
+    pyramid
+      .groupByKeyAndTile()
       .mapPartitions { rows: Iterator[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =>
         // materialize the iterator so that its contents can be used multiple times
         val tiles = rows.toVector
@@ -191,7 +192,7 @@ object Footprints extends Logging {
             write(tile, uri)
         }
 
-        CountWithTileCoordinatesAndKey(feats.size, z, sk.col, sk.row, key)
+        CountWithTileCoordinatesAndKey(feats.size, z, sk, key)
     }
   }
 
@@ -220,10 +221,8 @@ object Footprints extends Logging {
   def makeUrls(tileSource: URI,
                tiles: Seq[RasterWithSequenceTileSeqWithTileCoordinatesAndKey]): Map[URI, Extent] =
     tiles.map { tile =>
-      val sk = SpatialKey(tile.x, tile.y)
-
-      (makeURI(tileSource, tile.key, tile.zoom, sk),
-       sk.extent(LayoutScheme.levelForZoom(tile.zoom).layout))
+      (makeURI(tileSource, tile.key, tile.zoom, tile.sk),
+       tile.sk.extent(LayoutScheme.levelForZoom(tile.zoom).layout))
     } toMap
 
   def loadMVTs(urls: Map[URI, Extent])(
@@ -253,15 +252,13 @@ object Footprints extends Logging {
       mvts: GenMap[URI, VectorTile]): Seq[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =
     tiles
       .map(tile => {
-        val sk = SpatialKey(tile.x, tile.y)
-        val uri = makeURI(tileSource, tile.key, tile.zoom, sk)
+        val uri = makeURI(tileSource, tile.key, tile.zoom, tile.sk)
         val committedSequences = mvts.get(uri).map(getCommittedSequences).getOrElse(Set.empty[Int])
 
         RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
           tile.tiles.filterNot(t => committedSequences.contains(t.sequence)),
           tile.zoom,
-          tile.x,
-          tile.y,
+          tile.sk,
           tile.key)
       })
       .filterNot(tileSeq => tileSeq.tiles.isEmpty)
@@ -291,12 +288,18 @@ object Footprints extends Logging {
           val sequences = data.map(_.sequence)
           val rasters = data.map(_.raster)
           val targetExtent =
-            SpatialKey(tile.x, tile.y).extent(LayoutScheme.levelForZoom(tile.zoom).layout)
+            tile.sk.extent(LayoutScheme.levelForZoom(tile.zoom).layout)
 
           val newTile = rasters.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, raster) =>
             acc.merge(targetExtent, raster.extent, raster.tile, Sum))
 
-          (tile.key, tile.zoom, tile.x, tile.y, (newTile, targetExtent): Raster[Tile], sequences)
+          // TODO provide a case class for this
+          (tile.key,
+           tile.zoom,
+           tile.sk.col,
+           tile.sk.row,
+           (newTile, targetExtent): Raster[Tile],
+           sequences)
       }
 
   /**
@@ -310,16 +313,15 @@ object Footprints extends Logging {
     import tiles.sparkSession.implicits._
 
     tiles
-      .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
+      .groupByKey(tile => (tile.key, tile.zoom, tile.sk))
       .mapGroups {
-        case ((k, z, x, y), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
+        case ((k, z, sk), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
           RasterWithSequenceTileSeqWithTileCoordinatesAndKey(
             tiles
               .map(x => RasterWithSequence(x.raster, x.sequence))
               .toVector, // this CANNOT be toSeq, as that produces a stream, which is subsequently partially consumed
             z,
-            x,
-            y,
+            sk,
             k
           )
       }
@@ -343,12 +345,7 @@ object Footprints extends Logging {
                   .flatMap { sk =>
                     g.intersection(sk.extent(layout)).toGeometry match {
                       case Some(clipped) if clipped.isValid =>
-                        Seq(
-                          GeometryTileWithKey(point.key,
-                                              baseZoom,
-                                              sk.col,
-                                              sk.row,
-                                              clipped.jtsGeom))
+                        Seq(GeometryTileWithKey(point.key, baseZoom, sk, clipped.jtsGeom))
                       case _ =>
                         Seq.empty[GeometryTileWithKey]
                     }
@@ -381,8 +378,7 @@ object Footprints extends Logging {
                           GeometryTileWithKeyAndSequence(point.sequence,
                                                          point.key,
                                                          baseZoom,
-                                                         sk.col,
-                                                         sk.row,
+                                                         sk,
                                                          clipped.jtsGeom))
                       case _ => Seq.empty[GeometryTileWithKeyAndSequence]
                     }
@@ -421,10 +417,10 @@ object Footprints extends Logging {
         import rasterTiles.sparkSession.implicits._
 
         rasterTiles
-          .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
+          .groupByKey(tile => (tile.key, tile.zoom, tile.sk))
           .mapGroups {
-            case ((k, z, x, y), tiles: Iterator[RasterTileWithKey]) =>
-              val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+            case ((k, z, sk), tiles: Iterator[RasterTileWithKey]) =>
+              val mergedExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
 
               val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
                 if (tile.raster.extent == mergedExtent) {
@@ -435,7 +431,7 @@ object Footprints extends Logging {
                 }
               })
 
-              RasterTileWithKey(k, z, x, y, (merged, mergedExtent))
+              RasterTileWithKey(k, z, sk, (merged, mergedExtent))
           }
       }
 
@@ -470,8 +466,7 @@ object Footprints extends Logging {
                       Seq(
                         RasterTileWithKey(tile.key,
                                           zoom,
-                                          tile.x / factor,
-                                          tile.y / factor,
+                                          SpatialKey(tile.sk.col / factor, tile.sk.row / factor),
                                           (parent, raster.extent)))
                     } else {
                       Seq.empty[RasterTileWithKey]
@@ -531,8 +526,8 @@ object Footprints extends Logging {
                         RasterTileWithKeyAndSequence(tile.sequence,
                                                      tile.key,
                                                      zoom,
-                                                     tile.x / factor,
-                                                     tile.y / factor,
+                                                     SpatialKey(tile.sk.col / factor,
+                                                                tile.sk.row / factor),
                                                      (parent, raster.extent)))
                     } else {
                       Seq.empty[RasterTileWithKeyAndSequence]
@@ -552,10 +547,10 @@ object Footprints extends Logging {
         import rasterTiles.sparkSession.implicits._
 
         rasterTiles
-          .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
+          .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.sk))
           .mapGroups {
-            case ((sequence, k, z, x, y), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
-              val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+            case ((sequence, k, z, sk), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
+              val mergedExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
 
               val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
                 if (tile.raster.extent == mergedExtent) {
@@ -566,7 +561,7 @@ object Footprints extends Logging {
                 }
               })
 
-              RasterTileWithKeyAndSequence(sequence, k, z, x, y, (merged, mergedExtent))
+              RasterTileWithKeyAndSequence(sequence, k, z, sk, (merged, mergedExtent))
           }
       }
     }
@@ -576,10 +571,9 @@ object Footprints extends Logging {
         import geometryTiles.sparkSession.implicits._
 
         geometryTiles
-          .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
+          .groupByKey(tile => (tile.key, tile.zoom, tile.sk))
           .mapGroups {
-            case ((k, z, x, y), tiles) =>
-              val sk = SpatialKey(x, y)
+            case ((k, z, sk), tiles) =>
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
               val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
@@ -593,7 +587,7 @@ object Footprints extends Logging {
                   }
               })
 
-              RasterTileWithKey(k, z, x, y, (tile, tileExtent))
+              RasterTileWithKey(k, z, sk, (tile, tileExtent))
           }
       }
     }
@@ -604,10 +598,9 @@ object Footprints extends Logging {
         import geometryTiles.sparkSession.implicits._
 
         geometryTiles
-          .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
+          .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.sk))
           .mapGroups {
-            case ((sequence, k, z, x, y), tiles) =>
-              val sk = SpatialKey(x, y)
+            case ((sequence, k, z, sk), tiles) =>
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
               val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
@@ -621,7 +614,7 @@ object Footprints extends Logging {
                   }
               })
 
-              RasterTileWithKeyAndSequence(sequence, k, z, x, y, (tile, tileExtent))
+              RasterTileWithKeyAndSequence(sequence, k, z, sk, (tile, tileExtent))
           }
       }
     }
@@ -637,7 +630,6 @@ object Footprints extends Logging {
         (String, Int, SpatialKey, Extent, ArrayBuffer[PointFeature[(Long, Int)]], List[Int])] =
         tiles.map { tile =>
           // convert into features
-          val sk = SpatialKey(tile.x, tile.y)
           val raster = tile.raster
           val rasterExtent =
             RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
@@ -654,7 +646,7 @@ object Footprints extends Logging {
             }
           }
 
-          (tile.key, tile.zoom, sk, raster.extent, features, List.empty[Int])
+          (tile.key, tile.zoom, tile.sk, raster.extent, features, List.empty[Int])
         }
     }
 

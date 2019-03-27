@@ -50,9 +50,9 @@ object EditHistogram extends Logging {
       .rasterize(BaseCols, BaseRows)
       .pyramid(baseZoom)
       .vectorize
-      .groupByKey(tile => (tile.zoom, tile.x, tile.y))
+      .groupByKey(tile => (tile.zoom, tile.sk))
       .mapGroups {
-        case ((zoom, x, y), tiles: Iterator[VectorTileWithKey]) =>
+        case ((zoom, sk), tiles: Iterator[VectorTileWithKey]) =>
           // use an intermediate Map(spatial key -> feature) to merge partial histograms
           val mergedTiles = tiles
             .flatMap(_.features)
@@ -70,7 +70,7 @@ object EditHistogram extends Logging {
             .values
             .toVector // materialize iterable
 
-          VectorTileWithSequences(zoom, x, y, mergedTiles, Seq.empty[Int])
+          VectorTileWithSequences(zoom, sk, mergedTiles, Seq.empty[Int])
       }
       .mapPartitions { tiles: Iterator[VectorTileWithSequences] =>
         // increase the number of concurrent network-bound tasks
@@ -86,10 +86,9 @@ object EditHistogram extends Logging {
       .toDF("count", "z", "x", "y")
   }
 
-  def updateTiles(
-      tileSource: URI,
-      mvts: GenMap[URI, VectorTile],
-      tiles: TraversableOnce[VectorTileWithSequences])(
+  def updateTiles(tileSource: URI,
+                  mvts: GenMap[URI, VectorTile],
+                  tiles: TraversableOnce[VectorTileWithSequences])(
       implicit taskSupport: TaskSupport): GenIterable[(Int, Int, Int, Int)] = {
     // parallelize tiles to facilitate greater upload parallelism
     val parTiles = tiles.toIterable.par
@@ -97,8 +96,7 @@ object EditHistogram extends Logging {
 
     parTiles.map {
       // update tiles
-      case VectorTileWithSequences(z, x, y, feats, sequences) =>
-        val sk = SpatialKey(x, y)
+      case VectorTileWithSequences(z, sk, feats, sequences) =>
         val extent = sk.extent(LayoutScheme.levelForZoom(z).layout)
         val uri = makeURI(tileSource, z, sk)
         val key = "edits"
@@ -224,33 +222,18 @@ object EditHistogram extends Logging {
     makeLayer(SequenceLayerName, extent, Seq(sequenceFeature))
   }
 
-  def makeUrls(tileSource: URI, tiles: Seq[VectorTileWithSequence]): Map[URI, Extent] =
-    tiles.map { tile =>
-      val sk = SpatialKey(tile.x, tile.y)
-
-      (makeURI(tileSource, tile.zoom, sk), sk.extent(LayoutScheme.levelForZoom(tile.zoom).layout))
-    } toMap
-
-  def loadMVTs(urls: Map[URI, Extent])(
-      implicit taskSupport: TaskSupport): GenMap[URI, VectorTile] = {
-    // convert to a parallel collection to load more tiles concurrently
-    val parUrls = urls.par
-    parUrls.tasksupport = taskSupport
-
-    parUrls.map {
-      case (uri, extent) =>
-        (uri,
-         read(uri).map(
-           bytes =>
-             VectorTile.fromBytes(
-               IOUtils.toByteArray(new GZIPInputStream(new ByteArrayInputStream(bytes))),
-               extent)))
-    } filter {
-      case (_, mvt) => mvt.isDefined
-    } map {
-      case (uri, mvt) => uri -> mvt.get
-    }
+  def makeURI(tileSource: URI, zoom: Int, sk: SpatialKey): URI = {
+    val filename = s"${path(zoom, sk)}"
+    tileSource.resolve(filename)
   }
+
+  def getCommittedSequences(tile: VectorTile): Seq[Int] =
+    // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
+    // single sequence may appear in different batches depending on when changeset metadata arrives
+    tile.layers
+      .get(SequenceLayerName)
+      .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
+      .getOrElse(Seq.empty[Int])
 
   def update(nodes: DataFrame, tileSource: URI, baseZoom: Int = BaseZoom)(
       implicit concurrentUploads: Option[Int] = None): DataFrame = {
@@ -260,37 +243,35 @@ object EditHistogram extends Logging {
       .repartition() // eliminate skew
       .as[CoordinatesWithKeyAndSequence]
 
-     points
+    points
       .tile(baseZoom)
       .rasterize(BaseCols, BaseRows)
       .pyramid(baseZoom)
       .vectorize
-      .groupByKey(tile => (tile.zoom, tile.x, tile.y))
+      .groupByKey(tile => (tile.zoom, tile.sk))
       .flatMapGroups {
-        case ((zoom, x, y), groups: Iterator[VectorTileWithKeyAndSequence]) =>
+        case ((zoom, sk), groups: Iterator[VectorTileWithKeyAndSequence]) =>
           groups.toVector.groupBy(_.sequence).map {
             case (sequence, tiles: Vector[VectorTileWithKeyAndSequence]) =>
-              {
-                val features = tiles
-                  .flatMap(_.features)
-                  // TODO this occurs in 3 places
-                  .foldLeft(Map.empty[Long, PointFeature[Map[String, Long]]]) {
-                    // use an intermediate Map(spatial key -> feature) to merge partial histograms
-                    case (acc, feat) =>
-                      val sk = feat.data("__id")
+              val features = tiles
+                .flatMap(_.features)
+                // TODO this occurs in 3 places
+                .foldLeft(Map.empty[Long, PointFeature[Map[String, Long]]]) {
+                  // use an intermediate Map(spatial key -> feature) to merge partial histograms
+                  case (acc, feat) =>
+                    val sk = feat.data("__id")
 
-                      val merged = acc.get(sk) match {
-                        case Some(f) => f.mapData(d => d ++ feat.data)
-                        case None    => feat
-                      }
+                    val merged = acc.get(sk) match {
+                      case Some(f) => f.mapData(d => d ++ feat.data)
+                      case None    => feat
+                    }
 
-                      acc.updated(sk, merged)
-                  }
-                  .values
-                  .toVector // materialize iterable
+                    acc.updated(sk, merged)
+                }
+                .values
+                .toVector // materialize iterable
 
-                VectorTileWithSequence(sequence, zoom, x, y, features)
-              }
+              VectorTileWithSequence(sequence, zoom, sk, features)
           }
       }
       // TODO tiles with different sequences should all be on the same partition
@@ -317,14 +298,40 @@ object EditHistogram extends Logging {
       .toDF("count", "z", "x", "y")
   }
 
+  def makeUrls(tileSource: URI, tiles: Seq[VectorTileWithSequence]): Map[URI, Extent] =
+    tiles.map { tile =>
+      (makeURI(tileSource, tile.zoom, tile.sk),
+       tile.sk.extent(LayoutScheme.levelForZoom(tile.zoom).layout))
+    } toMap
+
+  def loadMVTs(urls: Map[URI, Extent])(
+      implicit taskSupport: TaskSupport): GenMap[URI, VectorTile] = {
+    // convert to a parallel collection to load more tiles concurrently
+    val parUrls = urls.par
+    parUrls.tasksupport = taskSupport
+
+    parUrls.map {
+      case (uri, extent) =>
+        (uri,
+         read(uri).map(
+           bytes =>
+             VectorTile.fromBytes(
+               IOUtils.toByteArray(new GZIPInputStream(new ByteArrayInputStream(bytes))),
+               extent)))
+    } filter {
+      case (_, mvt) => mvt.isDefined
+    } map {
+      case (uri, mvt) => uri -> mvt.get
+    }
+  }
+
   def getUncommittedTiles(tileSource: URI,
                           tiles: Seq[VectorTileWithSequence],
                           mvts: GenMap[URI, VectorTile]): Iterable[VectorTileWithSequences] =
     tiles
-      .groupBy(t => (t.zoom, t.x, t.y))
+      .groupBy(t => (t.zoom, t.sk))
       .map {
-        case ((zoom, x, y), rows) => {
-          val sk = SpatialKey(x, y)
+        case ((zoom, sk), rows) =>
           val uri = makeURI(tileSource, zoom, sk)
           val committedSequences =
             mvts.get(uri).map(getCommittedSequences).getOrElse(Seq.empty[Int])
@@ -350,23 +357,9 @@ object EditHistogram extends Logging {
             .values
             .toVector
 
-          VectorTileWithSequences(zoom, x, y, features, sequences)
-        }
+          VectorTileWithSequences(zoom, sk, features, sequences)
       }
       .filterNot(x => x.features.isEmpty)
-
-  def makeURI(tileSource: URI, zoom: Int, sk: SpatialKey): URI = {
-    val filename = s"${path(zoom, sk)}"
-    tileSource.resolve(filename)
-  }
-
-  def getCommittedSequences(tile: VectorTile): Seq[Int] =
-    // NOTE when working with hashtags, this should be the changeset sequence, since changes from a
-    // single sequence may appear in different batches depending on when changeset metadata arrives
-    tile.layers
-      .get(SequenceLayerName)
-      .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
-      .getOrElse(Seq.empty[Int])
 
   object implicits {
     implicit class ExtendedCoordinatesWithKey(val coords: Dataset[CoordinatesWithKey]) {
@@ -389,12 +382,7 @@ object EditHistogram extends Logging {
                     g.intersection(sk.extent(layout)).toGeometry match {
                       case Some(clipped) if clipped.isValid =>
                         if (xs.contains(sk.col) && ys.contains(sk.row)) {
-                          Seq(
-                            GeometryTileWithKey(point.key,
-                                                baseZoom,
-                                                sk.col,
-                                                sk.row,
-                                                clipped.jtsGeom))
+                          Seq(GeometryTileWithKey(point.key, baseZoom, sk, clipped.jtsGeom))
                         } else {
                           // TODO figure out why this happens (0/0/-5)
                           // it might be features extending outside Web Mercator bounds, in which case those features
@@ -434,8 +422,7 @@ object EditHistogram extends Logging {
                           GeometryTileWithKeyAndSequence(point.sequence,
                                                          point.key,
                                                          baseZoom,
-                                                         sk.col,
-                                                         sk.row,
+                                                         sk,
                                                          clipped.jtsGeom))
                       case _ => Seq.empty[GeometryTileWithKeyAndSequence]
                     }
@@ -466,10 +453,10 @@ object EditHistogram extends Logging {
         import rasterTiles.sparkSession.implicits._
 
         rasterTiles
-          .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
+          .groupByKey(tile => (tile.key, tile.zoom, tile.sk))
           .mapGroups {
-            case ((k, z, x, y), tiles: Iterator[RasterTileWithKey]) =>
-              val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+            case ((k, z, sk), tiles: Iterator[RasterTileWithKey]) =>
+              val mergedExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
 
               val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
                 if (tile.raster.extent == mergedExtent) {
@@ -480,7 +467,7 @@ object EditHistogram extends Logging {
                 }
               })
 
-              RasterTileWithKey(k, z, x, y, (merged, mergedExtent))
+              RasterTileWithKey(k, z, sk, (merged, mergedExtent))
           }
       }
 
@@ -515,8 +502,7 @@ object EditHistogram extends Logging {
                       Seq(
                         RasterTileWithKey(tile.key,
                                           zoom,
-                                          tile.x / factor,
-                                          tile.y / factor,
+                                          SpatialKey(tile.sk.col / factor, tile.sk.row / factor),
                                           (parent, raster.extent)))
                     } else {
                       Seq.empty[RasterTileWithKey]
@@ -569,8 +555,8 @@ object EditHistogram extends Logging {
                     RasterTileWithKeyAndSequence(tile.sequence,
                                                  tile.key,
                                                  zoom,
-                                                 tile.x / factor,
-                                                 tile.y / factor,
+                                                 SpatialKey(tile.sk.col / factor,
+                                                            tile.sk.row / factor),
                                                  (parent, tile.raster.extent)))
                 }
               }
@@ -589,10 +575,10 @@ object EditHistogram extends Logging {
         import rasterTiles.sparkSession.implicits._
 
         rasterTiles
-          .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
+          .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.sk))
           .mapGroups {
-            case ((sequence, k, z, x, y), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
-              val mergedExtent = SpatialKey(x, y).extent(LayoutScheme.levelForZoom(z).layout)
+            case ((sequence, k, z, sk), tiles: Iterator[RasterTileWithKeyAndSequence]) =>
+              val mergedExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
 
               val merged = tiles.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, tile) => {
                 if (tile.raster.extent == mergedExtent) {
@@ -603,12 +589,7 @@ object EditHistogram extends Logging {
                 }
               })
 
-              RasterTileWithKeyAndSequence(sequence,
-                                           k,
-                                           z,
-                                           x,
-                                           y,
-                                           (merged, mergedExtent))
+              RasterTileWithKeyAndSequence(sequence, k, z, sk, (merged, mergedExtent))
           }
       }
     }
@@ -618,10 +599,9 @@ object EditHistogram extends Logging {
         import geometryTiles.sparkSession.implicits._
 
         geometryTiles
-          .groupByKey(tile => (tile.key, tile.zoom, tile.x, tile.y))
+          .groupByKey(tile => (tile.key, tile.zoom, tile.sk))
           .mapGroups {
-            case ((k, z, x, y), tiles) =>
-              val sk = SpatialKey(x, y)
+            case ((k, z, sk), tiles) =>
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
               val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
@@ -635,7 +615,7 @@ object EditHistogram extends Logging {
                   }
               })
 
-              RasterTileWithKey(k, z, x, y, (tile, tileExtent))
+              RasterTileWithKey(k, z, sk, (tile, tileExtent))
           }
       }
     }
@@ -646,10 +626,9 @@ object EditHistogram extends Logging {
         import geometryTiles.sparkSession.implicits._
 
         geometryTiles
-          .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.x, tile.y))
+          .groupByKey(tile => (tile.sequence, tile.key, tile.zoom, tile.sk))
           .mapGroups {
-            case ((sequence, k, z, x, y), tiles) =>
-              val sk = SpatialKey(x, y)
+            case ((sequence, k, z, sk), tiles) =>
               val tileExtent = sk.extent(LayoutScheme.levelForZoom(z).layout)
               val tile = MutableSparseIntTile(cols, rows)
               val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
@@ -663,12 +642,7 @@ object EditHistogram extends Logging {
                   }
               })
 
-              RasterTileWithKeyAndSequence(sequence,
-                                           k,
-                                           z,
-                                           x,
-                                           y,
-                                           (tile, tileExtent))
+              RasterTileWithKeyAndSequence(sequence, k, z, sk, (tile, tileExtent))
           }
       }
     }
@@ -696,11 +670,12 @@ object EditHistogram extends Logging {
             }
           }
 
-          VectorTileWithKey(tile.key, tile.zoom, tile.x, tile.y, features)
+          VectorTileWithKey(tile.key, tile.zoom, tile.sk, features)
         }
     }
 
-    implicit class RasterTileWithKeyAndSequenceExtension(tiles: Dataset[RasterTileWithKeyAndSequence]) {
+    implicit class RasterTileWithKeyAndSequenceExtension(
+        tiles: Dataset[RasterTileWithKeyAndSequence]) {
       import tiles.sparkSession.implicits._
 
       def vectorize: Dataset[VectorTileWithKeyAndSequence] =
@@ -718,12 +693,12 @@ object EditHistogram extends Logging {
             if (value > 0) {
               features.append(
                 PointFeature(Point(rasterExtent.gridToMap(c, r)),
-                  Map(tile.key -> value,
-                    "__id" -> index.toIndex(SpatialKey(c, r)).toLong)))
+                             Map(tile.key -> value,
+                                 "__id" -> index.toIndex(SpatialKey(c, r)).toLong)))
             }
           }
 
-          VectorTileWithKeyAndSequence(tile.sequence, tile.key, tile.zoom, tile.x, tile.y, features)
+          VectorTileWithKeyAndSequence(tile.sequence, tile.key, tile.zoom, tile.sk, features)
         }
     }
   }
