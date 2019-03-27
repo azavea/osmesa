@@ -1,6 +1,6 @@
 package osmesa.analytics
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, IOException}
 import java.net.{URI, URLDecoder}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
@@ -96,7 +96,23 @@ package object updater extends Logging {
         val path = Paths.get(uri)
 
         if (Files.exists(path)) {
-          Some(Source.fromFile(uri).getLines.toSeq)
+          var source: Option[Source] = None
+
+          try {
+            source = Some(Source.fromFile(uri))
+            source.map(_.getLines.toSeq)
+          } catch {
+            case e: IOException =>
+              logWarning(s"Failed to read ${path}", e)
+
+              None
+          } finally {
+            try {
+              source.foreach(_.close)
+            } catch {
+              case e: IOException => logWarning(s"Failed to close ${path}", e)
+            }
+          }
         } else {
           None
         }
