@@ -149,7 +149,8 @@ object Footprint extends Logging {
       .select('lat.cast(DoubleType) as 'lat, 'lon.cast(DoubleType) as 'lon, 'key)
 
     val stats = Footprints.createFootprints(nodes, outputURI)
-    stats.repartition(1).write.mode(SaveMode.Overwrite).csv("/tmp/footprints/")
+
+    stats.show
 
     spark.stop()
   }
