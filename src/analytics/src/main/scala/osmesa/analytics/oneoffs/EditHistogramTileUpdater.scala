@@ -7,7 +7,8 @@ import cats.implicits._
 import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
-import osmesa.analytics.{Analytics, Footprints}
+import org.apache.spark.sql.functions._
+import osmesa.analytics.{Analytics, EditHistogram}
 import osmesa.common.model._
 import osmesa.common.sources.Source
 
@@ -17,26 +18,27 @@ import osmesa.common.sources.Source
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.UserFootprintUpdater \
+ *   --class osmesa.analytics.oneoffs.EditHistogramTileUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar
  */
-object UserFootprintUpdater
+object EditHistogramTileUpdater
     extends CommandApp(
-      name = "osmesa-user-footprint-updater",
-      header = "Consume minutely diffs to update user footprint MVTs",
+      name = "osmesa-edit-histogram-tile-updater",
+      header = "Consume minutely diffs to update edit histogram MVTs",
       main = {
         type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
         val rootURI = new File("").toURI
 
         val changeSourceOpt = Opts
-          .option[URI]("change-source",
+          .option[URI]("source",
                        short = "d",
                        metavar = "uri",
                        help = "Location of minutely diffs to process")
           .withDefault(new URI("https://planet.osm.org/replication/minute/"))
+        // TODO this is off-by-one when running from the DB
         val changesStartSequenceOpt = Opts
           .option[Int](
-            "changes-start-sequence",
+            "start-sequence",
             short = "s",
             metavar = "sequence",
             help =
@@ -44,13 +46,13 @@ object UserFootprintUpdater
           .orNone
         val changesEndSequenceOpt = Opts
           .option[Int](
-            "changes-end-sequence",
+            "end-sequence",
             short = "e",
             metavar = "sequence",
             help = "Minutely diff ending sequence. If absent, this will be an infinite stream.")
           .orNone
         val changesBatchSizeOpt = Opts
-          .option[Int]("changes-batch-size",
+          .option[Int]("batch-size",
                        short = "b",
                        metavar = "batch size",
                        help = "Change batch size.")
@@ -60,7 +62,7 @@ object UserFootprintUpdater
             "tile-source",
             short = "t",
             metavar = "uri",
-            help = "URI prefix for vector tiles to update"
+            help = "URI prefix of MVTs to update"
           )
           .withDefault(rootURI)
         val concurrentUploadsOpt = Opts
@@ -93,13 +95,15 @@ object UserFootprintUpdater
            tileSource,
            _concurrentUploads,
            databaseUri) =>
-            val spark: SparkSession = Analytics.sparkSession("UserFootprintUpdater")
+            val AppName = "EditHistogramTileUpdater"
+
+            val spark: SparkSession = Analytics.sparkSession(AppName)
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
 
             val changeOptions = Map(Source.BaseURI -> changeSource.toString,
                 Source.DatabaseURI -> databaseUri.toString,
-                Source.ProcessName -> "UserFootprintUpdater") ++
+                Source.ProcessName -> AppName) ++
               changesStartSequence.map(s => Map(Source.StartSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
               changesEndSequence.map(s => Map(Source.EndSequence -> s.toString))
@@ -113,14 +117,12 @@ object UserFootprintUpdater
 
             val changedNodes = changes
               .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
-              .select('sequence, 'uid, 'lat, 'lon)
+              .select('sequence, year('timestamp) * 1000 + dayofyear('timestamp) as 'key, 'lat, 'lon)
 
-            val tiledNodes =
-              Footprints.updateFootprints(changedNodes
-                                            .withColumnRenamed("uid", "key"), tileSource)
+            val tiledNodes = EditHistogram.update(changedNodes, tileSource)
 
             val query = tiledNodes.writeStream
-              .queryName("tiled user footprints")
+              .queryName("edit histogram tiles")
               .format("console")
               .start
 

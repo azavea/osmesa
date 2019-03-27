@@ -75,10 +75,10 @@ object Footprints extends Logging {
 
     val pyramid = points.tile(baseZoom).rasterize(BaseCols, BaseRows).pyramid(baseZoom)
 
-    pyramid.groupByKeyAndTile
+    pyramid.groupByKeyAndTile()
       .mapPartitions { rows: Iterator[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =>
         // materialize the iterator so that its contents can be used multiple times
-        val tiles = rows.toList
+        val tiles = rows.toVector
 
         // increase the number of concurrent network-bound tasks
         implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
@@ -487,7 +487,7 @@ object Footprints extends Logging {
         val rasterTiles: Dataset[RasterTileWithKeyAndSequence]) {
       import rasterTiles.sparkSession.implicits._
 
-      def groupByKeyAndTile: Dataset[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =
+      def groupByKeyAndTile(): Dataset[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =
         Footprints.groupByKeyAndTile(rasterTiles)
 
       def pyramid(baseZoom: Int = BaseZoom): Dataset[RasterTileWithKeyAndSequence] = {
