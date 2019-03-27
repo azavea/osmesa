@@ -52,25 +52,8 @@ object EditHistogram extends Logging {
       .vectorize
       .groupByKey(tile => (tile.zoom, tile.sk))
       .mapGroups {
-        case ((zoom, sk), tiles: Iterator[VectorTileWithKey]) =>
-          // use an intermediate Map(spatial key -> feature) to merge partial histograms
-          val mergedTiles = tiles
-            .flatMap(_.features)
-            .foldLeft(Map.empty[Long, PointFeature[Map[String, Long]]]) {
-              case (acc, feat) =>
-                val sk = feat.data("__id")
-
-                val merged = acc.get(sk) match {
-                  case Some(f) => f.mapData(d => d ++ feat.data)
-                  case None    => feat
-                }
-
-                acc.updated(sk, merged)
-            }
-            .values
-            .toVector // materialize iterable
-
-          VectorTileWithSequences(zoom, sk, mergedTiles, Seq.empty[Int])
+        case ((zoom, sk), tiles) =>
+          VectorTileWithSequences(zoom, sk, tiles.flatMap(_.features).merge, Seq.empty[Int])
       }
       .mapPartitions { tiles: Iterator[VectorTileWithSequences] =>
         // increase the number of concurrent network-bound tasks
@@ -79,6 +62,51 @@ object EditHistogram extends Logging {
 
         try {
           updateTiles(tileSource, Map.empty[URI, VectorTile], tiles).iterator
+        } finally {
+          taskSupport.environment.shutdown()
+        }
+      }
+      .toDF("count", "z", "x", "y")
+  }
+
+  def update(nodes: DataFrame, tileSource: URI, baseZoom: Int = BaseZoom)(
+      implicit concurrentUploads: Option[Int] = None): DataFrame = {
+    import nodes.sparkSession.implicits._
+
+    val points = nodes
+      .repartition() // eliminate skew
+      .as[CoordinatesWithKeyAndSequence]
+
+    points
+      .tile(baseZoom)
+      .rasterize(BaseCols, BaseRows)
+      .pyramid(baseZoom)
+      .vectorize
+      .groupByKey(tile => (tile.zoom, tile.sk))
+      .flatMapGroups {
+        case ((zoom, sk), groups: Iterator[VectorTileWithKeyAndSequence]) =>
+          groups.toVector.groupBy(_.sequence).map {
+            case (sequence, tiles) =>
+              VectorTileWithSequence(sequence, zoom, sk, tiles.flatMap(_.features).merge)
+          }
+      }
+      // TODO tiles with different sequences should all be on the same partition
+      // creating an S3 tile output stream addresses this, as tiles will have had committed sequences filtered out by
+      // the time they hit the output stream
+      .mapPartitions { rows: Iterator[VectorTileWithSequence] =>
+        // materialize the iterator so that its contents can be used multiple times
+        val tiles = rows.toVector
+
+        // increase the number of concurrent network-bound tasks
+        implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
+          new ForkJoinPool(concurrentUploads.getOrElse(DefaultUploadConcurrency)))
+
+        try {
+          val urls = makeUrls(tileSource, tiles)
+          val mvts = loadMVTs(urls)
+          val uncommitted = getUncommittedTiles(tileSource, tiles, mvts)
+
+          updateTiles(tileSource, mvts, uncommitted).iterator
         } finally {
           taskSupport.environment.shutdown()
         }
@@ -235,69 +263,6 @@ object EditHistogram extends Logging {
       .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
       .getOrElse(Seq.empty[Int])
 
-  def update(nodes: DataFrame, tileSource: URI, baseZoom: Int = BaseZoom)(
-      implicit concurrentUploads: Option[Int] = None): DataFrame = {
-    import nodes.sparkSession.implicits._
-
-    val points = nodes
-      .repartition() // eliminate skew
-      .as[CoordinatesWithKeyAndSequence]
-
-    points
-      .tile(baseZoom)
-      .rasterize(BaseCols, BaseRows)
-      .pyramid(baseZoom)
-      .vectorize
-      .groupByKey(tile => (tile.zoom, tile.sk))
-      .flatMapGroups {
-        case ((zoom, sk), groups: Iterator[VectorTileWithKeyAndSequence]) =>
-          groups.toVector.groupBy(_.sequence).map {
-            case (sequence, tiles: Vector[VectorTileWithKeyAndSequence]) =>
-              val features = tiles
-                .flatMap(_.features)
-                // TODO this occurs in 3 places
-                .foldLeft(Map.empty[Long, PointFeature[Map[String, Long]]]) {
-                  // use an intermediate Map(spatial key -> feature) to merge partial histograms
-                  case (acc, feat) =>
-                    val sk = feat.data("__id")
-
-                    val merged = acc.get(sk) match {
-                      case Some(f) => f.mapData(d => d ++ feat.data)
-                      case None    => feat
-                    }
-
-                    acc.updated(sk, merged)
-                }
-                .values
-                .toVector // materialize iterable
-
-              VectorTileWithSequence(sequence, zoom, sk, features)
-          }
-      }
-      // TODO tiles with different sequences should all be on the same partition
-      // creating an S3 tile output stream addresses this, as tiles will have had committed sequences filtered out by
-      // the time they hit the output stream
-      .mapPartitions { rows: Iterator[VectorTileWithSequence] =>
-        // materialize the iterator so that its contents can be used multiple times
-        val tiles = rows.toVector
-
-        // increase the number of concurrent network-bound tasks
-        implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
-          new ForkJoinPool(concurrentUploads.getOrElse(DefaultUploadConcurrency)))
-
-        try {
-          val urls = makeUrls(tileSource, tiles)
-          val mvts = loadMVTs(urls)
-          val uncommitted = getUncommittedTiles(tileSource, tiles, mvts)
-
-          updateTiles(tileSource, mvts, uncommitted).iterator
-        } finally {
-          taskSupport.environment.shutdown()
-        }
-      }
-      .toDF("count", "z", "x", "y")
-  }
-
   def makeUrls(tileSource: URI, tiles: Seq[VectorTileWithSequence]): Map[URI, Extent] =
     tiles.map { tile =>
       (makeURI(tileSource, tile.zoom, tile.sk),
@@ -340,28 +305,36 @@ object EditHistogram extends Logging {
             rows.filterNot(t => committedSequences.contains(t.sequence)).toVector
 
           val sequences = uncommittedTiles.map(_.sequence)
-          val features = uncommittedTiles
-            .flatMap(_.features)
-            .foldLeft(Map.empty[Long, PointFeature[Map[String, Long]]]) {
-              // use an intermediate Map(spatial key -> feature) to merge partial histograms
-              case (acc, feat) =>
-                val sk = feat.data("__id")
 
-                val merged = acc.get(sk) match {
-                  case Some(f) => f.mapData(d => d ++ feat.data)
-                  case None    => feat
-                }
-
-                acc.updated(sk, merged)
-            }
-            .values
-            .toVector
-
-          VectorTileWithSequences(zoom, sk, features, sequences)
+          VectorTileWithSequences(zoom, sk, uncommittedTiles.flatMap(_.features).merge, sequences)
       }
       .filterNot(x => x.features.isEmpty)
 
   object implicits {
+    implicit class ExtendedPointFeatureTraversableOnce(
+        val features: TraversableOnce[PointFeature[Map[String, Long]]]) {
+      /**
+        * Merge features that are part of the same vectorized tile and contain distinct properties.
+        *
+        * @return Merged features
+        */
+      def merge(): Seq[PointFeature[Map[String, Long]]] =
+        features
+          .foldLeft(Map.empty[Long, PointFeature[Map[String, Long]]]) {
+            case (acc, feat) =>
+              val sk = feat.data("__id")
+
+              val merged = acc.get(sk) match {
+                case Some(f) => f.mapData(d => d ++ feat.data)
+                case None    => feat
+              }
+
+              acc.updated(sk, merged)
+          }
+          .values
+          .toVector // materialize iterator
+    }
+
     implicit class ExtendedCoordinatesWithKey(val coords: Dataset[CoordinatesWithKey]) {
       import coords.sparkSession.implicits._
 
