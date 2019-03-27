@@ -36,7 +36,6 @@ object StreamingEditHistogramTileUpdater
                        help = "Location of minutely diffs to process")
           .withDefault(new URI("https://planet.osm.org/replication/minute/"))
 
-        // TODO this is off-by-one when running from the DB
         val startSequenceOpt = Opts
           .option[Int](
             "start-sequence",
