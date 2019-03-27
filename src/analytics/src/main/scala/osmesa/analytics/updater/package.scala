@@ -54,14 +54,13 @@ package object updater extends Logging {
           case Success(bytes) => Some(bytes)
           case Failure(e) =>
             e match {
-              case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" =>
-              case ex: AmazonS3Exception =>
-                logWarning(s"Could not read $uri: ${ex.getMessage}")
-              case _ =>
-                logWarning(s"Could not read $uri: $e")
-            }
+              case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" => None
 
-            None
+              // treat these exceptions as fatal, as treating tiles as None has the potential to corrupt the tileset
+              case _ =>
+                logWarning(s"Could not read $uri: ${e.getMessage}", e)
+                throw e
+            }
         }
       case "file" =>
         val path = Paths.get(uri)

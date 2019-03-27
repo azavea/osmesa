@@ -240,7 +240,6 @@ object EditHistogram extends Logging {
     parUrls.map {
       case (uri, extent) =>
         (uri,
-        // TODO gracefully handle errors reading (since failed reads can corrupt the tileset)
          read(uri).map(
            bytes =>
              VectorTile.fromBytes(
