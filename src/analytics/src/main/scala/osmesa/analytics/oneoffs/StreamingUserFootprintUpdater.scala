@@ -110,7 +110,7 @@ object StreamingUserFootprintUpdater
               .select('sequence, 'uid as 'key, 'lat, 'lon)
 
             val tiledNodes =
-              Footprints.updateFootprints(changedNodes, tileSource)
+              Footprints.update(changedNodes, tileSource)
 
             val query = tiledNodes.writeStream
               .queryName("tiled user footprints")

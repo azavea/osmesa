@@ -49,8 +49,6 @@ package object footprints {
     )
   }
 
-  case class CountWithTileCoordinatesAndKey(count: Long, zoom: Int, sk: SpatialKey, key: String)
-
   case class RasterWithSequence(values: Map[Long, Int],
                                 cols: Int,
                                 rows: Int,
@@ -105,7 +103,7 @@ package object footprints {
   case class VectorTileWithSequences(zoom: Int,
                                      sk: SpatialKey,
                                      features: Seq[PointFeature[Map[String, Long]]],
-                                     sequences: Seq[Int])
+                                     sequences: Set[Int])
 
   object RasterTileWithKey {
     def apply(key: String, zoom: Int, sk: SpatialKey, raster: Raster[Tile]): RasterTileWithKey =

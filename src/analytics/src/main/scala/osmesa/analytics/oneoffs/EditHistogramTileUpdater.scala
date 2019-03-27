@@ -45,7 +45,8 @@ object EditHistogramTileUpdater
             "end-sequence",
             short = "e",
             metavar = "sequence",
-            help = "Minutely diff ending sequence. If absent, the current (remote) sequence will be used.")
+            help =
+              "Minutely diff ending sequence. If absent, the current (remote) sequence will be used.")
           .orNone
 
         val batchSizeOpt = Opts
@@ -142,7 +143,7 @@ object EditHistogramTileUpdater
 
             val tiledNodes = EditHistogram.update(changedNodes,
                                                   tileSource,
-                                                  baseZoom.getOrElse(EditHistogram.BaseZoom))
+                                                  baseZoom.getOrElse(EditHistogram.DefaultBaseZoom))
 
             tiledNodes.show
         }
