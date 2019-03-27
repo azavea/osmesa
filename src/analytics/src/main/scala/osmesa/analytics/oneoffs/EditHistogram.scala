@@ -4,11 +4,11 @@ import java.net.URI
 
 import cats.implicits._
 import com.monovore.decline._
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
-import org.apache.spark.sql.{SaveMode, SparkSession}
-import osmesa.analytics.{Analytics, EditHistogram}
 import org.locationtech.geomesa.spark.jts._
+import osmesa.analytics.{Analytics, EditHistogram}
 
 object EditHistogramCommand
     extends CommandApp(
@@ -37,8 +37,8 @@ object EditHistogramCommand
             .where('uid > 1)
             .select('lat, 'lon, year('timestamp) * 1000 + dayofyear('timestamp) as 'key)
 
-          val stats = EditHistogram.createTiles(nodes, outputURI)
-          stats.repartition(1).write.mode(SaveMode.Overwrite).csv("/tmp/currency/")
+          val stats = EditHistogram.create(nodes, outputURI)
+          stats.show
 
           spark.stop()
         }

@@ -129,7 +129,7 @@ object StreamingEditHistogramTileUpdater
 
             val tiledNodes = EditHistogram.update(changedNodes,
                                                   tileSource,
-                                                  baseZoom.getOrElse(EditHistogram.BaseZoom))
+                                                  baseZoom.getOrElse(EditHistogram.DefaultBaseZoom))
 
             val query = tiledNodes.writeStream
               .queryName("edit histogram tiles")

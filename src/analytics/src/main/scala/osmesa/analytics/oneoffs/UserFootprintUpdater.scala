@@ -129,7 +129,7 @@ object UserFootprintUpdater
               .select('sequence, 'uid as 'key, 'lat, 'lon)
 
             val tiledNodes =
-              Footprints.updateFootprints(changedNodes, tileSource)
+              Footprints.update(changedNodes, tileSource)
 
             tiledNodes.show
         }
