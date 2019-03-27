@@ -18,10 +18,10 @@ import osmesa.common.sources.Source
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.StreamingEditHistogramTileUpdater \
+ *   --class osmesa.analytics.oneoffs.EditHistogramTileUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar
  */
-object StreamingEditHistogramTileUpdater
+object EditHistogramTileUpdater
     extends CommandApp(
       name = "osmesa-edit-histogram-tile-updater",
       header = "Consume minutely diffs to update edit histogram MVTs",
@@ -43,6 +43,14 @@ object StreamingEditHistogramTileUpdater
             metavar = "sequence",
             help =
               "Minutely diff starting sequence. If absent, the current (remote) sequence will be used.")
+          .orNone
+
+        val endSequenceOpt = Opts
+          .option[Int](
+            "end-sequence",
+            short = "e",
+            metavar = "sequence",
+            help = "Minutely diff ending sequence. If absent, this will be an infinite stream.")
           .orNone
 
         val batchSizeOpt = Opts
@@ -90,6 +98,7 @@ object StreamingEditHistogramTileUpdater
 
         (changeSourceOpt,
          startSequenceOpt,
+         endSequenceOpt,
          batchSizeOpt,
          tileSourceOpt,
          concurrentUploadsOpt,
@@ -97,6 +106,7 @@ object StreamingEditHistogramTileUpdater
          baseZoomOpt).mapN {
           (changeSource,
            startSequence,
+           endSequence,
            batchSize,
            tileSource,
            _concurrentUploads,
@@ -116,11 +126,14 @@ object StreamingEditHistogramTileUpdater
               startSequence
                 .map(x => Map(Source.StartSequence -> x.toString))
                 .getOrElse(Map.empty[String, String]) ++
+              endSequence
+                .map(x => Map(Source.EndSequence -> x.toString))
+                .getOrElse(Map.empty[String, String]) ++
               batchSize
                 .map(x => Map(Source.BatchSize -> x.toString))
                 .getOrElse(Map.empty[String, String])
 
-            val changes = spark.readStream
+            val changes = spark.read
               .format(Source.Changes)
               .options(changeOptions)
               .load
@@ -136,14 +149,7 @@ object StreamingEditHistogramTileUpdater
                                                   tileSource,
                                                   baseZoom.getOrElse(EditHistogram.BaseZoom))
 
-            val query = tiledNodes.writeStream
-              .queryName("edit histogram tiles")
-              .format("console")
-              .start
-
-            query.awaitTermination()
-
-            spark.stop()
+            tiledNodes.show
         }
       }
     )
