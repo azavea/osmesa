@@ -131,7 +131,7 @@ object UserFootprintUpdater
             val tiledNodes =
               Footprints.update(changedNodes, tileSource)
 
-            tiledNodes.show
+            print(s"${tiledNodes.count} tiles updated.")
         }
       }
     )
