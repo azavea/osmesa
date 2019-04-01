@@ -22,9 +22,9 @@ import scala.concurrent.forkjoin.ForkJoinPool
 
 object Footprints extends VectorGrid {
   override val DefaultBaseZoom: Int = 14
-  override val BaseCols: Int = Cols * 4
-  override val BaseRows: Int = Rows * 4
+  override val BaseCells: Int = Cells * 4
 
+  import Implicits._
   import implicits._
 
   def create(nodes: DataFrame, tileSource: URI, baseZoom: Int = DefaultBaseZoom)(
@@ -37,7 +37,7 @@ object Footprints extends VectorGrid {
 
     points
       .tile(baseZoom)
-      .rasterize(BaseCols, BaseRows)
+      .rasterize(BaseCells)
       .pyramid(baseZoom)
       .mapPartitions { tiles: Iterator[RasterTileWithKey] =>
         // increase the number of concurrent network-bound tasks
@@ -176,7 +176,7 @@ object Footprints extends VectorGrid {
 
     points
       .tile(baseZoom)
-      .rasterize(BaseCols, BaseRows)
+      .rasterize(BaseCells)
       .pyramid(baseZoom)
       .groupByKeyAndTile()
       .mapPartitions { rows: Iterator[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =>
@@ -237,7 +237,7 @@ object Footprints extends VectorGrid {
           val targetExtent =
             tile.sk.extent(LayoutScheme.levelForZoom(tile.zoom).layout)
 
-          val newTile = rasters.foldLeft(MutableSparseIntTile(Cols, Rows): Tile)((acc, raster) =>
+          val newTile = rasters.foldLeft(MutableSparseIntTile(Cells, Cells): Tile)((acc, raster) =>
             acc.merge(targetExtent, raster.extent, raster.tile, Sum))
 
           // TODO provide a case class for this
@@ -274,7 +274,7 @@ object Footprints extends VectorGrid {
       }
   }
 
-  object implicits extends super.implicits {
+  object implicits {
     implicit class FootprintsExtendedRasterTileWithKeyAndSequence(
         val rasterTiles: Dataset[RasterTileWithKeyAndSequence]) {
       def groupByKeyAndTile(): Dataset[RasterWithSequenceTileSeqWithTileCoordinatesAndKey] =
