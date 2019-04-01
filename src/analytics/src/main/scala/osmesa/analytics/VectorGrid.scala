@@ -45,7 +45,7 @@ trait VectorGrid extends Logging {
     // create a second layer w/ a feature corresponding to committed sequences (in the absence of
     // available tile / layer metadata)
     val updatedSequences =
-      sequences.zipWithIndex.map {
+      sequences.toSeq.sorted.zipWithIndex.map {
         case (seq, idx) =>
           idx.toString -> VInt64(seq)
       }.toMap
