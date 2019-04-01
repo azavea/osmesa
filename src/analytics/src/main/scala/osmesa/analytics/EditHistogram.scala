@@ -18,6 +18,7 @@ import scala.collection.{GenIterable, GenMap}
 import scala.concurrent.forkjoin.ForkJoinPool
 
 object EditHistogram extends VectorGrid {
+  import Implicits._
   import implicits._
 
   def create(nodes: DataFrame, tileSource: URI, baseZoom: Int = DefaultBaseZoom)(
@@ -30,7 +31,7 @@ object EditHistogram extends VectorGrid {
 
     points
       .tile(baseZoom)
-      .rasterize(BaseCols, BaseRows)
+      .rasterize(BaseCells)
       .pyramid(baseZoom)
       .vectorize
       .groupByKey(tile => (tile.zoom, tile.sk))
@@ -62,7 +63,7 @@ object EditHistogram extends VectorGrid {
 
     points
       .tile(baseZoom)
-      .rasterize(BaseCols, BaseRows)
+      .rasterize(BaseCells)
       .pyramid(baseZoom)
       .vectorize
       .groupByKey(tile => (tile.zoom, tile.sk))
@@ -250,7 +251,7 @@ object EditHistogram extends VectorGrid {
       }
       .filterNot(x => x.features.isEmpty)
 
-  object implicits extends super.implicits {
+  object implicits {
     implicit class ExtendedPointFeatureTraversableOnce(
         val features: TraversableOnce[PointFeature[Map[String, Long]]]) {
 
