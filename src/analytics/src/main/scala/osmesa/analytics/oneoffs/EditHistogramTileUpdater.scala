@@ -145,7 +145,7 @@ object EditHistogramTileUpdater
                                                   tileSource,
                                                   baseZoom.getOrElse(EditHistogram.DefaultBaseZoom))
 
-            tiledNodes.show
+            println(s"${tiledNodes.count} tiles updated.")
         }
       }
     )
