@@ -126,7 +126,10 @@ object EditHistogramTileUpdater
                                                   tileSource,
                                                   baseZoom.getOrElse(EditHistogram.DefaultBaseZoom))
 
-            println(s"${tiledNodes.count} tiles updated.")
+            val lastSequence =
+              changedNodes.select(max('sequence) as 'sequence).first.getAs[Int]("sequence")
+
+            println(s"${tiledNodes.count} tiles updated to ${lastSequence}.")
         }
       }
     )
