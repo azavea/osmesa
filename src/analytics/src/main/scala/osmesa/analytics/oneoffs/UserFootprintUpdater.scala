@@ -48,11 +48,11 @@ object UserFootprintUpdater
               "Minutely diff ending sequence. If absent, the current (remote) sequence will be used.")
           .orNone
 
-        val batchSizeOpt = Opts
-          .option[Int]("batch-size",
-                       short = "b",
-                       metavar = "batch size",
-                       help = "Change batch size.")
+        val partitionCountOpt = Opts
+          .option[Int]("partition-count",
+                       short = "p",
+                       metavar = "partition count",
+                       help = "Change partition count.")
           .orNone
 
         val tileSourceOpt = Opts
@@ -87,14 +87,14 @@ object UserFootprintUpdater
         (changeSourceOpt,
          startSequenceOpt,
          endSequenceOpt,
-         batchSizeOpt,
+         partitionCountOpt,
          tileSourceOpt,
          concurrentUploadsOpt,
          databaseUrlOpt orElse databaseUrlEnv).mapN {
           (changeSource,
            startSequence,
            endSequence,
-           batchSize,
+           partitionCount,
            tileSource,
            _concurrentUploads,
            databaseUrl) =>
@@ -115,8 +115,8 @@ object UserFootprintUpdater
               endSequence
                 .map(x => Map(Source.EndSequence -> x.toString))
                 .getOrElse(Map.empty[String, String]) ++
-              batchSize
-                .map(x => Map(Source.BatchSize -> x.toString))
+              partitionCount
+                .map(x => Map(Source.PartitionCount -> x.toString))
                 .getOrElse(Map.empty[String, String])
 
             val changes = spark.read
