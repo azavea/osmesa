@@ -72,19 +72,6 @@ object EditHistogramTileUpdater
                        help = "Set the number of concurrent uploads.")
           .orNone
 
-        val databaseUrlOpt =
-          Opts
-            .option[URI](
-              "database-url",
-              short = "d",
-              metavar = "database URL",
-              help = "Database URL (default: DATABASE_URL environment variable)"
-            )
-            .orNone
-
-        val databaseUrlEnv =
-          Opts.env[URI]("DATABASE_URL", help = "The URL of the database").orNone
-
         val baseZoomOpt = Opts
           .option[Int]("base-zoom",
                        short = "z",
@@ -98,7 +85,6 @@ object EditHistogramTileUpdater
          partitionCountOpt,
          tileSourceOpt,
          concurrentUploadsOpt,
-         databaseUrlOpt orElse databaseUrlEnv,
          baseZoomOpt).mapN {
           (changeSource,
            startSequence,
@@ -106,7 +92,6 @@ object EditHistogramTileUpdater
            partitionCount,
            tileSource,
            _concurrentUploads,
-           databaseUrl,
            baseZoom) =>
             val AppName = "EditHistogramTileUpdater"
 
@@ -114,11 +99,7 @@ object EditHistogramTileUpdater
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
 
-            val changeOptions = Map(Source.BaseURI -> changeSource.toString,
-                                    Source.ProcessName -> AppName) ++
-              databaseUrl
-                .map(x => Map(Source.DatabaseURI -> x.toString))
-                .getOrElse(Map.empty[String, String]) ++
+            val changeOptions = Map(Source.BaseURI -> changeSource.toString) ++
               startSequence
                 .map(x => Map(Source.StartSequence -> x.toString))
                 .getOrElse(Map.empty[String, String]) ++
