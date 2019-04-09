@@ -70,17 +70,15 @@ object StreamingUserFootprintUpdater
               metavar = "database URL",
               help = "Database URL (default: DATABASE_URL environment variable)"
             )
+            .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
             .orNone
-
-        val databaseUrlEnv =
-          Opts.env[URI]("DATABASE_URL", help = "The URL of the database").orNone
 
         (changeSourceOpt,
          startSequenceOpt,
          batchSizeOpt,
          tileSourceOpt,
          concurrentUploadsOpt,
-         databaseUrlOpt orElse databaseUrlEnv).mapN {
+         databaseUrlOpt).mapN {
           (changeSource, startSequence, batchSize, tileSource, _concurrentUploads, databaseUrl) =>
             val AppName = "UserFootprintUpdater"
 

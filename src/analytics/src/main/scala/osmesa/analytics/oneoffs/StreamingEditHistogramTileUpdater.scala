@@ -71,10 +71,8 @@ object StreamingEditHistogramTileUpdater
               metavar = "database URL",
               help = "Database URL (default: DATABASE_URL environment variable)"
             )
+            .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
             .orNone
-
-        val databaseUrlEnv =
-          Opts.env[URI]("DATABASE_URL", help = "The URL of the database").orNone
 
         val baseZoomOpt = Opts
           .option[Int]("base-zoom",
@@ -88,7 +86,7 @@ object StreamingEditHistogramTileUpdater
          batchSizeOpt,
          tileSourceOpt,
          concurrentUploadsOpt,
-         databaseUrlOpt orElse databaseUrlEnv,
+         databaseUrlOpt,
          baseZoomOpt).mapN {
           (changeSource,
            startSequence,
