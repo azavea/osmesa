@@ -71,44 +71,25 @@ object UserFootprintUpdater
                        help = "Set the number of concurrent uploads.")
           .orNone
 
-        val databaseUrlOpt =
-          Opts
-            .option[URI](
-              "database-url",
-              short = "d",
-              metavar = "database URL",
-              help = "Database URL (default: DATABASE_URL environment variable)"
-            )
-            .orNone
-
-        val databaseUrlEnv =
-          Opts.env[URI]("DATABASE_URL", help = "The URL of the database").orNone
-
         (changeSourceOpt,
          startSequenceOpt,
          endSequenceOpt,
          partitionCountOpt,
          tileSourceOpt,
-         concurrentUploadsOpt,
-         databaseUrlOpt orElse databaseUrlEnv).mapN {
+         concurrentUploadsOpt).mapN {
           (changeSource,
            startSequence,
            endSequence,
            partitionCount,
            tileSource,
-           _concurrentUploads,
-           databaseUrl) =>
+           _concurrentUploads) =>
             val AppName = "UserFootprintUpdater"
 
             val spark: SparkSession = Analytics.sparkSession(AppName)
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
 
-            val changeOptions = Map(Source.BaseURI -> changeSource.toString,
-                                    Source.ProcessName -> AppName) ++
-              databaseUrl
-                .map(x => Map(Source.DatabaseURI -> x.toString))
-                .getOrElse(Map.empty[String, String]) ++
+            val changeOptions = Map(Source.BaseURI -> changeSource.toString) ++
               startSequence
                 .map(x => Map(Source.StartSequence -> x.toString))
                 .getOrElse(Map.empty[String, String]) ++
