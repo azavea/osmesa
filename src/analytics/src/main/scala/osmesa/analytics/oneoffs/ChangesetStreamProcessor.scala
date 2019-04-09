@@ -32,8 +32,7 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "uri",
         help = "Location of changesets to process"
       ).withDefault(new URI("https://planet.osm.org/replication/changesets/"))
-    val databaseUriEnv =
-      Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
+
     val databaseUriOpt =
       Opts.option[URI](
         "database-uri",
@@ -41,6 +40,9 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "database URL",
         help = "Database URL (default: $DATABASE_URL environment variable)"
       )
+      .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
+      .orNone
+
     val startSequenceOpt =
       Opts.option[Int](
         "start-sequence",
@@ -48,6 +50,7 @@ object ChangesetStreamProcessor extends CommandApp(
         metavar = "sequence",
         help = "Starting sequence. If absent, the current (remote) sequence will be used."
       ).orNone
+
     val endSequenceOpt =
       Opts.option[Int](
         "end-sequence",
@@ -56,7 +59,7 @@ object ChangesetStreamProcessor extends CommandApp(
         help = "Ending sequence. If absent, this will be an infinite stream."
       ).orNone
 
-    (changesetSourceOpt, databaseUriOpt orElse databaseUriEnv, startSequenceOpt, endSequenceOpt).mapN {
+    (changesetSourceOpt, databaseUriOpt, startSequenceOpt, endSequenceOpt).mapN {
       (changesetSource, databaseUri, startSequence, endSequence) =>
         implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
 
@@ -64,9 +67,11 @@ object ChangesetStreamProcessor extends CommandApp(
 
         val options = Map(
           Source.BaseURI -> changesetSource.toString,
-          Source.DatabaseURI -> databaseUri.toString,
           Source.ProcessName -> "ChangesetStream"
         ) ++
+          databaseUri
+            .map(x => Map(Source.DatabaseURI -> x.toString))
+            .getOrElse(Map.empty[String, String]) ++
           startSequence.map(s => Map(Source.StartSequence -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
           endSequence.map(s => Map(Source.EndSequence -> s.toString))
