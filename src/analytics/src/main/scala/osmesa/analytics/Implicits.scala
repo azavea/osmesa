@@ -8,7 +8,7 @@ import geotrellis.spark.tiling.ZoomedLayoutScheme
 import geotrellis.vector.Geometry
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Dataset
-import osmesa.analytics.footprints._
+import osmesa.analytics.vectorgrid._
 import osmesa.common.raster.MutableSparseIntTile
 
 import scala.collection.mutable.ArrayBuffer
