@@ -6,7 +6,7 @@ import geotrellis.spark.SpatialKey
 import geotrellis.vector.{Extent, GeomFactory, PointFeature}
 import osmesa.common.raster._
 
-package object footprints {
+package object vectorgrid {
   case class CoordinatesWithKey(key: String, lat: Option[Double], lon: Option[Double]) {
     def geom: Point = GeomFactory.factory.createPoint(new Coordinate(x, y))
 

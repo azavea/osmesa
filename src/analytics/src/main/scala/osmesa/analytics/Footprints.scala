@@ -10,7 +10,7 @@ import geotrellis.spark.{KeyBounds, SpatialKey}
 import geotrellis.vector.{Extent, Feature, Point, PointFeature, Geometry => GTGeometry}
 import geotrellis.vectortile.{VInt64, Value, VectorTile}
 import org.apache.spark.sql._
-import osmesa.analytics.footprints._
+import osmesa.analytics.vectorgrid._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, write}
 import osmesa.common.raster._
