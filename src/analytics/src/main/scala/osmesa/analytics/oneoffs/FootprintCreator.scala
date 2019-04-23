@@ -150,7 +150,7 @@ object Footprint extends Logging {
 
     val stats = Footprints.create(nodes, outputURI)
 
-    stats.show
+    println(s"${stats.count} tiles created.")
 
     spark.stop()
   }
