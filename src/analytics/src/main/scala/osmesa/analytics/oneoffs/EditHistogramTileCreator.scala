@@ -10,7 +10,7 @@ import org.apache.spark.sql.types.DoubleType
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
 
-object EditHistogramCommand
+object EditHistogramTileCreator
     extends CommandApp(
       name = "edit-histogram",
       header = "Create vector tiles containing histograms of editing activity",
