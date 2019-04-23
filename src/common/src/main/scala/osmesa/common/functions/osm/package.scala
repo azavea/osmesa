@@ -9,7 +9,7 @@ import osmesa.common.ProcessOSM._
 import scala.util.matching.Regex
 
 package object osm {
-  // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys) @ v2.8.0.
+  // Using tag listings from [id-area-keys](https://github.com/osmlab/id-area-keys) @ v2.13.0.
   private val AreaKeys: Map[String, Map[String, Boolean]] = Map(
     "addr:*" -> Map(),
     "advertising" -> Map(
@@ -39,9 +39,11 @@ package object osm {
     "attraction" -> Map(
       "dark_ride" -> true,
       "river_rafting" -> true,
+      "summer_toboggan" -> true,
       "train" -> true,
       "water_slide" -> true
     ),
+    "bridge:support" -> Map(),
     "building" -> Map(),
     "camp_site" -> Map(),
     "club" -> Map(),
@@ -62,6 +64,7 @@ package object osm {
     "healthcare" -> Map(),
     "historic" -> Map(),
     "industrial" -> Map(),
+    "internet_access" -> Map(),
     "junction" -> Map(
       "circular" -> true,
       "roundabout" -> true
@@ -88,7 +91,15 @@ package object osm {
       "tree_row" -> true
     ),
     "office" -> Map(),
-    "piste:type" -> Map(),
+    "piste:type" -> Map(
+      "downhill" -> true,
+      "hike" -> true,
+      "ice_skate" -> true,
+      "nordic" -> true,
+      "skitour" -> true,
+      "sled" -> true,
+      "sleigh" -> true
+    ),
     "place" -> Map(),
     "playground" -> Map(
       "balancebeam" -> true,
@@ -96,15 +107,25 @@ package object osm {
       "zipwire" -> true
     ),
     "power" -> Map(
+      "cable" -> true,
       "line" -> true,
       "minor_line" -> true
     ),
     "public_transport" -> Map(
       "platform" -> true
     ),
+    "residential" -> Map(),
+    "seamark:type" -> Map(),
     "shop" -> Map(),
     "tourism" -> Map(
       "artwork" -> true
+    ),
+    "traffic_calming" -> Map(
+      "bump" -> true,
+      "cushion" -> true,
+      "dip" -> true,
+      "hump" -> true,
+      "rumble_strip" -> true
     ),
     "waterway" -> Map(
       "canal" -> true,
