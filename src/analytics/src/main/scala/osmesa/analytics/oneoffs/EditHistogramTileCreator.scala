@@ -38,7 +38,7 @@ object EditHistogramTileCreator
             .select('lat, 'lon, year('timestamp) * 1000 + dayofyear('timestamp) as 'key)
 
           val stats = EditHistogram.create(nodes, outputURI)
-          stats.show
+          println(s"${stats.count} tiles created.")
 
           spark.stop()
         }
