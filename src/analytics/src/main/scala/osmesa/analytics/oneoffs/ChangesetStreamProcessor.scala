@@ -41,7 +41,6 @@ object ChangesetStreamProcessor extends CommandApp(
         help = "Database URL (default: $DATABASE_URL environment variable)"
       )
       .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
-      .orNone
 
     val startSequenceOpt =
       Opts.option[Int](
@@ -67,11 +66,9 @@ object ChangesetStreamProcessor extends CommandApp(
 
         val options = Map(
           Source.BaseURI -> changesetSource.toString,
+          Source.DatabaseURI -> databaseUri.toString,
           Source.ProcessName -> "ChangesetStream"
         ) ++
-          databaseUri
-            .map(x => Map(Source.DatabaseURI -> x.toString))
-            .getOrElse(Map.empty[String, String]) ++
           startSequence.map(s => Map(Source.StartSequence -> s.toString))
             .getOrElse(Map.empty[String, String]) ++
           endSequence.map(s => Map(Source.EndSequence -> s.toString))

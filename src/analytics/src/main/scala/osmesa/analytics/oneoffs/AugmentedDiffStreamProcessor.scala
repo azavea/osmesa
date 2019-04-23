@@ -53,7 +53,6 @@ object AugmentedDiffStreamProcessor
               help = "Database URL (default: $DATABASE_URL environment variable)"
             )
             .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
-            .orNone
 
         val startSequenceOpt =
           Opts
@@ -81,11 +80,9 @@ object AugmentedDiffStreamProcessor
 
             val options = Map(
               Source.BaseURI -> augmentedDiffSource.toString,
+              Source.DatabaseURI -> databaseUri.toString,
               Source.ProcessName -> "AugmentedDiffStream"
             ) ++
-              databaseUri
-                .map(x => Map(Source.DatabaseURI -> x.toString))
-                .getOrElse(Map.empty[String, String]) ++
               startSequence
                 .map(s => Map(Source.StartSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
