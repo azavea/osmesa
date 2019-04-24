@@ -11,6 +11,7 @@ object Analytics {
     val conf = new SparkConf()
       .setIfMissing("spark.master", "local[*]")
       .setAppName(s"OSMesa Analytics - ${appName}")
+      .set("spark.sql.orc.impl", "native")
       .set("spark.sql.orc.filterPushdown", "true")
       .set("spark.hadoop.parquet.enable.summary-metadata", "false")
       .set("spark.sql.parquet.mergeSchema", "false")
