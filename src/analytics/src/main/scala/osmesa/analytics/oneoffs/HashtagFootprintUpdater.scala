@@ -139,10 +139,10 @@ object HashtagFootprintUpdater
             val changeOptions = Map(Source.BaseURI -> changeSource.toString,
                                     Source.ProcessName -> "HashtagFootprintUpdater") ++
               changesStartSequence
-                .map(s => Map(Source .StartSequence -> s.toString))
+                .map(s => Map(Source.StartSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
               changesEndSequence
-                .map(s => Map(Source .EndSequence -> s.toString))
+                .map(s => Map(Source.EndSequence -> s.toString))
                 .getOrElse(Map.empty[String, String]) ++
               changesBatchSize
                 .map(s => Map(Source.BatchSize -> s.toString))
@@ -174,7 +174,7 @@ object HashtagFootprintUpdater
               // of changesets being tracked?
               .withWatermark("createdAt", "25 hours")
               .withColumn("hashtag", explode(hashtags('tags.getField("comment"))))
-              .select('sequence, 'id as 'changeset, 'hashtag)
+              .select('sequence, 'id as 'changeset, 'hashtag as 'key)
 
             val changedNodes = changes
             // geoms may appear before the changeset they're within or the changeset metadata may have been missed, in
@@ -187,8 +187,7 @@ object HashtagFootprintUpdater
               .join(changedNodes, Seq("changeset"))
 
             val tiledNodes =
-              Footprints.updateFootprints(changedNodesWithHashtags
-                                            .withColumnRenamed("hashtag", "key"), tileSource)
+              Footprints.update(changedNodesWithHashtags, tileSource)
 
             val query = tiledNodes.writeStream
               .queryName("tiled hashtag footprints")

@@ -191,7 +191,6 @@ abstract class ReplicationStreamMicroBatchReader[T <: Product: TypeTag](options:
   }
 
   private def recoverSequence(dbUri: URI, procName: String): Option[Int] = {
-    var sequence: Option[Int] = None
     // Odersky endorses the following.
     // https://issues.scala-lang.org/browse/SI-4437
     var connection = null.asInstanceOf[Connection]
@@ -201,14 +200,17 @@ abstract class ReplicationStreamMicroBatchReader[T <: Product: TypeTag](options:
         connection.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
       preppedStatement.setString(1, procName)
       val rs = preppedStatement.executeQuery()
-      sequence = if (rs.next()) Some(rs.getInt("sequence")) else None
+      if (rs.next()) {
+        rs.getInt("sequence") match {
+          case 0 => None
+          // sequence was checkpointed after completion; start with the next one
+          case seq => Some(seq + 1)
+        }
+      } else {
+        None
+      }
     } finally {
       if (connection != null) connection.close()
-    }
-
-    sequence match {
-      case Some(0)  => None
-      case elsewise => elsewise
     }
   }
 }

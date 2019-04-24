@@ -6,7 +6,6 @@ import java.net.URI
 import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions._
 import osmesa.analytics.{Analytics, Footprints}
 import osmesa.common.sources.Source
 
@@ -16,10 +15,10 @@ import osmesa.common.sources.Source
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.UserFootprintUpdater \
+ *   --class osmesa.analytics.oneoffs.StreamingUserFootprintUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar
  */
-object UserFootprintUpdater
+object StreamingUserFootprintUpdater
     extends CommandApp(
       name = "osmesa-user-footprint-updater",
       header = "Consume minutely diffs to update user footprint MVTs",
@@ -40,20 +39,11 @@ object UserFootprintUpdater
               "Minutely diff starting sequence. If absent, the current (remote) sequence will be used.")
           .orNone
 
-        val endSequenceOpt = Opts
-          .option[Int](
-            "end-sequence",
-            short = "e",
-            metavar = "sequence",
-            help =
-              "Minutely diff ending sequence. If absent, the current (remote) sequence will be used.")
-          .orNone
-
-        val partitionCountOpt = Opts
-          .option[Int]("partition-count",
-                       short = "p",
-                       metavar = "partition count",
-                       help = "Change partition count.")
+        val batchSizeOpt = Opts
+          .option[Int]("batch-size",
+                       short = "b",
+                       metavar = "batch size",
+                       help = "Change batch size.")
           .orNone
 
         val tileSourceOpt = Opts
@@ -72,36 +62,43 @@ object UserFootprintUpdater
                        help = "Set the number of concurrent uploads.")
           .orNone
 
+        val databaseUrlOpt =
+          Opts
+            .option[URI](
+              "database-url",
+              short = "d",
+              metavar = "database URL",
+              help = "Database URL (default: DATABASE_URL environment variable)"
+            )
+            .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
+            .orNone
+
         (changeSourceOpt,
          startSequenceOpt,
-         endSequenceOpt,
-         partitionCountOpt,
+         batchSizeOpt,
          tileSourceOpt,
-         concurrentUploadsOpt).mapN {
-          (changeSource,
-           startSequence,
-           endSequence,
-           partitionCount,
-           tileSource,
-           _concurrentUploads) =>
+         concurrentUploadsOpt,
+         databaseUrlOpt).mapN {
+          (changeSource, startSequence, batchSize, tileSource, _concurrentUploads, databaseUrl) =>
             val AppName = "UserFootprintUpdater"
 
             val spark: SparkSession = Analytics.sparkSession(AppName)
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
 
-            val changeOptions = Map(Source.BaseURI -> changeSource.toString) ++
+            val changeOptions = Map(Source.BaseURI -> changeSource.toString,
+                                    Source.ProcessName -> AppName) ++
+              databaseUrl
+                .map(x => Map(Source.DatabaseURI -> x.toString))
+                .getOrElse(Map.empty[String, String]) ++
               startSequence
                 .map(x => Map(Source.StartSequence -> x.toString))
                 .getOrElse(Map.empty[String, String]) ++
-              endSequence
-                .map(x => Map(Source.EndSequence -> x.toString))
-                .getOrElse(Map.empty[String, String]) ++
-              partitionCount
-                .map(x => Map(Source.PartitionCount -> x.toString))
+              batchSize
+                .map(x => Map(Source.BatchSize -> x.toString))
                 .getOrElse(Map.empty[String, String])
 
-            val changes = spark.read
+            val changes = spark.readStream
               .format(Source.Changes)
               .options(changeOptions)
               .load
@@ -113,10 +110,14 @@ object UserFootprintUpdater
             val tiledNodes =
               Footprints.update(changedNodes, tileSource)
 
-            val lastSequence =
-              changedNodes.select(max('sequence) as 'sequence).first.getAs[Int]("sequence")
+            val query = tiledNodes.writeStream
+              .queryName("tiled user footprints")
+              .format("console")
+              .start
 
-            println(s"${tiledNodes.count} tiles updated to ${lastSequence}.")
+            query.awaitTermination()
+
+            spark.stop()
         }
       }
     )

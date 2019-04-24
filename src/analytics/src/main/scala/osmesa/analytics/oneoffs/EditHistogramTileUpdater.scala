@@ -7,7 +7,7 @@ import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import osmesa.analytics.{Analytics, Footprints}
+import osmesa.analytics.{Analytics, EditHistogram}
 import osmesa.common.sources.Source
 
 /*
@@ -16,16 +16,16 @@ import osmesa.common.sources.Source
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.UserFootprintUpdater \
+ *   --class osmesa.analytics.oneoffs.EditHistogramTileUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar
  */
-object UserFootprintUpdater
+object EditHistogramTileUpdater
     extends CommandApp(
-      name = "osmesa-user-footprint-updater",
-      header = "Consume minutely diffs to update user footprint MVTs",
+      name = "osmesa-edit-histogram-tile-updater",
+      header = "Consume minutely diffs to update edit histogram MVTs",
       main = {
         val changeSourceOpt = Opts
-          .option[URI]("change-source",
+          .option[URI]("source",
                        short = "d",
                        metavar = "uri",
                        help = "Location of minutely diffs to process")
@@ -61,7 +61,7 @@ object UserFootprintUpdater
             "tile-source",
             short = "t",
             metavar = "uri",
-            help = "URI prefix for vector tiles to update"
+            help = "URI prefix of MVTs to update"
           )
           .withDefault(new File("").toURI)
 
@@ -72,19 +72,28 @@ object UserFootprintUpdater
                        help = "Set the number of concurrent uploads.")
           .orNone
 
+        val baseZoomOpt = Opts
+          .option[Int]("base-zoom",
+                       short = "z",
+                       metavar = "Base zoom",
+                       help = "Most detailed zoom level")
+          .orNone
+
         (changeSourceOpt,
          startSequenceOpt,
          endSequenceOpt,
          partitionCountOpt,
          tileSourceOpt,
-         concurrentUploadsOpt).mapN {
+         concurrentUploadsOpt,
+         baseZoomOpt).mapN {
           (changeSource,
            startSequence,
            endSequence,
            partitionCount,
            tileSource,
-           _concurrentUploads) =>
-            val AppName = "UserFootprintUpdater"
+           _concurrentUploads,
+           baseZoom) =>
+            val AppName = "EditHistogramTileUpdater"
 
             val spark: SparkSession = Analytics.sparkSession(AppName)
             import spark.implicits._
@@ -108,10 +117,14 @@ object UserFootprintUpdater
 
             val changedNodes = changes
               .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
-              .select('sequence, 'uid as 'key, 'lat, 'lon)
+              .select('sequence,
+                      year('timestamp) * 1000 + dayofyear('timestamp) as 'key,
+                      'lat,
+                      'lon)
 
-            val tiledNodes =
-              Footprints.update(changedNodes, tileSource)
+            val tiledNodes = EditHistogram.update(changedNodes,
+                                                  tileSource,
+                                                  baseZoom.getOrElse(EditHistogram.DefaultBaseZoom))
 
             val lastSequence =
               changedNodes.select(max('sequence) as 'sequence).first.getAs[Int]("sequence")
