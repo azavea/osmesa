@@ -148,8 +148,9 @@ object Footprint extends Logging {
       .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
       .select('lat.cast(DoubleType) as 'lat, 'lon.cast(DoubleType) as 'lon, 'key)
 
-    val stats = Footprints.createFootprints(nodes, outputURI)
-    stats.repartition(1).write.mode(SaveMode.Overwrite).csv("/tmp/footprints/")
+    val stats = Footprints.create(nodes, outputURI)
+
+    println(s"${stats.count} tiles created.")
 
     spark.stop()
   }

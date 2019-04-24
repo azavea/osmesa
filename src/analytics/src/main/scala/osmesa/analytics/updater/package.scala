@@ -1,6 +1,6 @@
 package osmesa.analytics
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, IOException}
 import java.net.{URI, URLDecoder}
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
@@ -54,14 +54,13 @@ package object updater extends Logging {
           case Success(bytes) => Some(bytes)
           case Failure(e) =>
             e match {
-              case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" =>
-              case ex: AmazonS3Exception =>
-                logWarning(s"Could not read $uri: ${ex.getMessage}")
-              case _ =>
-                logWarning(s"Could not read $uri: $e")
-            }
+              case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" => None
 
-            None
+              // treat these exceptions as fatal, as treating tiles as None has the potential to corrupt the tileset
+              case _ =>
+                logWarning(s"Could not read $uri: ${e.getMessage}", e)
+                throw e
+            }
         }
       case "file" =>
         val path = Paths.get(uri)
@@ -97,7 +96,23 @@ package object updater extends Logging {
         val path = Paths.get(uri)
 
         if (Files.exists(path)) {
-          Some(Source.fromFile(uri).getLines.toSeq)
+          var source: Option[Source] = None
+
+          try {
+            source = Some(Source.fromFile(uri))
+            source.map(_.getLines.toSeq)
+          } catch {
+            case e: IOException =>
+              logWarning(s"Failed to read ${path}", e)
+
+              None
+          } finally {
+            try {
+              source.foreach(_.close)
+            } catch {
+              case e: IOException => logWarning(s"Failed to close ${path}", e)
+            }
+          }
         } else {
           None
         }
@@ -272,12 +287,12 @@ package object updater extends Logging {
       }
   }
 
-  def segregate(features: Seq[VTFeature]): (Seq[TypedVTFeature[Point]],
-                                            Seq[TypedVTFeature[MultiPoint]],
-                                            Seq[TypedVTFeature[Line]],
-                                            Seq[TypedVTFeature[MultiLine]],
-                                            Seq[TypedVTFeature[Polygon]],
-                                            Seq[TypedVTFeature[MultiPolygon]]) = {
+  def segregate(features: Iterable[VTFeature]): (Seq[TypedVTFeature[Point]],
+                                                 Seq[TypedVTFeature[MultiPoint]],
+                                                 Seq[TypedVTFeature[Line]],
+                                                 Seq[TypedVTFeature[MultiLine]],
+                                                 Seq[TypedVTFeature[Polygon]],
+                                                 Seq[TypedVTFeature[MultiPolygon]]) = {
     val points = ListBuffer[TypedVTFeature[Point]]()
     val multiPoints = ListBuffer[TypedVTFeature[MultiPoint]]()
     val lines = ListBuffer[TypedVTFeature[Line]]()
@@ -300,7 +315,7 @@ package object updater extends Logging {
     (points, multiPoints, lines, multiLines, polygons, multiPolygons)
   }
 
-  def makeLayer(name: String, extent: Extent, features: Seq[VTFeature]): (String, Layer) = {
+  def makeLayer(name: String, extent: Extent, features: Iterable[VTFeature]): (String, Layer) = {
     val (points, multiPoints, lines, multiLines, polygons, multiPolygons) = segregate(features)
 
     name -> StrictLayer(

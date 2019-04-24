@@ -36,21 +36,24 @@ object AugmentedDiffStreamProcessor
         type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
 
         val augmentedDiffSourceOpt =
-          Opts.option[URI](
-            "augmented-diff-source",
-            short = "a",
-            metavar = "uri",
-            help = "Location of augmented diffs to process"
-          )
-        val databaseUriEnv =
-          Opts.env[URI]("DATABASE_URL", help = "The URL of the database")
+          Opts
+            .option[URI](
+              "augmented-diff-source",
+              short = "a",
+              metavar = "uri",
+              help = "Location of augmented diffs to process"
+            )
+
         val databaseUriOpt =
-          Opts.option[URI](
-            "database-uri",
-            short = "d",
-            metavar = "database URL",
-            help = "Database URL (default: $DATABASE_URL environment variable)"
-          )
+          Opts
+            .option[URI](
+              "database-url",
+              short = "d",
+              metavar = "database URL",
+              help = "Database URL (default: $DATABASE_URL environment variable)"
+            )
+            .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
+
         val startSequenceOpt =
           Opts
             .option[Int](
@@ -60,6 +63,7 @@ object AugmentedDiffStreamProcessor
               help = "Starting sequence. If absent, the current (remote) sequence will be used."
             )
             .orNone
+
         val endSequenceOpt =
           Opts
             .option[Int]("end-sequence",
@@ -68,10 +72,7 @@ object AugmentedDiffStreamProcessor
                          help = "Ending sequence. If absent, this will be an infinite stream.")
             .orNone
 
-        (augmentedDiffSourceOpt,
-         startSequenceOpt,
-         endSequenceOpt,
-         databaseUriOpt orElse databaseUriEnv).mapN {
+        (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt).mapN {
           (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
             implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
 
