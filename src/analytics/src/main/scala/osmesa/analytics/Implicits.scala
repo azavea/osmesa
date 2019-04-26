@@ -53,6 +53,55 @@ object Implicits extends Logging {
     }
   }
 
+  implicit class ExtendedCoordinatesWithKeyAndFacets(
+      val coords: Dataset[CoordinatesWithKeyAndFacets]) {
+    import coords.sparkSession.implicits._
+
+    def tile(baseZoom: Int)(
+        implicit layoutScheme: ZoomedLayoutScheme): Dataset[GeometryTileWithKey] = {
+      val layout = layoutScheme.levelForZoom(baseZoom).layout
+      val xs = 0 until layout.layoutCols
+      val ys = 0 until layout.layoutRows
+
+      coords
+        .flatMap { point =>
+          val geom = Geometry(point.geom)
+
+          Option(geom).map(_.reproject(LatLng, WebMercator)) match {
+            case Some(g) if g.isValid =>
+              layout.mapTransform
+                .keysForGeometry(g)
+                .flatMap { sk =>
+                  g.intersection(sk.extent(layout)).toGeometry match {
+                    case Some(clipped) if clipped.isValid =>
+                      if (xs.contains(sk.col) && ys.contains(sk.row)) {
+                        // TODO if source geometry isn't a point, facet values should be redistributed
+                        // create a tile for each facet
+                        point.facets.map {
+                          case (facet, value) =>
+                            GeometryTileWithKey(s"${point.key}:${facet}",
+                                                baseZoom,
+                                                sk,
+                                                clipped.jtsGeom,
+                                                value)
+                        }.toVector :+ GeometryTileWithKey(point.key, baseZoom, sk, clipped.jtsGeom)
+                      } else {
+                        // TODO figure out why this happens (0/0/-5)
+                        // it might be features extending outside Web Mercator bounds, in which case those features
+                        // belong in valid tiles (but need to have their coordinates adjusted to account for that)
+                        log.warn(s"Out of range: ${sk.col}, ${sk.row}, ${clipped}")
+                        Seq.empty[GeometryTileWithKey]
+                      }
+                    case _ =>
+                      Seq.empty[GeometryTileWithKey]
+                  }
+                }
+            case _ => Seq.empty[GeometryTileWithKey]
+          }
+        }
+    }
+  }
+
   implicit class ExtendedRasterTileWithKey(val rasterTiles: Dataset[RasterTileWithKey]) {
     import rasterTiles.sparkSession.implicits._
 
@@ -228,15 +277,17 @@ object Implicits extends Logging {
             val tileExtent = sk.extent(layoutScheme.levelForZoom(z).layout)
             val tile = MutableSparseIntTile(cells, cells)
             val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
-            val geoms = tiles.map(_.geom)
+            val geoms = tiles.map(t => (t.geom, t.value))
 
-            geoms.foreach(g =>
-              Geometry(g).foreach(rasterExtent) { (c, r) =>
-                tile.get(c, r) match {
-                  case v if isData(v) => tile.set(c, r, v + 1)
-                  case _              => tile.set(c, r, 1)
+            geoms.foreach {
+              case (g, value) =>
+                Geometry(g).foreach(rasterExtent) { (c, r) =>
+                  tile.get(c, r) match {
+                    case v if isData(v) => tile.set(c, r, v + value)
+                    case _              => tile.set(c, r, value)
+                  }
                 }
-            })
+            }
 
             RasterTileWithKey(k, z, sk, (tile, tileExtent))
         }
@@ -256,15 +307,17 @@ object Implicits extends Logging {
             val tileExtent = sk.extent(layoutScheme.levelForZoom(z).layout)
             val tile = MutableSparseIntTile(cells, cells)
             val rasterExtent = RasterExtent(tileExtent, tile.cols, tile.rows)
-            val geoms = tiles.map(_.geom)
+            val geoms = tiles.map(t => (t.geom, t.value))
 
-            geoms.foreach(g =>
-              Geometry(g).foreach(rasterExtent) { (c, r) =>
-                tile.get(c, r) match {
-                  case v if isData(v) => tile.set(c, r, v + 1)
-                  case _              => tile.set(c, r, 1)
+            geoms.foreach {
+              case (g, value) =>
+                Geometry(g).foreach(rasterExtent) { (c, r) =>
+                  tile.get(c, r) match {
+                    case v if isData(v) => tile.set(c, r, v + value)
+                    case _              => tile.set(c, r, value)
+                  }
                 }
-            })
+            }
 
             RasterTileWithKeyAndSequence(sequence, k, z, sk, (tile, tileExtent))
         }

@@ -8,10 +8,11 @@ import geotrellis.spark.{KeyBounds, SpatialKey}
 import geotrellis.vector.{Extent, Feature, Point, PointFeature, Geometry => GTGeometry}
 import geotrellis.vectortile.{VInt64, Value, VectorTile}
 import org.apache.spark.sql._
-import osmesa.analytics.vectorgrid._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, write}
+import osmesa.analytics.vectorgrid._
 
+import scala.collection.immutable.ListMap
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.{ForkJoinTaskSupport, TaskSupport}
 import scala.collection.{GenIterable, GenMap}
@@ -25,12 +26,29 @@ object EditHistogram extends VectorGrid {
       implicit concurrentUploads: Option[Int] = None): DataFrame = {
     import nodes.sparkSession.implicits._
 
-    val points = nodes
-      .repartition() // eliminate skew
-      .as[CoordinatesWithKey]
+    if (nodes.columns.contains("facets")) {
+      val tiles = nodes
+        .repartition() // eliminate skew
+        .as[CoordinatesWithKeyAndFacets]
+        .tile(baseZoom)
 
-    points
-      .tile(baseZoom)
+      create(tiles, tileSource, baseZoom)
+    } else {
+      val points = nodes
+        .repartition() // eliminate skew
+        .as[CoordinatesWithKey]
+        .tile(baseZoom)
+
+      create(points, tileSource, baseZoom)
+    }
+  }
+
+  def create(geometryTiles: Dataset[GeometryTileWithKey], tileSource: URI, baseZoom: Int)(
+      implicit concurrentUploads: Option[Int],
+      d: DummyImplicit): DataFrame = {
+    import geometryTiles.sparkSession.implicits._
+
+    geometryTiles
       .rasterize(BaseCells)
       .pyramid(baseZoom)
       .vectorize
@@ -46,51 +64,6 @@ object EditHistogram extends VectorGrid {
 
         try {
           updateTiles(tileSource, Map.empty[URI, VectorTile], tiles).iterator
-        } finally {
-          taskSupport.environment.shutdown()
-        }
-      }
-      .toDF("count", "z", "x", "y")
-  }
-
-  def update(nodes: DataFrame, tileSource: URI, baseZoom: Int = DefaultBaseZoom)(
-      implicit concurrentUploads: Option[Int] = None): DataFrame = {
-    import nodes.sparkSession.implicits._
-
-    val points = nodes
-      .repartition() // eliminate skew
-      .as[CoordinatesWithKeyAndSequence]
-
-    points
-      .tile(baseZoom)
-      .rasterize(BaseCells)
-      .pyramid(baseZoom)
-      .vectorize
-      .groupByKey(tile => (tile.zoom, tile.sk))
-      .flatMapGroups {
-        case ((zoom, sk), groups: Iterator[VectorTileWithKeyAndSequence]) =>
-          groups.toVector.groupBy(_.sequence).map {
-            case (sequence, tiles) =>
-              VectorTileWithSequence(sequence, zoom, sk, tiles.flatMap(_.features).merge())
-          }
-      }
-      // TODO tiles with different sequences should all be on the same partition
-      // creating an S3 tile output stream addresses this, as tiles will have had committed sequences filtered out by
-      // the time they hit the output stream
-      .mapPartitions { rows: Iterator[VectorTileWithSequence] =>
-        // materialize the iterator so that its contents can be used multiple times
-        val tiles = rows.toVector
-
-        // increase the number of concurrent network-bound tasks
-        implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
-          new ForkJoinPool(concurrentUploads.getOrElse(DefaultUploadConcurrency)))
-
-        try {
-          val urls = makeUrls(tileSource, tiles)
-          val mvts = loadMVTs(urls)
-          val uncommitted = getUncommittedTiles(tileSource, tiles, mvts)
-
-          updateTiles(tileSource, mvts, uncommitted).iterator
         } finally {
           taskSupport.environment.shutdown()
         }
@@ -139,18 +112,9 @@ object EditHistogram extends VectorGrid {
                   layer.features.filter(f => featureIds.contains(f.data("__id")))
 
                 val replacementFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
-                  modifiedFeatures.map { f =>
-                    f.mapData { d =>
-                      val merged = d ++ newFeaturesById(d("__id")).data.mapValues(VInt64)
-                      val dates = merged.filterKeys(!_.startsWith("__"))
-
-                      merged ++ Map(
-                        // sum all edit counts
-                        "__total" -> VInt64(dates.values.map(_.toLong).sum),
-                        "__lastEdit" -> VInt64(dates.keys.max.toLong)
-                      )
-                    }
-                  }
+                  modifiedFeatures.map(f =>
+                    f.mapData(d =>
+                      aggregateValues(d.mapValues(_.toLong) ++ newFeaturesById(d("__id")).data)))
 
                 val newFeatures =
                   makeFeatures(
@@ -204,25 +168,92 @@ object EditHistogram extends VectorGrid {
   def makeFeatures(features: Iterable[PointFeature[Map[String, Long]]])
     : Iterable[Feature[Point, Map[String, VInt64]]] =
     features
-      .map(f =>
-        f.mapData(d => {
-          val dates = d.filterKeys(!_.startsWith("__"))
-
-          // convert values
-          d.mapValues(VInt64) ++ Map(
-            // sum all edit counts
-            "__total" -> VInt64(dates.values.sum),
-            "__lastEdit" -> VInt64(dates.keys.max.toLong)
-          )
-        }))
+      .map(f => f.mapData(aggregateValues))
       .toSeq
       // put recently-edited features first
       .sortBy(_.data.keys.toSeq.max)
       .reverse
 
+  def aggregateValues(data: Map[String, Long]): Map[String, VInt64] = {
+    val dates = data.filterKeys(k => !k.startsWith("__") && !k.contains(":"))
+    val facets =
+      data.keys.filter(k => !k.startsWith("__") && k.contains(":")).map(_.split(":").last)
+
+    // sum each facet
+    val facetTotals = facets
+      .flatMap(
+        facet =>
+          Seq(
+            s"__total:${facet}" -> VInt64(
+              data.filterKeys(k => !k.startsWith("__") && k.endsWith(s":${facet}")).values.sum),
+            s"__lastEdit:${facet}" -> VInt64(
+              data
+                .filterKeys(k => !k.startsWith("__") && k.endsWith(s":${facet}"))
+                .keys
+                .max
+                .split(":")
+                .head
+                .toLong)
+        ))
+      .toMap
+
+    // convert values, summarize, and sort by key
+    ListMap(
+      (data.mapValues(VInt64) ++ Map(
+        // sum all edit counts
+        "__total" -> VInt64(dates.values.sum),
+        "__lastEdit" -> VInt64(dates.keys.max.toLong)
+      ) ++ facetTotals).toSeq.sortBy(_._1): _*)
+  }
+
   def makeURI(tileSource: URI, zoom: Int, sk: SpatialKey): URI = {
     val filename = s"${path(zoom, sk)}"
     tileSource.resolve(filename)
+  }
+
+  def update(nodes: DataFrame, tileSource: URI, baseZoom: Int = DefaultBaseZoom)(
+      implicit concurrentUploads: Option[Int] = None): DataFrame = {
+    import nodes.sparkSession.implicits._
+
+    val points = nodes
+      .repartition() // eliminate skew
+      .as[CoordinatesWithKeyAndSequence]
+
+    points
+      .tile(baseZoom)
+      .rasterize(BaseCells)
+      .pyramid(baseZoom)
+      .vectorize
+      .groupByKey(tile => (tile.zoom, tile.sk))
+      .flatMapGroups {
+        case ((zoom, sk), groups: Iterator[VectorTileWithKeyAndSequence]) =>
+          groups.toVector.groupBy(_.sequence).map {
+            case (sequence, tiles) =>
+              VectorTileWithSequence(sequence, zoom, sk, tiles.flatMap(_.features).merge())
+          }
+      }
+      // TODO tiles with different sequences should all be on the same partition
+      // creating an S3 tile output stream addresses this, as tiles will have had committed sequences filtered out by
+      // the time they hit the output stream
+      .mapPartitions { rows: Iterator[VectorTileWithSequence] =>
+        // materialize the iterator so that its contents can be used multiple times
+        val tiles = rows.toVector
+
+        // increase the number of concurrent network-bound tasks
+        implicit val taskSupport: ForkJoinTaskSupport = new ForkJoinTaskSupport(
+          new ForkJoinPool(concurrentUploads.getOrElse(DefaultUploadConcurrency)))
+
+        try {
+          val urls = makeUrls(tileSource, tiles)
+          val mvts = loadMVTs(urls)
+          val uncommitted = getUncommittedTiles(tileSource, tiles, mvts)
+
+          updateTiles(tileSource, mvts, uncommitted).iterator
+        } finally {
+          taskSupport.environment.shutdown()
+        }
+      }
+      .toDF("count", "z", "x", "y")
   }
 
   def makeUrls(tileSource: URI, tiles: Seq[VectorTileWithSequence]): Map[URI, Extent] =

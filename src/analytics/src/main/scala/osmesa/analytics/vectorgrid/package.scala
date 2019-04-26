@@ -14,6 +14,16 @@ package object vectorgrid {
     def y: Double = lat.map(_.doubleValue).getOrElse(Double.NaN)
   }
 
+  case class CoordinatesWithKeyAndFacets(key: String,
+                                         lat: Option[Double],
+                                         lon: Option[Double],
+                                         facets: Map[String, Int]) {
+    def geom: Point = GeomFactory.factory.createPoint(new Coordinate(x, y))
+
+    def x: Double = lon.map(_.doubleValue).getOrElse(Double.NaN)
+    def y: Double = lat.map(_.doubleValue).getOrElse(Double.NaN)
+  }
+
   case class CoordinatesWithKeyAndSequence(sequence: Int,
                                            key: String,
                                            lat: Option[Double],
@@ -24,13 +34,18 @@ package object vectorgrid {
     def y: Double = lat.map(_.doubleValue).getOrElse(Double.NaN)
   }
 
-  case class GeometryTileWithKey(key: String, zoom: Int, sk: SpatialKey, geom: Geometry)
+  case class GeometryTileWithKey(key: String,
+                                 zoom: Int,
+                                 sk: SpatialKey,
+                                 geom: Geometry,
+                                 value: Int = 1)
 
   case class GeometryTileWithKeyAndSequence(sequence: Int,
                                             key: String,
                                             zoom: Int,
                                             sk: SpatialKey,
-                                            geom: Geometry)
+                                            geom: Geometry,
+                                            value: Int = 1)
 
   case class RasterTileWithKeyAndSequence(sequence: Int,
                                           key: String,

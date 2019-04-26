@@ -5,6 +5,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, Row}
 import osmesa.common.ProcessOSM._
+import osmesa.common.util._
 
 import scala.util.matching.Regex
 
@@ -153,6 +154,7 @@ package object osm {
 
   private val HashtagMatcher: Regex = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!\"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
 
+  // TODO handle semicolon-delimited values
   private val _isArea = (tags: Map[String, String]) =>
     tags match {
       case _ if tags.contains("area") && BooleanValues.contains(tags("area").toLowerCase) =>
@@ -165,12 +167,16 @@ package object osm {
 
   val isAreaUDF: UserDefinedFunction = udf(_isArea)
 
+  // TODO handle semicolon-delimited values
+  // see isWaterway
   def isArea(tags: Column): Column =
     when(lower(coalesce(tags.getField("area"), lit(""))).isin(BooleanValues: _*),
          lower(tags.getField("area")).isin(TruthyValues: _*))
       // only call the UDF when necessary
       .otherwise(isAreaUDF(tags)) as 'isArea
 
+  // TODO handle semicolon-delimited values
+  // see isWaterway
   def isMultiPolygon(tags: Column): Column =
     lower(coalesce(tags.getItem("type"), lit("")))
       .isin(MultiPolygonTypes: _*) as 'isMultiPolygon
@@ -179,7 +185,7 @@ package object osm {
     version <=> 1 && minorVersion <=> 0 as 'isNew
 
   def isRoute(tags: Column): Column =
-    lower(tags.getItem("type")) <=> "route" as 'isRoute
+    array_contains(split(lower(coalesce(tags.getItem("type"), lit(""))), ";"), "route") as 'isRoute
 
   private lazy val MemberSchema = ArrayType(
     StructType(
@@ -226,7 +232,7 @@ package object osm {
       .otherwise(typedLit(Seq.empty[String])) as 'hashtags
 
   def isBuilding(tags: Column): Column =
-    lower(coalesce(tags.getItem("building"), lit("no"))) =!= "no" as 'isBuilding
+    !array_contains(split(lower(coalesce(tags.getItem("building"), lit("no"))), ";"), "no") as 'isBuilding
 
   val isPOI: UserDefinedFunction = udf {
     tags: Map[String, String] => POITags.intersect(tags.keySet).nonEmpty
@@ -236,13 +242,16 @@ package object osm {
     tags.getItem("highway").isNotNull as 'isRoad
 
   def isCoastline(tags: Column): Column =
-    lower(tags.getItem("natural")) <=> "coastline" as 'isCoastline
+    array_contains(split(lower(coalesce(tags.getItem("natural"), lit(""))), ";"), "coastline") as 'isCoastline
 
   def isWaterway(tags: Column): Column =
-    lower(coalesce(tags.getItem("waterway"), lit("")))
-      .isin(WaterwayValues: _*) as 'isWaterway
+    array_intersects(split(lower(coalesce(tags.getItem("waterway"), lit(""))), ";"), lit(WaterwayValues.toArray)) as 'isWaterway
 
-  def mergeTags: UserDefinedFunction = udf {
-    (_: Map[String, String]) ++ (_: Map[String, String])
+  def mergeTags: UserDefinedFunction = udf { (a: Map[String, String], b: Map[String, String]) =>
+    mergeMaps(a.mapValues(Set(_)), b.mapValues(Set(_)))(_ ++ _).mapValues(_.mkString(";"))
+  }
+
+  val reduceTags: UserDefinedFunction = udf { tags: Iterable[Map[String, String]] =>
+    tags.map(x => x.mapValues(Set(_))).reduce((a, b) => mergeMaps(a, b)(_ ++ _)).mapValues(_.mkString(";"))
   }
 }
