@@ -108,7 +108,7 @@ object ProcessOSM {
       @transient val idByVersion = Window.partitionBy('id).orderBy('version)
 
       // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
-      // present and use those
+      // and coordinates present and use those
       filteredHistory
         .where('type === "node")
         .repartition('id)
@@ -117,8 +117,8 @@ object ProcessOSM {
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
             lag('tags, 1) over idByVersion)
             .otherwise('tags) as 'tags,
-          when(!'visible, lit(Double.NaN)).otherwise('lat) as 'lat,
-          when(!'visible, lit(Double.NaN)).otherwise('lon) as 'lon,
+          when(!'visible, lag('lat, 1) over idByVersion).otherwise('lat) as 'lat,
+          when(!'visible, lag('lon, 1) over idByVersion).otherwise('lon) as 'lon,
           'changeset,
           'timestamp,
           (lead('timestamp, 1) over idByVersion) as 'validUntil,
