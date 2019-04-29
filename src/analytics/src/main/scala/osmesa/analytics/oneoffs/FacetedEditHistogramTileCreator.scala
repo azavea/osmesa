@@ -135,7 +135,6 @@ object FacetedEditHistogramTileCreator
                   lit("created"), isNew('version, 'minorVersion).cast(IntegerType),
                   lit("modified"), (!isNew('version, 'minorVersion)).cast(IntegerType),
                   lit("deleted"), (!'visible).cast(IntegerType),
-                  lit("geometryOnly"), 'geometryChanged.cast(IntegerType),
                   lit("metadataOnly"), ('minorVersion > 0 or !'geometryChanged).cast(IntegerType)
                 ) as 'facets
               )
