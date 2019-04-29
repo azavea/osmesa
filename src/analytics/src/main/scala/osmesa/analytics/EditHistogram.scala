@@ -215,6 +215,10 @@ object EditHistogram extends VectorGrid {
       implicit concurrentUploads: Option[Int] = None): DataFrame = {
     import nodes.sparkSession.implicits._
 
+    if (nodes.columns.contains("facets")) {
+      throw new NotImplementedError("Updates to faceted tiles has not been implemented yet.")
+    }
+
     val points = nodes
       .repartition() // eliminate skew
       .as[CoordinatesWithKeyAndSequence]
