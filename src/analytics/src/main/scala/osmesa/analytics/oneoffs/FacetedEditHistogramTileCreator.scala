@@ -139,8 +139,8 @@ object FacetedEditHistogramTileCreator
                 ) as 'facets
               )
 
-            // Aggregated statistics by day:
-            // points.groupBy('key).agg(sum_counts(collect_list('facets)) as 'counts).show(false)
+            // Aggregated statistics by day for the last year:
+            // points.groupBy('key).agg(sum_counts(collect_list('facets)) as 'counts).orderBy('key desc).show(365, false)
 
             val stats = EditHistogram.create(points, outputURI)
             println(s"${stats.count} tiles created.")
