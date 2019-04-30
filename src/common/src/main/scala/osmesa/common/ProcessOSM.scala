@@ -16,6 +16,7 @@ import org.apache.spark.sql.jts.GeometryUDT
 import org.apache.spark.sql.types._
 import org.locationtech.geomesa.spark.jts._
 import com.vividsolutions.jts.{geom => jts}
+import osmesa.common.functions.asDouble
 import osmesa.common.functions.osm._
 import osmesa.common.relations.MultiPolygons
 import osmesa.common.relations.Routes
@@ -112,6 +113,8 @@ object ProcessOSM {
       filteredHistory
         .where('type === "node")
         .repartition('id)
+        .withColumn("lat", asDouble('lat))
+        .withColumn("lon", asDouble('lon))
         .select(
           'id,
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,

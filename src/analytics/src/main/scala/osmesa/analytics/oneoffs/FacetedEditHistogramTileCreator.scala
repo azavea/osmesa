@@ -11,7 +11,6 @@ import org.apache.spark.sql.types.IntegerType
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
 import osmesa.common.ProcessOSM
-import osmesa.common.functions._
 import osmesa.common.functions.osm._
 
 object FacetedEditHistogramTileCreator
@@ -38,8 +37,6 @@ object FacetedEditHistogramTileCreator
               .orc(historyURI.toString)
               // pre-preprocess
               .where('uid > 1)
-              .withColumn("lat", asDouble('lat))
-              .withColumn("lon", asDouble('lon))
 
             val nodes = ProcessOSM.preprocessNodes(history)
             val ways = ProcessOSM.preprocessWays(history)
