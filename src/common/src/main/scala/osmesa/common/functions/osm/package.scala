@@ -154,32 +154,37 @@ package object osm {
 
   private val HashtagMatcher: Regex = """#([^\u2000-\u206F\u2E00-\u2E7F\s\\'!\"#$%()*,.\/;<=>?@\[\]^{|}~]+)""".r
 
-  // TODO handle semicolon-delimited values
   private val _isArea = (tags: Map[String, String]) =>
     tags match {
-      case _ if tags.contains("area") && BooleanValues.contains(tags("area").toLowerCase) =>
+      case _ if tags.contains("area") && BooleanValues.intersect(tags("area").toLowerCase.split(";").map(_.trim)).nonEmpty =>
         TruthyValues.contains(tags("area").toLowerCase)
       case _ =>
         // see https://github.com/osmlab/id-area-keys (values are inverted)
         val matchingKeys = tags.keySet.intersect(AreaKeys.keySet)
-        matchingKeys.exists(k => !AreaKeys(k).contains(tags(k)))
+        matchingKeys.exists(k =>
+          // values that should be considered as lines
+          AreaKeys(k).keySet
+            .intersect(
+              // break out semicolon-delimited values
+              tags(k).toLowerCase().split(";").map(_.trim).toSet
+            )
+            .isEmpty
+        )
     }
 
   val isAreaUDF: UserDefinedFunction = udf(_isArea)
 
-  // TODO handle semicolon-delimited values
-  // see isWaterway
-  def isArea(tags: Column): Column =
-    when(lower(coalesce(tags.getField("area"), lit(""))).isin(BooleanValues: _*),
-         lower(tags.getField("area")).isin(TruthyValues: _*))
-      // only call the UDF when necessary
-      .otherwise(isAreaUDF(tags)) as 'isArea
+  def isArea(tags: Column): Column = isAreaUDF(tags) as 'isArea
 
-  // TODO handle semicolon-delimited values
-  // see isWaterway
   def isMultiPolygon(tags: Column): Column =
-    lower(coalesce(tags.getItem("type"), lit("")))
-      .isin(MultiPolygonTypes: _*) as 'isMultiPolygon
+    array_intersects(
+      split(
+        lower(
+          coalesce(
+            regexp_replace(trim(tags.getItem("type")), ";\\s+", ";"),
+            lit(""))),
+        ";"),
+      lit(MultiPolygonTypes.toArray)) as 'isMultiPolygon
 
   def isNew(version: Column, minorVersion: Column): Column =
     version <=> 1 && minorVersion <=> 0 as 'isNew
