@@ -185,7 +185,7 @@ package object osm {
     version <=> 1 && minorVersion <=> 0 as 'isNew
 
   def isRoute(tags: Column): Column =
-    array_contains(split(lower(coalesce(tags.getItem("type"), lit(""))), ";"), "route") as 'isRoute
+    array_contains(split(lower(coalesce(regexp_replace(trim(tags.getItem("type")), ";\\s+", ";"), lit(""))), ";"), "route") as 'isRoute
 
   private lazy val MemberSchema = ArrayType(
     StructType(
@@ -232,7 +232,7 @@ package object osm {
       .otherwise(typedLit(Seq.empty[String])) as 'hashtags
 
   def isBuilding(tags: Column): Column =
-    !array_contains(split(lower(coalesce(tags.getItem("building"), lit("no"))), ";"), "no") as 'isBuilding
+    !array_contains(split(lower(coalesce(regexp_replace(trim(tags.getItem("building")), ";\\s+", ";"), lit("no"))), ";"), "no") as 'isBuilding
 
   val isPOI: UserDefinedFunction = udf {
     tags: Map[String, String] => POITags.intersect(tags.keySet).nonEmpty
@@ -242,10 +242,10 @@ package object osm {
     tags.getItem("highway").isNotNull as 'isRoad
 
   def isCoastline(tags: Column): Column =
-    array_contains(split(lower(coalesce(tags.getItem("natural"), lit(""))), ";"), "coastline") as 'isCoastline
+    array_contains(split(lower(coalesce(regexp_replace(trim(tags.getItem("natural")), ";\\s+", ";"), lit(""))), ";"), "coastline") as 'isCoastline
 
   def isWaterway(tags: Column): Column =
-    array_intersects(split(lower(coalesce(tags.getItem("waterway"), lit(""))), ";"), lit(WaterwayValues.toArray)) as 'isWaterway
+    array_intersects(split(lower(coalesce(regexp_replace(trim(tags.getItem("waterway")), ";\\s+", ";"), lit(""))), ";"), lit(WaterwayValues.toArray)) as 'isWaterway
 
   def mergeTags: UserDefinedFunction = udf { (a: Map[String, String], b: Map[String, String]) =>
     mergeMaps(a.mapValues(Set(_)), b.mapValues(Set(_)))(_ ++ _).mapValues(_.mkString(";"))
