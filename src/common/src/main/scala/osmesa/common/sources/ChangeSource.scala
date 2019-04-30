@@ -20,9 +20,8 @@ object ChangeSource extends Logging {
   private val saxParserFactory = SAXParserFactory.newInstance
 
   def getSequence(baseURI: URI, sequence: Int): Seq[Change] = {
-    val s = f"$sequence%09d".toArray
-    val path =
-      s"${s.slice(0, 3).mkString}/${s.slice(3, 6).mkString}/${s.slice(6, 9).mkString}.osc.gz"
+    val s = f"$sequence%09d"
+    val path = s"${s.slice(0, 3)}/${s.slice(3, 6)}/${s.slice(6, 9)}.osc.gz"
 
     logInfo(s"Fetching sequence $sequence")
 

@@ -1,8 +1,9 @@
 package osmesa.common.sources
 
-import java.io.File
+import java.io.{ByteArrayInputStream, File}
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.util.zip.GZIPInputStream
 
 import cats.implicits._
 import com.amazonaws.services.s3.model.AmazonS3Exception
@@ -30,23 +31,34 @@ object AugmentedDiffSource extends Logging {
   def getSequence(baseURI: URI, sequence: Int): Seq[AugmentedDiff] = {
     val bucket = baseURI.getHost
     val prefix = new File(baseURI.getPath.drop(1)).toPath
-    val key = prefix.resolve(s"$sequence.json").toString
+    // left-pad sequence
+    val s = f"$sequence%09d"
+    val key = prefix.resolve(s"${s.slice(0, 3)}/${s.slice(3, 6)}/${s.slice(6, 9)}.json.gz").toString
 
     logDebug(s"Fetching sequence $sequence")
-    try {
-      IOUtils
-        .toString(s3.readBytes(bucket, key), StandardCharsets.UTF_8.toString)
-        .lines
-        .map { line =>
-          // Spark doesn't like RS-delimited JSON; perhaps Spray doesn't either
-          val features = line
-            .replace("\u001e", "")
-            .parseGeoJson[JsonFeatureCollectionMap]
-            .getAll[Feature[Geometry, ElementWithSequence]]
 
-          AugmentedDiff(sequence, features.get("old"), features("new"))
-        }
-        .toSeq
+    try {
+      val bais = new ByteArrayInputStream(s3.readBytes(bucket, key))
+      val gzis = new GZIPInputStream(bais)
+
+      try {
+        IOUtils
+          .toString(gzis, StandardCharsets.UTF_8)
+          .lines
+          .map { line =>
+            // Spark doesn't like RS-delimited JSON; perhaps Spray doesn't either
+            val features = line
+              .replace("\u001e", "")
+              .parseGeoJson[JsonFeatureCollectionMap]
+              .getAll[Feature[Geometry, ElementWithSequence]]
+
+            AugmentedDiff(sequence, features.get("old"), features("new"))
+          }
+          .toSeq
+      } finally {
+        gzis.close()
+        bais.close()
+      }
     } catch {
       case e: AmazonS3Exception if e.getStatusCode == 404 || e.getStatusCode == 403 =>
         getCurrentSequence(baseURI) match {
