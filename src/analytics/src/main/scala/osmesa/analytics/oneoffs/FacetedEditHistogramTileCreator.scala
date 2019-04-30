@@ -7,10 +7,11 @@ import com.monovore.decline._
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{DoubleType, IntegerType}
+import org.apache.spark.sql.types.IntegerType
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
 import osmesa.common.ProcessOSM
+import osmesa.common.functions._
 import osmesa.common.functions.osm._
 
 object FacetedEditHistogramTileCreator
@@ -37,8 +38,8 @@ object FacetedEditHistogramTileCreator
               .orc(historyURI.toString)
               // pre-preprocess
               .where('uid > 1)
-              .withColumn("lat", 'lat.cast(DoubleType))
-              .withColumn("lon", 'lon.cast(DoubleType))
+              .withColumn("lat", asDouble('lat))
+              .withColumn("lon", asDouble('lon))
 
             val nodes = ProcessOSM.preprocessNodes(history)
             val ways = ProcessOSM.preprocessWays(history)
@@ -121,7 +122,7 @@ object FacetedEditHistogramTileCreator
             // a) no lengths
             // b) counts nodes, not ways (good for showing where, when gridded)
             val points = processedNodes
-              .where('lat.isNotNull and 'lon.isNotNull)
+              .where('lat =!= lit(Double.NaN) and 'lon =!= lit(Double.NaN))
               .select(
                 'lat,
                 'lon,
