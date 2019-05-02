@@ -15,22 +15,40 @@ import osmesa.common.functions.osm._
 
 object FacetedEditHistogramTileCreator
     extends CommandApp(
-      name = "edit-histogram",
+      name = "faceted-edit-histogram-tiler-creator",
       header = "Create vector tiles containing faceted histograms of editing activity",
       main = {
 
         val historyOpt = Opts
           .option[URI]("history", help = "URI of the history ORC file to process.")
+
         val outputOpt = Opts.option[URI]("out", help = "Base URI for output.")
+
+        val concurrentUploadsOpt = Opts
+          .option[Int]("concurrent-uploads",
+                       short = "c",
+                       metavar = "concurrent uploads",
+                       help = "Set the number of concurrent uploads.")
+          .orNone
+
+        val baseZoomOpt = Opts
+          .option[Int]("base-zoom",
+                       short = "z",
+                       metavar = "Base zoom",
+                       help = "Most detailed zoom level")
+          .orNone
 
         (
           historyOpt,
-          outputOpt
+          outputOpt,
+          concurrentUploadsOpt,
+          baseZoomOpt
         ).mapN {
-          (historyURI, outputURI) =>
+          (historyURI, outputURI, _concurrentUploads, baseZoom) =>
             implicit val spark: SparkSession =
               Analytics.sparkSession("State of the Data faceted tile generation")
             import spark.implicits._
+            implicit val concurrentUploads: Option[Int] = _concurrentUploads
             spark.withJTS
 
             val history = spark.read
@@ -140,7 +158,9 @@ object FacetedEditHistogramTileCreator
             // Aggregated statistics by day for the last year:
             // points.groupBy('key).agg(sum_counts(collect_list('facets)) as 'counts).orderBy('key desc).show(365, false)
 
-            val stats = EditHistogram.create(points, outputURI)
+            val stats = EditHistogram.create(points,
+                                             outputURI,
+                                             baseZoom.getOrElse(EditHistogram.DefaultBaseZoom))
             println(s"${stats.count} tiles created.")
 
             spark.stop()
