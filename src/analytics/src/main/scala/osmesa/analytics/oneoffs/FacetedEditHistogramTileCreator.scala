@@ -115,7 +115,7 @@ object FacetedEditHistogramTileCreator
             val processedNodes = nodesWithWayTags
               .groupBy('ref as 'id, 'refVersion as 'version, 'updated)
               .agg(
-                first('refTags) as 'tags,
+                reduceTags(collect_list('refTags)) as 'tags,
                 first('lat) as 'lat,
                 first('lon) as 'lon,
                 first('visible) as 'visible,
@@ -126,7 +126,13 @@ object FacetedEditHistogramTileCreator
               )
               // here, minor versions are nodes where only contributing metadata (i.e. from ways) has changed
               .withColumn("minorVersion", (row_number over idAndVersionByUpdated) - 1)
-              .withColumn("mergedTags", mergeTags('tags, 'wayTags))
+              .withColumn(
+                "mergedTags",
+                // combine node + way tags if the node is responsible for the change
+                when('minorVersion === 0, mergeTags('tags, 'wayTags))
+                // otherwise just use the way tags
+                  .otherwise('wayTags)
+              )
 
             // a side-effect of tracking way tag changes is that way modifications touch all nodes
             // these can be identified by looking for minorVersion and should only be accounted for when tracking
@@ -142,15 +148,24 @@ object FacetedEditHistogramTileCreator
                 st_makePoint('lon, 'lat) as 'geom,
                 year('updated) * 1000 + dayofyear('updated) as 'key,
                 map(
-                  lit("building"), isBuilding('mergedTags).cast(IntegerType),
-                  lit("road"), isRoad('wayTags).cast(IntegerType),
-                  lit("waterway"), isWaterway('wayTags).cast(IntegerType),
-                  lit("poi"), isPOI('mergedTags).cast(IntegerType),
-                  lit("coastline"), isCoastline('wayTags).cast(IntegerType),
-                  lit("created"), isNew('version, 'minorVersion).cast(IntegerType),
-                  lit("modified"), (!isNew('version, 'minorVersion)).cast(IntegerType),
-                  lit("deleted"), (!'visible).cast(IntegerType),
-                  lit("metadataOnly"), ('minorVersion > 0 or !'geometryChanged).cast(IntegerType)
+                  lit("building"),
+                  isBuilding('mergedTags).cast(IntegerType),
+                  lit("road"),
+                  isRoad('wayTags).cast(IntegerType),
+                  lit("waterway"),
+                  isWaterway('wayTags).cast(IntegerType),
+                  lit("poi"),
+                  isPOI('mergedTags).cast(IntegerType),
+                  lit("coastline"),
+                  isCoastline('wayTags).cast(IntegerType),
+                  lit("created"),
+                  isNew('version, 'minorVersion).cast(IntegerType),
+                  lit("modified"),
+                  (!isNew('version, 'minorVersion)).cast(IntegerType),
+                  lit("deleted"),
+                  (!'visible).cast(IntegerType),
+                  lit("metadataOnly"),
+                  ('minorVersion > 0 or !'geometryChanged).cast(IntegerType)
                 ) as 'facets
               )
 
