@@ -29,14 +29,14 @@ object EditHistogram extends VectorGrid {
     if (nodes.columns.contains("facets")) {
       val tiles = nodes
         .repartition() // eliminate skew
-        .as[CoordinatesWithKeyAndFacets]
+        .as[PointWithKeyAndFacets]
         .tile(baseZoom)
 
       create(tiles, tileSource, baseZoom)
     } else {
       val points = nodes
         .repartition() // eliminate skew
-        .as[CoordinatesWithKey]
+        .as[PointWithKey]
         .tile(baseZoom)
 
       create(points, tileSource, baseZoom)
@@ -221,7 +221,7 @@ object EditHistogram extends VectorGrid {
 
     val points = nodes
       .repartition() // eliminate skew
-      .as[CoordinatesWithKeyAndSequence]
+      .as[PointWithKeyAndSequence]
 
     points
       .tile(baseZoom)

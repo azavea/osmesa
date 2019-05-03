@@ -1,38 +1,21 @@
 package osmesa.analytics
 
-import com.vividsolutions.jts.geom.{Coordinate, Geometry, Point}
+import com.vividsolutions.jts.geom.{Geometry, Point}
 import geotrellis.raster.{Raster, Tile}
 import geotrellis.spark.SpatialKey
-import geotrellis.vector.{Extent, GeomFactory, PointFeature}
+import geotrellis.vector.{Extent, PointFeature}
 import osmesa.common.raster._
 
 package object vectorgrid {
-  case class CoordinatesWithKey(key: String, lat: Option[Double], lon: Option[Double]) {
-    def geom: Point = GeomFactory.factory.createPoint(new Coordinate(x, y))
+  case class PointWithKey(key: String, geom: Point)
 
-    def x: Double = lon.map(_.doubleValue).getOrElse(Double.NaN)
-    def y: Double = lat.map(_.doubleValue).getOrElse(Double.NaN)
-  }
+  case class PointWithKeyAndFacets(key: String,
+                                   geom: Point,
+                                   facets: Map[String, Int])
 
-  case class CoordinatesWithKeyAndFacets(key: String,
-                                         lat: Option[Double],
-                                         lon: Option[Double],
-                                         facets: Map[String, Int]) {
-    def geom: Point = GeomFactory.factory.createPoint(new Coordinate(x, y))
-
-    def x: Double = lon.map(_.doubleValue).getOrElse(Double.NaN)
-    def y: Double = lat.map(_.doubleValue).getOrElse(Double.NaN)
-  }
-
-  case class CoordinatesWithKeyAndSequence(sequence: Int,
-                                           key: String,
-                                           lat: Option[Double],
-                                           lon: Option[Double]) {
-    def geom: Point = GeomFactory.factory.createPoint(new Coordinate(x, y))
-
-    def x: Double = lon.map(_.doubleValue).getOrElse(Double.NaN)
-    def y: Double = lat.map(_.doubleValue).getOrElse(Double.NaN)
-  }
+  case class PointWithKeyAndSequence(sequence: Int,
+                                     key: String,
+                                     geom: Point)
 
   case class GeometryTileWithKey(key: String,
                                  zoom: Int,

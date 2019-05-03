@@ -55,7 +55,8 @@ object EditHistogramTileCreator
               .withColumn("lat", asDouble('lat))
               .withColumn("lon", asDouble('lon))
               .where('uid > 1)
-              .select('lat, 'lon, year('timestamp) * 1000 + dayofyear('timestamp) as 'key)
+              .select(st_makePoint('lon, 'lat) as 'geom,
+                      year('timestamp) * 1000 + dayofyear('timestamp) as 'key)
 
             val stats = EditHistogram.create(nodes,
                                              outputURI,
