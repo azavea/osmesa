@@ -9,13 +9,14 @@ import osmesa.common.raster._
 package object vectorgrid {
   case class PointWithKey(key: String, geom: Point)
 
-  case class PointWithKeyAndFacets(key: String,
-                                   geom: Point,
-                                   facets: Map[String, Int])
+  case class PointWithKeyAndFacets(key: String, geom: Point, facets: Map[String, Int])
 
-  case class PointWithKeyAndSequence(sequence: Int,
-                                     key: String,
-                                     geom: Point)
+  case class PointWithKeyAndSequence(sequence: Int, key: String, geom: Point)
+
+  case class PointWithKeyAndFacetsAndSequence(sequence: Int,
+                                              key: String,
+                                              geom: Point,
+                                              facets: Map[String, Int])
 
   case class GeometryTileWithKey(key: String,
                                  zoom: Int,
