@@ -139,8 +139,7 @@ object FacetedEditHistogramTileCreator
             val points = processedNodes
               .where('lat =!= lit(Double.NaN) and 'lon =!= lit(Double.NaN))
               .select(
-                'lat,
-                'lon,
+                st_makePoint('lon, 'lat) as 'geom,
                 year('updated) * 1000 + dayofyear('updated) as 'key,
                 map(
                   lit("building"), isBuilding('mergedTags).cast(IntegerType),

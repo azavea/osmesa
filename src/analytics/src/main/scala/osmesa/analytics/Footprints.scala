@@ -33,7 +33,7 @@ object Footprints extends VectorGrid {
 
     val points = nodes
       .repartition() // eliminate skew
-      .as[CoordinatesWithKey]
+      .as[PointWithKey]
 
     points
       .tile(baseZoom)
@@ -172,7 +172,7 @@ object Footprints extends VectorGrid {
 
     val points = nodes
       .repartition() // eliminate skew
-      .as[CoordinatesWithKeyAndSequence]
+      .as[PointWithKeyAndSequence]
 
     points
       .tile(baseZoom)

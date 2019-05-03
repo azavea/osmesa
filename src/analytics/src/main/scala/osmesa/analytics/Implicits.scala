@@ -14,7 +14,7 @@ import osmesa.common.raster.MutableSparseIntTile
 import scala.collection.mutable.ArrayBuffer
 
 object Implicits extends Logging {
-  implicit class ExtendedCoordinatesWithKey(val coords: Dataset[CoordinatesWithKey]) {
+  implicit class ExtendedCoordinatesWithKey(val coords: Dataset[PointWithKey]) {
     import coords.sparkSession.implicits._
 
     def tile(baseZoom: Int)(
@@ -25,9 +25,7 @@ object Implicits extends Logging {
 
       coords
         .flatMap { point =>
-          val geom = Geometry(point.geom)
-
-          Option(geom).map(_.reproject(LatLng, WebMercator)) match {
+          Option(Geometry(point.geom)).map(_.reproject(LatLng, WebMercator)) match {
             case Some(g) if g.isValid =>
               layout.mapTransform
                 .keysForGeometry(g)
@@ -40,21 +38,21 @@ object Implicits extends Logging {
                         // TODO figure out why this happens (0/0/-5)
                         // it might be features extending outside Web Mercator bounds, in which case those features
                         // belong in valid tiles (but need to have their coordinates adjusted to account for that)
-                        log.warn(s"Out of range: ${sk.col}, ${sk.row}, ${clipped}")
-                        Seq.empty[GeometryTileWithKey]
+                        log.warn(s"Out of range: ${baseZoom}/${sk.col}/${sk.row}, ${clipped} (${point.geom})")
+                        Seq.empty
                       }
                     case _ =>
-                      Seq.empty[GeometryTileWithKey]
+                      Seq.empty
                   }
                 }
-            case _ => Seq.empty[GeometryTileWithKey]
+            case _ => Seq.empty
           }
         }
     }
   }
 
   implicit class ExtendedCoordinatesWithKeyAndFacets(
-      val coords: Dataset[CoordinatesWithKeyAndFacets]) {
+      val coords: Dataset[PointWithKeyAndFacets]) {
     import coords.sparkSession.implicits._
 
     def tile(baseZoom: Int)(
@@ -65,9 +63,7 @@ object Implicits extends Logging {
 
       coords
         .flatMap { point =>
-          val geom = Geometry(point.geom)
-
-          Option(geom).map(_.reproject(LatLng, WebMercator)) match {
+          Option(Geometry(point.geom)).map(_.reproject(LatLng, WebMercator)) match {
             case Some(g) if g.isValid =>
               layout.mapTransform
                 .keysForGeometry(g)
@@ -89,14 +85,14 @@ object Implicits extends Logging {
                         // TODO figure out why this happens (0/0/-5)
                         // it might be features extending outside Web Mercator bounds, in which case those features
                         // belong in valid tiles (but need to have their coordinates adjusted to account for that)
-                        log.warn(s"Out of range: ${sk.col}, ${sk.row}, ${clipped}")
-                        Seq.empty[GeometryTileWithKey]
+                        log.warn(s"Out of range: ${baseZoom}/${sk.col}/${sk.row}, ${clipped} (${point.geom})")
+                        Seq.empty
                       }
                     case _ =>
-                      Seq.empty[GeometryTileWithKey]
+                      Seq.empty
                   }
                 }
-            case _ => Seq.empty[GeometryTileWithKey]
+            case _ => Seq.empty
           }
         }
     }
@@ -325,7 +321,7 @@ object Implicits extends Logging {
   }
 
   implicit class ExtendedCoordinatesWithKeyAndSequence(
-      val coords: Dataset[CoordinatesWithKeyAndSequence]) {
+      val coords: Dataset[PointWithKeyAndSequence]) {
     import coords.sparkSession.implicits._
 
     def tile(baseZoom: Int)(
