@@ -6,7 +6,7 @@ JAR_DIR=${SBT_DIR}/analytics/target/scala-2.11/
 DOCKER_DIR=$(pwd)
 
 cd ${SBT_DIR}
-./sbt "project analytics" assembly
+./sbt clean "project analytics" assembly
 cp ${JAR_DIR}/osmesa-analytics.jar ${DOCKER_DIR}/osmesa-analytics.jar
 
 cd ${DOCKER_DIR}

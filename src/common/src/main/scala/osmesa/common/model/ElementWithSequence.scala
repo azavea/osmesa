@@ -6,6 +6,7 @@ import org.joda.time.format.ISODateTimeFormat
 import osmesa.common.model
 import spray.json.{
   DeserializationException,
+  JsArray,
   JsBoolean,
   JsNumber,
   JsObject,
@@ -19,6 +20,7 @@ import spray.json.{
 case class ElementWithSequence(id: Long,
                                `type`: String,
                                tags: Map[String, String],
+                               nds: Seq[Long],
                                changeset: Long,
                                timestamp: Timestamp,
                                uid: Long,
@@ -37,8 +39,7 @@ case class ElementWithSequence(id: Long,
 
 object ElementWithSequence {
 
-  implicit object AugmentedDiffFormat
-      extends RootJsonReader[ElementWithSequence] {
+  implicit object AugmentedDiffFormat extends RootJsonReader[ElementWithSequence] {
     def read(value: JsValue): ElementWithSequence =
       value match {
         case obj: JsObject =>
@@ -136,6 +137,22 @@ object ElementWithSequence {
             case None => throw DeserializationException(s"'tags' is required")
           }
 
+          val nds = fields.get("nds") match {
+            case Some(JsArray(o)) =>
+              o.map {
+                case JsString(v) => v.toLong
+                case JsNumber(v) => v.toLong
+                case v =>
+                  throw DeserializationException(s"nd value must be a number, got $v")
+              }
+
+            case Some(v) =>
+              throw DeserializationException(s"nds must be an array, got $v")
+
+
+            case None => Seq.empty
+          }
+
           val sequence = fields.get("augmentedDiff") match {
             case Some(JsString(v)) => Some(v.toLong)
             case Some(JsNumber(v)) => Some(v.toLong)
@@ -150,6 +167,7 @@ object ElementWithSequence {
             id,
             `type`,
             tags,
+            nds,
             changeset,
             timestamp,
             uid,

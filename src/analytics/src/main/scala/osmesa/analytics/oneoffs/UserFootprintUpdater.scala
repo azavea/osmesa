@@ -7,6 +7,7 @@ import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, Footprints}
 import osmesa.common.sources.Source
 
@@ -89,17 +90,18 @@ object UserFootprintUpdater
             val spark: SparkSession = Analytics.sparkSession(AppName)
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
+            spark.withJTS
 
             val changeOptions = Map(Source.BaseURI -> changeSource.toString) ++
               startSequence
                 .map(x => Map(Source.StartSequence -> x.toString))
-                .getOrElse(Map.empty[String, String]) ++
+                .getOrElse(Map.empty) ++
               endSequence
                 .map(x => Map(Source.EndSequence -> x.toString))
-                .getOrElse(Map.empty[String, String]) ++
+                .getOrElse(Map.empty) ++
               partitionCount
                 .map(x => Map(Source.PartitionCount -> x.toString))
-                .getOrElse(Map.empty[String, String])
+                .getOrElse(Map.empty)
 
             val changes = spark.read
               .format(Source.Changes)
@@ -108,7 +110,7 @@ object UserFootprintUpdater
 
             val changedNodes = changes
               .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
-              .select('sequence, 'uid as 'key, 'lat, 'lon)
+              .select('sequence, 'uid as 'key, st_makePoint('lon, 'lat) as 'geom)
 
             val tiledNodes =
               Footprints.update(changedNodes, tileSource)

@@ -7,6 +7,7 @@ import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
 import osmesa.common.sources.Source
 
@@ -100,18 +101,19 @@ object StreamingEditHistogramTileUpdater
             val spark: SparkSession = Analytics.sparkSession(AppName)
             import spark.implicits._
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
+            spark.withJTS
 
             val changeOptions = Map(Source.BaseURI -> changeSource.toString,
                                     Source.ProcessName -> AppName) ++
               databaseUrl
                 .map(x => Map(Source.DatabaseURI -> x.toString))
-                .getOrElse(Map.empty[String, String]) ++
+                .getOrElse(Map.empty) ++
               startSequence
                 .map(x => Map(Source.StartSequence -> x.toString))
-                .getOrElse(Map.empty[String, String]) ++
+                .getOrElse(Map.empty) ++
               batchSize
                 .map(x => Map(Source.BatchSize -> x.toString))
-                .getOrElse(Map.empty[String, String])
+                .getOrElse(Map.empty)
 
             val changes = spark.readStream
               .format(Source.Changes)
@@ -122,8 +124,7 @@ object StreamingEditHistogramTileUpdater
               .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
               .select('sequence,
                       year('timestamp) * 1000 + dayofyear('timestamp) as 'key,
-                      'lat,
-                      'lon)
+                      st_makePoint('lon, 'lat) as 'geom)
 
             val tiledNodes = EditHistogram.update(changedNodes,
                                                   tileSource,
