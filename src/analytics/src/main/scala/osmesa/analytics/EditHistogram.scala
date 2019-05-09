@@ -8,9 +8,9 @@ import geotrellis.spark.{KeyBounds, SpatialKey}
 import geotrellis.vector.{Extent, Feature, Point, PointFeature, Geometry => GTGeometry}
 import geotrellis.vectortile.{VInt64, Value, VectorTile}
 import org.apache.spark.sql._
-import osmesa.analytics.vectorgrid._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, write}
+import osmesa.analytics.vectorgrid._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.{ForkJoinTaskSupport, TaskSupport}
@@ -25,12 +25,27 @@ object EditHistogram extends VectorGrid {
       implicit concurrentUploads: Option[Int] = None): DataFrame = {
     import nodes.sparkSession.implicits._
 
-    val points = nodes
-      .repartition() // eliminate skew
-      .as[CoordinatesWithKey]
+    val tiles = if (nodes.columns.contains("facets")) {
+      nodes
+        .repartition() // eliminate skew
+        .as[PointWithKeyAndFacets]
+        .tile(baseZoom)
+    } else {
+      nodes
+        .repartition() // eliminate skew
+        .as[PointWithKey]
+        .tile(baseZoom)
+    }
 
-    points
-      .tile(baseZoom)
+    create(tiles, tileSource, baseZoom)
+  }
+
+  def create(geometryTiles: Dataset[GeometryTileWithKey], tileSource: URI, baseZoom: Int)(
+      implicit concurrentUploads: Option[Int],
+      d: DummyImplicit): DataFrame = {
+    import geometryTiles.sparkSession.implicits._
+
+    geometryTiles
       .rasterize(BaseCells)
       .pyramid(baseZoom)
       .vectorize
@@ -57,12 +72,28 @@ object EditHistogram extends VectorGrid {
       implicit concurrentUploads: Option[Int] = None): DataFrame = {
     import nodes.sparkSession.implicits._
 
-    val points = nodes
-      .repartition() // eliminate skew
-      .as[CoordinatesWithKeyAndSequence]
+    val tiles = if (nodes.columns.contains("facets")) {
+      nodes
+        .repartition() // eliminate skew
+        .as[PointWithKeyAndFacetsAndSequence]
+        .tile(baseZoom)
+    } else {
+      nodes
+        .repartition() // eliminate skew
+        .as[PointWithKeyAndSequence]
+        .tile(baseZoom)
+    }
 
-    points
-      .tile(baseZoom)
+    update(tiles, tileSource, baseZoom)
+  }
+
+  def update(
+      geometryTiles: Dataset[GeometryTileWithKeyAndSequence],
+      tileSource: URI,
+      baseZoom: Int)(implicit concurrentUploads: Option[Int], d: DummyImplicit): DataFrame = {
+    import geometryTiles.sparkSession.implicits._
+
+    geometryTiles
       .rasterize(BaseCells)
       .pyramid(baseZoom)
       .vectorize
@@ -139,18 +170,9 @@ object EditHistogram extends VectorGrid {
                   layer.features.filter(f => featureIds.contains(f.data("__id")))
 
                 val replacementFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
-                  modifiedFeatures.map { f =>
-                    f.mapData { d =>
-                      val merged = d ++ newFeaturesById(d("__id")).data.mapValues(VInt64)
-                      val dates = merged.filterKeys(!_.startsWith("__"))
-
-                      merged ++ Map(
-                        // sum all edit counts
-                        "__total" -> VInt64(dates.values.map(_.toLong).sum),
-                        "__lastEdit" -> VInt64(dates.keys.max.toLong)
-                      )
-                    }
-                  }
+                  modifiedFeatures.map(f =>
+                    f.mapData(d =>
+                      aggregateValues(d.mapValues(_.toLong) ++ newFeaturesById(d("__id")).data)))
 
                 val newFeatures =
                   makeFeatures(
@@ -204,25 +226,43 @@ object EditHistogram extends VectorGrid {
   def makeFeatures(features: Iterable[PointFeature[Map[String, Long]]])
     : Iterable[Feature[Point, Map[String, VInt64]]] =
     features
-      .map(f =>
-        f.mapData(d => {
-          val dates = d.filterKeys(!_.startsWith("__"))
-
-          // convert values
-          d.mapValues(VInt64) ++ Map(
-            // sum all edit counts
-            "__total" -> VInt64(dates.values.sum),
-            "__lastEdit" -> VInt64(dates.keys.max.toLong)
-          )
-        }))
+      .map(f => f.mapData(aggregateValues))
       .toSeq
       // put recently-edited features first
-      .sortBy(_.data.keys.toSeq.max)
+      .sortBy(_.data.keys.filter(k => !k.startsWith("__")).max)
       .reverse
 
-  def makeURI(tileSource: URI, zoom: Int, sk: SpatialKey): URI = {
-    val filename = s"${path(zoom, sk)}"
-    tileSource.resolve(filename)
+  def aggregateValues(data: Map[String, Long]): Map[String, VInt64] = {
+    val dates = data.filterKeys(k => !k.startsWith("__") && !k.contains(":"))
+    val facets =
+      data.keys.filter(k => !k.startsWith("__") && k.contains(":")).map(_.split(":").last)
+
+    // sum each facet
+    val facetTotals = facets
+      .flatMap(
+        facet =>
+          Seq(
+            s"__total:${facet}" -> VInt64(
+              data.filterKeys(k => !k.startsWith("__") && k.endsWith(s":${facet}")).values.sum),
+            s"__lastEdit:${facet}" -> VInt64(
+              data
+                .filterKeys(k => !k.startsWith("__") && k.endsWith(s":${facet}"))
+                .keys
+                .max
+                .split(":")
+                .head
+                .toLong)
+        ))
+      .toMap
+
+    // convert values and summarize
+    data.mapValues(VInt64) ++
+      Map(
+        // sum all edit counts
+        "__total" -> VInt64(dates.values.sum),
+        "__lastEdit" -> VInt64(dates.keys.max.toLong)
+      ) ++
+      facetTotals
   }
 
   def makeUrls(tileSource: URI, tiles: Seq[VectorTileWithSequence]): Map[URI, Extent] =
@@ -230,6 +270,11 @@ object EditHistogram extends VectorGrid {
       (makeURI(tileSource, tile.zoom, tile.sk),
        tile.sk.extent(LayoutScheme.levelForZoom(tile.zoom).layout))
     } toMap
+
+  def makeURI(tileSource: URI, zoom: Int, sk: SpatialKey): URI = {
+    val filename = s"${path(zoom, sk)}"
+    tileSource.resolve(filename)
+  }
 
   def getUncommittedTiles(tileSource: URI,
                           tiles: Seq[VectorTileWithSequence],

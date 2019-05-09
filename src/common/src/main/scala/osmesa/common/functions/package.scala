@@ -52,4 +52,7 @@ package object functions {
   private val _mergeCounts = (a: Map[String, Int], b: Map[String, Int]) =>
     mergeMaps(Option(a).getOrElse(Map.empty[String, Int]),
               Option(b).getOrElse(Map.empty[String, Int]))(_ + _)
+
+  val array_intersects: UserDefinedFunction = udf { (a: Seq[_], b: Seq[_]) =>
+    a.intersect(b).nonEmpty}
 }

@@ -5,6 +5,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, Row}
 import osmesa.common.ProcessOSM._
+import osmesa.common.util._
 
 import scala.util.matching.Regex
 
@@ -155,35 +156,52 @@ package object osm {
 
   private val _isArea = (tags: Map[String, String]) =>
     tags match {
-      case _ if tags.contains("area") && BooleanValues.contains(tags("area").toLowerCase) =>
+      case _ if tags.contains("area") && BooleanValues.intersect(tags("area").toLowerCase.split(";").map(_.trim)).nonEmpty =>
         TruthyValues.contains(tags("area").toLowerCase)
       case _ =>
         // see https://github.com/osmlab/id-area-keys (values are inverted)
         val matchingKeys = tags.keySet.intersect(AreaKeys.keySet)
-        matchingKeys.exists(k => !AreaKeys(k).contains(tags(k)))
+        matchingKeys.exists(k =>
+          // values that should be considered as lines
+          AreaKeys(k).keySet
+            .intersect(
+              // break out semicolon-delimited values
+              tags(k).toLowerCase().split(";").map(_.trim).toSet
+            )
+            .isEmpty
+        )
     }
 
   val isAreaUDF: UserDefinedFunction = udf(_isArea)
 
-  def isArea(tags: Column): Column =
-    when(lower(coalesce(tags.getField("area"), lit(""))).isin(BooleanValues: _*),
-         lower(tags.getField("area")).isin(TruthyValues: _*))
-      // only call the UDF when necessary
-      .otherwise(isAreaUDF(tags)) as 'isArea
+  def isArea(tags: Column): Column = isAreaUDF(tags) as 'isArea
 
   def isMultiPolygon(tags: Column): Column =
-    lower(coalesce(tags.getItem("type"), lit("")))
-      .isin(MultiPolygonTypes: _*) as 'isMultiPolygon
+    array_intersects(
+      split(
+        lower(
+          coalesce(
+            regexp_replace(trim(tags.getItem("type")), ";\\s+", ";"),
+            lit(""))),
+        ";"),
+      lit(MultiPolygonTypes.toArray)) as 'isMultiPolygon
 
   def isNew(version: Column, minorVersion: Column): Column =
     version <=> 1 && minorVersion <=> 0 as 'isNew
 
   def isRoute(tags: Column): Column =
-    lower(tags.getItem("type")) <=> "route" as 'isRoute
+    array_contains(split(lower(coalesce(regexp_replace(trim(tags.getItem("type")), ";\\s+", ";"), lit(""))), ";"), "route") as 'isRoute
 
   private lazy val MemberSchema = ArrayType(
     StructType(
       StructField("type", ByteType, nullable = false) ::
+        StructField("ref", LongType, nullable = false) ::
+        StructField("role", StringType, nullable = false) ::
+        Nil), containsNull = false)
+
+  private lazy val UncompressedMemberSchema = ArrayType(
+    StructType(
+      StructField("type", StringType, nullable = false) ::
         StructField("ref", LongType, nullable = false) ::
         StructField("role", StringType, nullable = false) ::
         Nil), containsNull = false)
@@ -202,6 +220,21 @@ package object osm {
     }
 
   lazy val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
+
+  private val _uncompressMemberTypes = (members: Seq[Row]) =>
+    members.map { row =>
+      val t = row.getAs[Byte]("type") match {
+        case NodeType => "node"
+        case WayType => "way"
+        case RelationType => "relation"
+      }
+      val ref = row.getAs[Long]("ref")
+      val role = row.getAs[String]("role")
+
+      Row(t, ref, role)
+    }
+
+  lazy val uncompressMemberTypes: UserDefinedFunction = udf(_uncompressMemberTypes, UncompressedMemberSchema)
 
   // matches letters or emoji (no numbers or punctuation)
   private val ContentMatcher: Regex = """[\p{L}\uD83C-\uDBFF\uDC00-\uDFFF]""".r
@@ -226,7 +259,7 @@ package object osm {
       .otherwise(typedLit(Seq.empty[String])) as 'hashtags
 
   def isBuilding(tags: Column): Column =
-    lower(coalesce(tags.getItem("building"), lit("no"))) =!= "no" as 'isBuilding
+    !array_contains(split(lower(coalesce(regexp_replace(trim(tags.getItem("building")), ";\\s+", ";"), lit("no"))), ";"), "no") as 'isBuilding
 
   val isPOI: UserDefinedFunction = udf {
     tags: Map[String, String] => POITags.intersect(tags.keySet).nonEmpty
@@ -236,13 +269,16 @@ package object osm {
     tags.getItem("highway").isNotNull as 'isRoad
 
   def isCoastline(tags: Column): Column =
-    lower(tags.getItem("natural")) <=> "coastline" as 'isCoastline
+    array_contains(split(lower(coalesce(regexp_replace(trim(tags.getItem("natural")), ";\\s+", ";"), lit(""))), ";"), "coastline") as 'isCoastline
 
   def isWaterway(tags: Column): Column =
-    lower(coalesce(tags.getItem("waterway"), lit("")))
-      .isin(WaterwayValues: _*) as 'isWaterway
+    array_intersects(split(lower(coalesce(regexp_replace(trim(tags.getItem("waterway")), ";\\s+", ";"), lit(""))), ";"), lit(WaterwayValues.toArray)) as 'isWaterway
 
-  def mergeTags: UserDefinedFunction = udf {
-    (_: Map[String, String]) ++ (_: Map[String, String])
+  def mergeTags: UserDefinedFunction = udf { (a: Map[String, String], b: Map[String, String]) =>
+    mergeMaps(a.mapValues(Set(_)), b.mapValues(Set(_)))(_ ++ _).mapValues(_.mkString(";"))
+  }
+
+  val reduceTags: UserDefinedFunction = udf { tags: Iterable[Map[String, String]] =>
+    tags.map(x => x.mapValues(Set(_))).reduce((a, b) => mergeMaps(a, b)(_ ++ _)).mapValues(_.mkString(";"))
   }
 }
