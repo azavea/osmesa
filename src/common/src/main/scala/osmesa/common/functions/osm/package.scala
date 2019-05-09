@@ -199,6 +199,13 @@ package object osm {
         StructField("role", StringType, nullable = false) ::
         Nil), containsNull = false)
 
+  private lazy val UncompressedMemberSchema = ArrayType(
+    StructType(
+      StructField("type", StringType, nullable = false) ::
+        StructField("ref", LongType, nullable = false) ::
+        StructField("role", StringType, nullable = false) ::
+        Nil), containsNull = false)
+
   private val _compressMemberTypes = (members: Seq[Row]) =>
     members.map { row =>
       val t = row.getAs[String]("type") match {
@@ -213,6 +220,21 @@ package object osm {
     }
 
   lazy val compressMemberTypes: UserDefinedFunction = udf(_compressMemberTypes, MemberSchema)
+
+  private val _uncompressMemberTypes = (members: Seq[Row]) =>
+    members.map { row =>
+      val t = row.getAs[Byte]("type") match {
+        case NodeType => "node"
+        case WayType => "way"
+        case RelationType => "relation"
+      }
+      val ref = row.getAs[Long]("ref")
+      val role = row.getAs[String]("role")
+
+      Row(t, ref, role)
+    }
+
+  lazy val uncompressMemberTypes: UserDefinedFunction = udf(_uncompressMemberTypes, UncompressedMemberSchema)
 
   // matches letters or emoji (no numbers or punctuation)
   private val ContentMatcher: Regex = """[\p{L}\uD83C-\uDBFF\uDC00-\uDFFF]""".r
