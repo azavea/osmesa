@@ -91,7 +91,7 @@ object StreamingFacetedEditHistogramTileUpdater
              _concurrentUploads,
              databaseUrl,
              baseZoom) =>
-              val AppName = "FactedEditHistogramTileUpdater"
+              val AppName = "FacetedEditHistogramTileUpdater"
 
               implicit val spark: SparkSession =
                 Analytics.sparkSession("State of the Data faceted tile generation")
