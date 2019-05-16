@@ -53,11 +53,14 @@ object FacetedEditHistogramTileCreator
 
             val history = spark.read
               .orc(historyURI.toString)
-              // pre-preprocess
-              .where('uid > 1)
 
+            // pre-processing requires that all elements be present in order to assign coordinates to deletes
+            // subsequent processing can handle incomplete nds lists for ways since it's about transferring tags, not
+            // assembling geometries
             val nodes = ProcessOSM.preprocessNodes(history)
+              .where('uid > 1)
             val ways = ProcessOSM.preprocessWays(history)
+              .where('uid > 1)
 
             // Associate nodes with way tags using a slightly modified version of the process for assembling way
             // geometries
