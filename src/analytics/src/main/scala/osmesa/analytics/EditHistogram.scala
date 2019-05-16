@@ -181,7 +181,7 @@ object EditHistogram extends VectorGrid {
 
                 unmodifiedFeatures ++ replacementFeatures ++ newFeatures match {
                   case updatedFeatures if (replacementFeatures.length + newFeatures.length) > 0 =>
-                    val updatedLayer = makeLayer(key, extent, updatedFeatures)
+                    val updatedLayer = makeLayer(key, extent, updatedFeatures, Cells)
                     val sequenceLayer =
                       makeSequenceLayer(getCommittedSequences(tile) ++ sequences, extent)
 
@@ -191,7 +191,7 @@ object EditHistogram extends VectorGrid {
                     None
                 }
               case None =>
-                Some(makeLayer(key, extent, makeFeatures(feats)),
+                Some(makeLayer(key, extent, makeFeatures(feats), Cells),
                      makeSequenceLayer(sequences, extent))
             }
 
@@ -213,7 +213,7 @@ object EditHistogram extends VectorGrid {
             }
 
           case None =>
-            write(VectorTile(Map(makeLayer(key, extent, makeFeatures(feats)),
+            write(VectorTile(Map(makeLayer(key, extent, makeFeatures(feats), Cells),
                                  makeSequenceLayer(sequences, extent)),
                              extent),
                   uri)

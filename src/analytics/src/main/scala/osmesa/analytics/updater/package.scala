@@ -315,12 +315,12 @@ package object updater extends Logging {
     (points, multiPoints, lines, multiLines, polygons, multiPolygons)
   }
 
-  def makeLayer(name: String, extent: Extent, features: Iterable[VTFeature]): (String, Layer) = {
+  def makeLayer(name: String, extent: Extent, features: Iterable[VTFeature], tileWidth: Int = 4096): (String, Layer) = {
     val (points, multiPoints, lines, multiLines, polygons, multiPolygons) = segregate(features)
 
     name -> StrictLayer(
       name = name,
-      tileWidth = 4096,
+      tileWidth = tileWidth,
       version = 2,
       tileExtent = extent,
       points = points,
