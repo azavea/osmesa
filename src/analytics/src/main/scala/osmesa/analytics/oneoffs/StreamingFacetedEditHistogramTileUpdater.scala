@@ -241,7 +241,7 @@ object StreamingFacetedEditHistogramTileUpdater
                     lit("created"),
                     ('version === 1 and 'geometryChanged).cast(IntegerType),
                     lit("modified"),
-                    ('version > 1).cast(IntegerType),
+                    ('visible and 'version > 1).cast(IntegerType),
                     lit("deleted"),
                     (!'visible).cast(IntegerType),
                     lit("metadataOnly"),
