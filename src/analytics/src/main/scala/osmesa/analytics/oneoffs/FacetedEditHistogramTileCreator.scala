@@ -164,7 +164,7 @@ object FacetedEditHistogramTileCreator
                   lit("created"),
                   isNew('version, 'minorVersion).cast(IntegerType),
                   lit("modified"),
-                  (!isNew('version, 'minorVersion)).cast(IntegerType),
+                  ('visible and !isNew('version, 'minorVersion)).cast(IntegerType),
                   lit("deleted"),
                   (!'visible).cast(IntegerType),
                   lit("metadataOnly"),
