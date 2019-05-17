@@ -150,8 +150,8 @@ object ProcessOSM {
     } else {
       @transient val idByVersion = Window.partitionBy('id).orderBy('version)
 
-      // when a node has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
-      // present and use those
+      // when a node has been deleted, it doesn't include any tags or nds; use a window function to retrieve the last
+      // tags and nds present and use those
       history
         .where('type === "way")
         .repartition('id)
@@ -160,7 +160,8 @@ object ProcessOSM {
           when(!'visible and (lag('tags, 1) over idByVersion).isNotNull,
             lag('tags, 1) over idByVersion)
             .otherwise('tags) as 'tags,
-          $"nds.ref" as 'nds,
+          when(!'visible, lag($"nds.ref", 1) over idByVersion)
+            .otherwise($"nds.ref") as 'nds,
           'changeset,
           'timestamp,
           (lead('timestamp, 1) over idByVersion) as 'validUntil,
@@ -189,8 +190,8 @@ object ProcessOSM {
     } else {
       @transient val idByUpdated = Window.partitionBy('id).orderBy('version)
 
-      // when an element has been deleted, it doesn't include any tags; use a window function to retrieve the last tags
-      // present and use those
+      // when an element has been deleted, it doesn't include any tags or members; use a window function to retrieve
+      // the last tags and members present and use those
       history
         .where('type === "relation")
         .repartition('id)
@@ -199,7 +200,8 @@ object ProcessOSM {
           when(!'visible and (lag('tags, 1) over idByUpdated).isNotNull,
             lag('tags, 1) over idByUpdated)
             .otherwise('tags) as 'tags,
-          compressMemberTypes('members) as 'members,
+          when(!'visible, compressMemberTypes(lag('members, 1) over idByUpdated))
+            .otherwise(compressMemberTypes('members)) as 'members,
           'changeset,
           'timestamp,
           (lead('timestamp, 1) over idByUpdated) as 'validUntil,
