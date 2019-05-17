@@ -95,7 +95,7 @@ object FacetedEditHistogramTileCreator
               .repartition('id, 'updated)
 
             val nodesWithWayTags = explodedWays
-            // ProcessOSM difference: inner join is sufficient
+            // ProcessOSM difference: right outer join is necessary
               .join(nodes.select('id as 'ref,
                                  'version as 'refVersion,
                                  'tags as 'refTags,
@@ -105,12 +105,12 @@ object FacetedEditHistogramTileCreator
                                  'lon,
                                  'visible,
                                  'geometryChanged),
-                    Seq("ref"))
-              .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
+                    Seq("ref"), "right_outer")
+              .where('updated.isNull or ('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp)))
               .drop('changeset)
-              .drop('update)
-              .drop('timestamp)
+              .drop('updated)
               .drop('validUntil)
+              .withColumnRenamed("timestamp", "updated")
 
             @transient val idAndVersionByUpdated =
               Window.partitionBy('id, 'version).orderBy('updated)
@@ -125,7 +125,7 @@ object FacetedEditHistogramTileCreator
                 first('geometryChanged) as 'geometryChanged,
                 // combine tags together, joining unique values with ;s
                 // TODO better as a UDAF to avoid intermediate duplicates
-                reduceTags(collect_list('tags)) as 'wayTags
+                reduceTags(collect_list(coalesce('tags, map()))) as 'wayTags
               )
               // here, minor versions are nodes where only contributing metadata (i.e. from ways) has changed
               .withColumn("minorVersion", (row_number over idAndVersionByUpdated) - 1)
