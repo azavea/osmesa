@@ -14,8 +14,12 @@ export INSTANCE_ROLE := [IAM instance role]
 
 export AUGDIFF_SOURCE := s3://path/to/augdiffs/
 export CHANGESET_SOURCE := https://planet.osm.org/replication/changesets/
-export AUGDIFF_START := [Start of Augdiff stream]
-export CHANGESET_START := [Start of changeset stream]
+export AUGDIFF_START := [Start of Augdiff stream (for stats)]
+export CHANGE_START := [Start of change stream (for user footprints)]
+export CHANGESET_START := [Start of changeset stream (for stats)]
+export OVERPASS_URL := [alternative Overpass URL]
+export TILE_SOURCE := s3://path/to/user/footprints/
+
 
 export DB_URI := [URI to DB for writing outputs from stream]
 

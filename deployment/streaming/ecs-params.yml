@@ -5,7 +5,8 @@ version: 1
 task_definition:
   services:
     changeset-stream:
-      mem_reservation: 4096m
+      mem_reservation: 2048m
     augdiff-stream:
+      mem_reservation: 2048m
+    user-footprint-updater:
       mem_reservation: 4096m
-
