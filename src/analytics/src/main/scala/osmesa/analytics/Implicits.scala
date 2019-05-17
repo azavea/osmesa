@@ -73,7 +73,7 @@ object Implicits extends Logging {
                       if (xs.contains(sk.col) && ys.contains(sk.row)) {
                         // TODO if source geometry isn't a point, facet values should be redistributed
                         // create a tile for each facet
-                        point.facets.map {
+                        point.facets.filter(_._2 > 0).map {
                           case (facet, value) =>
                             GeometryTileWithKey(s"${point.key}:${facet}",
                                                 baseZoom,
@@ -387,7 +387,7 @@ object Implicits extends Logging {
                       if (xs.contains(sk.col) && ys.contains(sk.row)) {
                         // TODO if source geometry isn't a point, facet values should be redistributed
                         // create a tile for each facet
-                        point.facets.map {
+                        point.facets.filter(_._2 > 0).map {
                           case (facet, value) =>
                             GeometryTileWithKeyAndSequence(point.sequence,
                                                            s"${point.key}:${facet}",
