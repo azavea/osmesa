@@ -39,9 +39,9 @@ trait VectorGrid extends Logging {
       .get(SequenceLayerName)
       .map(_.features.flatMap(f => f.data.values.map(valueToLong).map(_.intValue)))
       .map(_.toSet)
-      .getOrElse(Set.empty[Int])
+      .getOrElse(Set.empty)
 
-  def makeSequenceLayer(sequences: Set[Int], extent: Extent): (String, Layer) = {
+  def makeSequenceLayer(sequences: Set[Int], extent: Extent, tileWidth: Int = 4096): (String, Layer) = {
     // create a second layer w/ a feature corresponding to committed sequences (in the absence of
     // available tile / layer metadata)
     val updatedSequences =
@@ -56,7 +56,7 @@ trait VectorGrid extends Logging {
 
     val sequenceFeature = PointFeature(extent.center, updatedSequences)
 
-    makeLayer(SequenceLayerName, extent, Seq(sequenceFeature))
+    makeLayer(SequenceLayerName, extent, Seq(sequenceFeature), tileWidth)
   }
 
   def loadMVTs(urls: Map[URI, Extent])(
