@@ -1,4 +1,4 @@
-package osmesa
+package osmesa.bm
 
 import java.io.ByteArrayOutputStream
 import java.util.zip.{GZIPOutputStream, ZipEntry, ZipOutputStream}
@@ -260,4 +260,3 @@ object GenerateVT {
       }}
   }
 }
-

@@ -9,9 +9,10 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
-import osmesa.common.ProcessOSM
-import osmesa.common.functions._
-import osmesa.common.functions.osm._
+import vectorpipe.{internal => ProcessOSM}
+import vectorpipe.functions._
+import vectorpipe.functions.osm._
+import vectorpipe.util.Geocode
 
 object ChangesetStats extends CommandApp(
   name = "changeset-stats",
@@ -44,12 +45,12 @@ object ChangesetStats extends CommandApp(
           lag('tags, 1) over idByVersion)
           .otherwise('tags))
 
-      val pointGeoms = ProcessOSM.geocode(ProcessOSM.constructPointGeometries(
+      val pointGeoms = Geocode(ProcessOSM.constructPointGeometries(
         // pre-filter to POI nodes
         nodes.where(isPOI('tags))
       ).withColumn("minorVersion", lit(0)))
 
-      val wayGeoms = ProcessOSM.geocode(ProcessOSM.reconstructWayGeometries(
+      val wayGeoms = Geocode(ProcessOSM.reconstructWayGeometries(
         // pre-filter to interesting ways
         ways.where(isBuilding('tags) or isRoad('tags) or isWaterway('tags) or isCoastline('tags) or isPOI('tags)),
         // let reconstructWayGeometries do its thing; nodes are cheap

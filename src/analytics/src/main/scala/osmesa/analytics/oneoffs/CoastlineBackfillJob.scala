@@ -9,10 +9,11 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.locationtech.geomesa.spark.jts.st_length
 import osmesa.analytics.Analytics
-import osmesa.common.ProcessOSM
-import osmesa.common.functions._
-import osmesa.common.functions.osm._
-import osmesa.common.sources.Source
+import vectorpipe.{internal => ProcessOSM}
+import vectorpipe.functions._
+import vectorpipe.functions.osm._
+import vectorpipe.sources.Source
+import vectorpipe.util.Geocode
 
 object CoastlineBackfillJob extends CommandApp(
   name = "coastline-backfill",
@@ -31,7 +32,7 @@ object CoastlineBackfillJob extends CommandApp(
 
       val history = spark.read.orc(historySource)
 
-      val wayGeoms = ProcessOSM.geocode(ProcessOSM.reconstructWayGeometries(
+      val wayGeoms = Geocode(ProcessOSM.reconstructWayGeometries(
         // pre-filter to interesting ways
         history.where('type === "way" and isCoastline('tags)),
         // let reconstructWayGeometries do its thing; nodes are cheap

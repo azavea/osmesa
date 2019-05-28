@@ -22,8 +22,6 @@ import cats.implicits._
 import com.monovore.decline._
 import monocle.macros.GenLens
 
-import osmesa.GenerateVT
-
 import com.vividsolutions.jts.algorithm.Centroid
 
 import scala.collection.mutable

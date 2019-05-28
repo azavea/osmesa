@@ -6,16 +6,21 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
+def excludeVP(module: ModuleID): ModuleID =
+  module.excludeAll(ExclusionRule("com.azavea", "vectorpipe"))
+
+libraryDependencies ~= (_.map(excludeVP))
+
 libraryDependencies ++= Seq(
   decline,
   sparkHive % "provided",
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
-  vectorpipe exclude("com.google.protobuf", "protobuf-java"),
   cats,
+  gtS3,
   gtSparkTestKit,
   logging,
   scalatest,
-
+  "com.azavea" %% "vectorpipe" % "0.2.2",
   "org.jblas" % "jblas" % "1.2.4"
 )
 
