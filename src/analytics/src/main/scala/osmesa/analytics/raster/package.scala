@@ -1,4 +1,4 @@
-package osmesa.common
+package osmesa.analytics
 import geotrellis.raster.{Raster, Tile, isData}
 
 package object raster {

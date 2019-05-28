@@ -10,8 +10,8 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
-import osmesa.common.functions.osm._
-import osmesa.common.sources.Source
+import vectorpipe.functions.osm._
+import vectorpipe.sources.Source
 
 /*
  * Usage example:

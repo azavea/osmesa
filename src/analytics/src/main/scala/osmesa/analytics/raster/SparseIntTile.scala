@@ -1,4 +1,4 @@
-package osmesa.common.raster
+package osmesa.analytics.raster
 
 import geotrellis.raster.{
   ArrayTile,

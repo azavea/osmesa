@@ -7,8 +7,8 @@ import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
-import osmesa.common.model.ElementWithSequence
-import osmesa.common.sources.Source
+import vectorpipe.model.ElementWithSequence
+import vectorpipe.sources.Source
 
 /*
  * Usage example:

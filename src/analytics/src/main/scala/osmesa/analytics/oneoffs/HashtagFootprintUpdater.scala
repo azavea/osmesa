@@ -9,10 +9,10 @@ import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.analytics.{Analytics, Footprints}
-import osmesa.common.ProcessOSM
-import osmesa.common.functions.osm._
-import osmesa.common.model.ElementWithSequence
-import osmesa.common.sources.Source
+import vectorpipe.{internal => ProcessOSM}
+import vectorpipe.functions.osm._
+import vectorpipe.model.ElementWithSequence
+import vectorpipe.sources.Source
 
 /*
  * Usage example:
