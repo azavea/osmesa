@@ -19,7 +19,7 @@ import osmesa.common.sources.Source
  *   --class osmesa.analytics.oneoffs.StreamingUserFootprintUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar
  */
-object StreamingUserFootprintUpdater
+object StreamingUserFootprintTileUpdater
     extends CommandApp(
       name = "osmesa-user-footprint-updater",
       header = "Consume minutely diffs to update user footprint MVTs",
