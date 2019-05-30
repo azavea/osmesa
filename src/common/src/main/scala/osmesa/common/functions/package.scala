@@ -11,10 +11,24 @@ package object functions {
   // Spark functions are typically defined using snake_case, therefore so are the UDFs
   // internal helper functions use standard Scala naming conventions
 
-  lazy val merge_counts: UserDefinedFunction = udf(_mergeCounts)
+  lazy val merge_counts: UserDefinedFunction = udf(_mergeIntCounts)
+
+  lazy val merge_measurements: UserDefinedFunction = udf(_mergeDoubleCounts)
+
+  lazy val sum_measurements: UserDefinedFunction = udf { counts: Iterable[Map[String, Double]] =>
+    Option(counts.reduce(_mergeDoubleCounts)).filter(_.nonEmpty).orNull
+  }
 
   lazy val sum_counts: UserDefinedFunction = udf { counts: Iterable[Map[String, Int]] =>
-    counts.reduce(_mergeCounts(_, _))
+    Option(counts.reduce(_mergeIntCounts)).filter(_.nonEmpty).orNull
+  }
+
+  lazy val simplify_measurements: UserDefinedFunction = udf { counts: Map[String, Double] =>
+    counts.filter(_._2 != 0)
+  }
+
+  lazy val simplify_counts: UserDefinedFunction = udf { counts: Map[String, Int] =>
+    counts.filter(_._2 != 0)
   }
 
   // Convert BigDecimals to doubles
@@ -49,9 +63,13 @@ package object functions {
     list.filterNot(x => x == without)
   }
 
-  private val _mergeCounts = (a: Map[String, Int], b: Map[String, Int]) =>
-    mergeMaps(Option(a).getOrElse(Map.empty[String, Int]),
-              Option(b).getOrElse(Map.empty[String, Int]))(_ + _)
+  private val _mergeIntCounts = (a: Map[String, Int], b: Map[String, Int]) =>
+    mergeMaps(Option(a).getOrElse(Map.empty),
+      Option(b).getOrElse(Map.empty))(_ + _)
+
+  private val _mergeDoubleCounts = (a: Map[String, Double], b: Map[String, Double]) =>
+    mergeMaps(Option(a).getOrElse(Map.empty),
+      Option(b).getOrElse(Map.empty))(_ + _)
 
   val array_intersects: UserDefinedFunction = udf { (a: Seq[_], b: Seq[_]) =>
     a.intersect(b).nonEmpty}

@@ -23,14 +23,14 @@ object ChangeSource extends Logging {
     val s = f"$sequence%09d"
     val path = s"${s.slice(0, 3)}/${s.slice(3, 6)}/${s.slice(6, 9)}.osc.gz"
 
-    logInfo(s"Fetching sequence $sequence")
+    logDebug(s"Fetching sequence $sequence")
 
     try {
       val response =
         Http(baseURI.resolve(path).toString).asBytes
 
       if (response.code == 404) {
-        logInfo(s"$sequence is not yet available, sleeping.")
+        logDebug(s"$sequence is not yet available, sleeping.")
         Thread.sleep(Delay.toMillis)
         getSequence(baseURI, sequence)
       } else {
