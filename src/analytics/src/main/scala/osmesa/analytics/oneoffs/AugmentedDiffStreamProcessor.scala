@@ -1,14 +1,12 @@
 package osmesa.analytics.oneoffs
 
 import java.net.URI
-import java.sql.Connection
 
 import cats.implicits._
 import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
 import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
@@ -26,7 +24,7 @@ import vectorpipe.util.{DBUtils, Geocode}
  *   --class osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --augmented-diff-source s3://somewhere/diffs/ \
- *   --database-uri $DATABASE_URL
+ *   --database-url $DATABASE_URL
  */
 object AugmentedDiffStreamProcessor
     extends CommandApp(
@@ -72,6 +70,7 @@ object AugmentedDiffStreamProcessor
                          help = "Ending sequence. If absent, this will be an infinite stream.")
             .orNone
 
+<<<<<<< HEAD
         (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt).mapN {
           (augmentedDiffSource, startSequence, endSequence, databaseUri) =>
             implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
@@ -464,5 +463,73 @@ object AugmentedDiffStreamProcessor
 
             ss.stop()
         }
+=======
+        val batchSizeOpt = Opts
+          .option[Int]("batch-size",
+                       short = "b",
+                       metavar = "batch size",
+                       help = "Change batch size.")
+          .orNone
+
+        (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, batchSizeOpt)
+          .mapN {
+            (augmentedDiffSource, startSequence, endSequence, databaseUri, batchSize) =>
+              implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
+
+              import ss.implicits._
+
+              val options = Map(
+                Source.BaseURI -> augmentedDiffSource.toString,
+                Source.DatabaseURI -> databaseUri.toString,
+                Source.ProcessName -> "AugmentedDiffStream"
+              ) ++
+                startSequence
+                  .map(s => Map(Source.StartSequence -> s.toString))
+                  .getOrElse(Map.empty[String, String]) ++
+                endSequence
+                  .map(s => Map(Source.EndSequence -> s.toString))
+                  .getOrElse(Map.empty[String, String]) ++
+                batchSize
+                  .map(x => Map(Source.BatchSize -> x.toString))
+                  .getOrElse(Map.empty)
+
+              val geoms = ss.readStream.format(Source.AugmentedDiffs).options(options).load
+
+              // aggregations are triggered when an event with a later timestamp ("event time") is received
+              // in practice, this means that aggregation doesn't occur until the *next* sequence is received
+
+              val query = ProcessOSM
+                .geocode(geoms.where(isInteresting('tags)))
+                .withColumn("timestamp", to_timestamp('sequence * 60 + 1347432900))
+                // if sequences are received sequentially (and atomically), 0 seconds should suffice; anything received with an
+                // earlier timestamp after that point will be dropped
+                .withWatermark("timestamp", "0 seconds")
+                .withDelta
+                .select(
+                  'timestamp,
+                  'sequence,
+                  'changeset,
+                  'uid,
+                  'user,
+                  'countries,
+                  measurements,
+                  counts
+                )
+                .groupBy('timestamp, 'sequence, 'changeset, 'uid, 'user)
+                .agg(
+                  sum_measurements(collect_list('measurements)) as 'measurements,
+                  sum_counts(collect_list('counts)) as 'counts,
+                  count_values(flatten(collect_list('countries))) as 'countries
+                )
+                .writeStream
+                .queryName("aggregate statistics by sequence")
+                .foreach(new ChangesetStatsForeachWriter(databaseUri, shouldUpdateUsernames = true))
+                .start
+
+              query.awaitTermination()
+
+              ss.stop()
+          }
+>>>>>>> Store measurements and counts as a JSON column
       }
     )
