@@ -90,10 +90,10 @@ object AugmentedDiffStreamProcessor
               ) ++
                 startSequence
                   .map(s => Map(Source.StartSequence -> s.toString))
-                  .getOrElse(Map.empty[String, String]) ++
+                  .getOrElse(Map.empty) ++
                 endSequence
                   .map(s => Map(Source.EndSequence -> s.toString))
-                  .getOrElse(Map.empty[String, String]) ++
+                  .getOrElse(Map.empty) ++
                 batchSize
                   .map(x => Map(Source.BatchSize -> x.toString))
                   .getOrElse(Map.empty)
@@ -117,8 +117,8 @@ object AugmentedDiffStreamProcessor
                   'uid,
                   'user,
                   'countries,
-                  measurements,
-                  counts
+                  DefaultMeasurements,
+                  DefaultCounts
                 )
                 .groupBy('timestamp, 'sequence, 'changeset, 'uid, 'user)
                 .agg(
