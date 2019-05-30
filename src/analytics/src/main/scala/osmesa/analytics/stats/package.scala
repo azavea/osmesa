@@ -48,7 +48,7 @@ package object stats {
 
   def isLinear(tags: Column): Column = isRoad(tags) or isWaterway(tags) or isCoastline(tags) as 'isLinear
 
-  def measurements(implicit sparkSession: SparkSession): Column = {
+  def DefaultMeasurements(implicit sparkSession: SparkSession): Column = {
     import sparkSession.implicits._
 
     simplify_measurements(map(
@@ -64,7 +64,7 @@ package object stats {
     )) as 'measurements
   }
 
-  def counts(implicit sparkSession: SparkSession): Column = {
+  def DefaultCounts(implicit sparkSession: SparkSession): Column = {
     import sparkSession.implicits._
 
     simplify_counts(map(

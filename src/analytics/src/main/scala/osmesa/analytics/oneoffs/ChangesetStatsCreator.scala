@@ -42,7 +42,7 @@ object ChangesetStatsCreator extends CommandApp(
       val ways = ProcessOSM.preprocessWays(history)
 
       val pointGeoms = ProcessOSM.geocode(ProcessOSM.constructPointGeometries(
-        // pre-filter to POI nodes
+        // pre-filter to interesting nodes
         nodes.where(isInterestingNode('tags))
       ).withColumn("minorVersion", lit(0)))
 
@@ -61,8 +61,8 @@ object ChangesetStatsCreator extends CommandApp(
         .select(
           'changeset,
           'countries,
-          measurements,
-          counts
+          DefaultMeasurements,
+          DefaultCounts
         )
         .groupBy('changeset)
         .agg(
