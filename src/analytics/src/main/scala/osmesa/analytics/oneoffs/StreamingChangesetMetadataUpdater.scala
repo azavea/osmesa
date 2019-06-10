@@ -16,11 +16,11 @@ import osmesa.common.sources.Source
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.ChangesetStreamProcessor \
+ *   --class osmesa.analytics.oneoffs.StreamingChangesetMetadataUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --database-url $DATABASE_URL
  */
-object ChangesetStreamProcessor
+object StreamingChangesetMetadataUpdater
     extends CommandApp(
       name = "osmesa-augmented-diff-stream-processor",
       header = "Update statistics from streaming augmented diffs",
@@ -72,14 +72,14 @@ object ChangesetStreamProcessor
 
         (changesetSourceOpt, databaseUrlOpt, startSequenceOpt, endSequenceOpt, batchSizeOpt).mapN {
           (changesetSource, databaseUrl, startSequence, endSequence, batchSize) =>
-            implicit val ss: SparkSession = Analytics.sparkSession("ChangesetStreamProcessor")
+            implicit val ss: SparkSession = Analytics.sparkSession("StreamingChangesetMetadataUpdater")
 
             import ss.implicits._
 
             val options = Map(
               Source.BaseURI -> changesetSource.toString,
               Source.DatabaseURI -> databaseUrl.toString,
-              Source.ProcessName -> "ChangesetStream"
+              Source.ProcessName -> "ChangesetMetadataUpdater"
             ) ++
               startSequence
                 .map(s => Map(Source.StartSequence -> s.toString))

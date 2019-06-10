@@ -20,12 +20,12 @@ import osmesa.common.sources.Source
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor \
+ *   --class osmesa.analytics.oneoffs.StreamingChangesetStatsUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --augmented-diff-source s3://somewhere/diffs/ \
  *   --database-url $DATABASE_URL
  */
-object AugmentedDiffStreamProcessor
+object StreamingChangesetStatsUpdater
     extends CommandApp(
       name = "osmesa-augmented-diff-stream-processor",
       header = "Update statistics from streaming augmented diffs",
@@ -79,14 +79,14 @@ object AugmentedDiffStreamProcessor
         (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, batchSizeOpt)
           .mapN {
             (augmentedDiffSource, startSequence, endSequence, databaseUri, batchSize) =>
-              implicit val ss: SparkSession = Analytics.sparkSession("AugmentedDiffStreamProcessor")
+              implicit val ss: SparkSession = Analytics.sparkSession("StreamingChangesetStatsUpdater")
 
               import ss.implicits._
 
               val options = Map(
                 Source.BaseURI -> augmentedDiffSource.toString,
                 Source.DatabaseURI -> databaseUri.toString,
-                Source.ProcessName -> "AugmentedDiffStream"
+                Source.ProcessName -> "ChangesetStatsUpdater"
               ) ++
                 startSequence
                   .map(s => Map(Source.StartSequence -> s.toString))
