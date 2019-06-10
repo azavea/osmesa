@@ -23,6 +23,10 @@ package object functions {
     Option(counts.reduce(_mergeIntCounts)).filter(_.nonEmpty).orNull
   }
 
+  lazy val sum_count_values: UserDefinedFunction = udf { counts: Map[String, Int] =>
+    counts.values.sum
+  }
+
   lazy val simplify_measurements: UserDefinedFunction = udf { counts: Map[String, Double] =>
     counts.filter(_._2 != 0)
   }

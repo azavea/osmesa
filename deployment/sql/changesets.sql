@@ -2,6 +2,7 @@ CREATE TABLE changesets (
     id bigint NOT NULL,
     measurements jsonb,
     counts jsonb,
+    total_edits integer,
     editor text,
     user_id integer,
     created_at timestamp with time zone,
