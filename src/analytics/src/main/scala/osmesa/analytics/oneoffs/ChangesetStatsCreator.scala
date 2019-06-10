@@ -85,10 +85,12 @@ object ChangesetStatsCreator extends CommandApp(
 
       val changesetStats = wayChangesetStats
         .join(pointChangesetStats, Seq("changeset"), "full_outer")
+        .withColumn("mergedCounts", merge_counts(wayChangesetStats("counts"), pointChangesetStats("counts")))
         .select(
           'changeset,
           'measurements,
-          merge_counts(wayChangesetStats("counts"), pointChangesetStats("counts")) as 'counts,
+          'mergedCounts as 'counts,
+          sum_count_values('mergedCounts) as 'totalEdits,
           merge_counts(wayChangesetStats("countries"), pointChangesetStats("countries")) as 'countries
         )
 

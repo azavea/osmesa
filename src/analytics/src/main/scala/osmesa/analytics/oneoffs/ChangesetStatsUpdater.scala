@@ -120,6 +120,7 @@ object ChangesetStatsUpdater
                 sum_counts(collect_list('counts)) as 'counts,
                 count_values(flatten(collect_list('countries))) as 'countries
               )
+              .withColumn("totalEdits", sum_count_values('counts))
               .foreachPartition(rows => {
                 val writer =
                   new ChangesetStatsForeachWriter(databaseUrl, shouldUpdateUsernames = true)

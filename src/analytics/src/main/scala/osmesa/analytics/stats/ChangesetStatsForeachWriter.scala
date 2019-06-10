@@ -22,6 +22,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
       |    ? AS user_id,
       |    ?::jsonb AS measurements,
       |    ?::jsonb AS counts,
+      |    ? AS total_edits,
       |    ? AS augmented_diffs,
       |    current_timestamp AS updated_at
       |)
@@ -30,6 +31,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
       |  user_id,
       |  measurements,
       |  counts,
+      |  total_edits,
       |  augmented_diffs,
       |  updated_at
       |) SELECT * FROM data
@@ -62,6 +64,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
       |      GROUP BY key
       |    ) AS _
       |  ),
+      |  total_edits = c.total_edits + EXCLUDED.total_edits,
       |  augmented_diffs = coalesce(c.augmented_diffs, ARRAY[]::integer[]) || EXCLUDED.augmented_diffs,
       |  updated_at = current_timestamp
       |WHERE c.id = EXCLUDED.id
@@ -173,6 +176,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
     }
     val measurements = Option(row.getAs[Map[String, Double]]("measurements"))
     val counts = Option(row.getAs[Map[String, Int]]("counts"))
+    val totalEdits = row.getAs[Integer]("totalEdits")
     val countries = row.getAs[Map[String, Int]]("countries")
 
     val augmentedDiffs = connection.createArrayOf(
@@ -188,7 +192,8 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
 
     updateChangesets.setString(3, measurements.map(_.asJson.noSpaces).orNull)
     updateChangesets.setString(4, counts.map(_.asJson.noSpaces).orNull)
-    updateChangesets.setArray(5, augmentedDiffs)
+    updateChangesets.setInt(5, totalEdits)
+    updateChangesets.setArray(6, augmentedDiffs)
 
     updateChangesets.addBatch()
 
