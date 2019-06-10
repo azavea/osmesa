@@ -11,6 +11,7 @@ import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
 import osmesa.common.ProcessOSM
+import osmesa.common.functions.osm.isTagged
 import osmesa.common.model.ElementWithSequence
 import osmesa.common.sources.Source
 
@@ -105,7 +106,7 @@ object StreamingChangesetStatsUpdater
               // in practice, this means that aggregation doesn't occur until the *next* sequence is received
 
               val query = ProcessOSM
-                .geocode(geoms.where(isInteresting('tags)))
+                .geocode(geoms.where(isTagged('tags)))
                 .withColumn("timestamp", to_timestamp('sequence * 60 + 1347432900))
                 // if sequences are received sequentially (and atomically), 0 seconds should suffice; anything received with an
                 // earlier timestamp after that point will be dropped
