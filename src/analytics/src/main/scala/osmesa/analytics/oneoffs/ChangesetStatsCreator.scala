@@ -47,16 +47,16 @@ object ChangesetStatsCreator
             val pointGeoms = ProcessOSM.geocode(
               ProcessOSM
                 .constructPointGeometries(
-                  // pre-filter to interesting nodes
-                  nodes.where(isInterestingNode('tags))
+                  // pre-filter to tagged nodes
+                  nodes.where(isTagged('tags))
                 )
                 .withColumn("minorVersion", lit(0)))
 
             val wayGeoms = ProcessOSM.geocode(
               ProcessOSM
                 .reconstructWayGeometries(
-                  // pre-filter to interesting ways
-                  ways.where(isInterestingWay('tags)),
+                  // pre-filter to tagged ways
+                  ways.where(isTagged('tags)),
                   // let reconstructWayGeometries do its thing; nodes are cheap
                   nodes
                 )
