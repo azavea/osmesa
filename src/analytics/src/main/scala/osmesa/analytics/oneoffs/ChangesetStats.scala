@@ -13,6 +13,7 @@ import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.util.Geocode
+import osmesa.analytics.stats.functions._
 
 object ChangesetStats extends CommandApp(
   name = "changeset-stats",
