@@ -9,8 +9,8 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
+import osmesa.analytics.stats.functions._
 import osmesa.common.ProcessOSM
-import osmesa.common.functions._
 import osmesa.common.functions.osm._
 
 object ChangesetStats extends CommandApp(

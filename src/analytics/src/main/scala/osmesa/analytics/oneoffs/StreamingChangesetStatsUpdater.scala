@@ -9,8 +9,8 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
+import osmesa.analytics.stats.functions._
 import osmesa.common.ProcessOSM
-import osmesa.common.functions._
 import osmesa.common.model.ElementWithSequence
 import osmesa.common.sources.Source
 
@@ -79,7 +79,8 @@ object StreamingChangesetStatsUpdater
         (augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt, databaseUriOpt, batchSizeOpt)
           .mapN {
             (augmentedDiffSource, startSequence, endSequence, databaseUri, batchSize) =>
-              implicit val ss: SparkSession = Analytics.sparkSession("StreamingChangesetStatsUpdater")
+              implicit val ss: SparkSession =
+                Analytics.sparkSession("StreamingChangesetStatsUpdater")
 
               import ss.implicits._
 

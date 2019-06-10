@@ -10,8 +10,8 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
+import osmesa.analytics.stats.functions._
 import osmesa.common.ProcessOSM
-import osmesa.common.functions._
 import osmesa.common.model.ElementWithSequence
 import osmesa.common.sources.Source
 
