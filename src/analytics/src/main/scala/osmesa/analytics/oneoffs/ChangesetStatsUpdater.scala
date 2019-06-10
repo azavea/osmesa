@@ -12,6 +12,7 @@ import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
 import osmesa.common.ProcessOSM
+import osmesa.common.functions.osm.isTagged
 import osmesa.common.model.ElementWithSequence
 import osmesa.common.sources.Source
 
@@ -103,7 +104,7 @@ object ChangesetStatsUpdater
             val geoms = ss.read.format(Source.AugmentedDiffs).options(options).load
 
             ProcessOSM
-              .geocode(geoms.where(isInteresting('tags)))
+              .geocode(geoms.where(isTagged('tags)))
               .withDelta
               .select(
                 'sequence,

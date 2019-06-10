@@ -48,6 +48,13 @@ package object stats {
 
   def isLinear(tags: Column): Column = isRoad(tags) or isWaterway(tags) or isCoastline(tags) as 'isLinear
 
+  def isOther(tags: Column): Column = isTagged(tags) and
+    not(isRoad((tags))) and
+    not(isWaterway(tags)) and
+    not(isCoastline(tags)) and
+    not(isBuilding(tags)) and
+    not(isPOI(tags)) as 'isOther
+
   def DefaultMeasurements(implicit sparkSession: SparkSession): Column = {
     import sparkSession.implicits._
 
@@ -82,7 +89,10 @@ package object stats {
       lit("buildings_deleted"), (isBuilding('tags) and !'visible).cast(IntegerType),
       lit("pois_added"), (isPOI('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
       lit("pois_modified"), (isPOI('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
-      lit("pois_deleted"), (isPOI('tags) and !'visible).cast(IntegerType)
+      lit("pois_deleted"), (isPOI('tags) and !'visible).cast(IntegerType),
+      lit("other_added"), (isOther('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
+      lit("other_modified"), (isOther('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
+      lit("other_deleted"), (isOther('tags) and !'visible).cast(IntegerType)
     )) as 'counts
   }
 
@@ -92,7 +102,10 @@ package object stats {
     simplify_counts(map(
       lit("pois_added"), (isPOI('tags) and 'version === 1).cast(IntegerType),
       lit("pois_modified"), (isPOI('tags) and 'version > 1 and 'visible).cast(IntegerType),
-      lit("pois_deleted"), (isPOI('tags) and !'visible).cast(IntegerType)
+      lit("pois_deleted"), (isPOI('tags) and !'visible).cast(IntegerType),
+      lit("other_added"), (isOther('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
+      lit("other_modified"), (isOther('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
+      lit("other_deleted"), (isOther('tags) and !'visible).cast(IntegerType)
     )) as 'counts
   }
 }
