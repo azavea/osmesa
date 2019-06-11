@@ -10,9 +10,15 @@ services:
       db:
         aliases:
           - database
-  changeset-stream:
+  augdiff-stream:
     image: osm_analytics:latest
-    command: /spark/bin/spark-submit --class osmesa.analytics.oneoffs.ChangesetStreamProcessor /opt/osmesa-analytics.jar --changeset-source https://planet.osm.org/replication/changesets/ --start-sequence 1 --database-uri postgresql://database:5432/postgres --database-user postgres --database-pass streamtest --ignore-https
+    command: >
+      /spark/bin/spark-submit
+      --class osmesa.analytics.oneoffs.StreamingChangesetStatsUpdater
+      /opt/osmesa-analytics.jar
+      --augmented-diff-source ${AUGDIFF_SOURCE}
+      --database-url postgresql://postgres:streamtest@database/postgres
+      --start-sequence 1
     deploy:
       restart_policy:
         condition: on-failure
@@ -21,9 +27,14 @@ services:
         window: 120s
     networks:
       - db
-  change-stream:
+  changeset-stream:
     image: osm_analytics:latest
-    command: /spark/bin/spark-submit --class osmesa.analytics.oneoffs.ChangeStreamProcessor /opt/osmesa-analytics.jar --change-source https://planet.osm.org/replication/minute/ --start-sequence 1 --database-uri postgresql://database:5432/postgres --database-user postgres --database-pass streamtest --ignore-https
+    command: >
+      /spark/bin/spark-submit
+      --class osmesa.analytics.oneoffs.StreamingChangesetMetadataUpdater
+      /opt/osmesa-analytics.jar
+      --start-sequence 1
+      --database-url postgresql://postgres:streamtest@database/postgres
     deploy:
       restart_policy:
         condition: on-failure
