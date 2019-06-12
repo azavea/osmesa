@@ -18,6 +18,9 @@ object Routes {
       // bail early if null values are present where they should exist (members w/ type=way)
       logger.debug(s"Incomplete relation: $id @ $version ($timestamp)")
       None
+    } else if (types.isEmpty) {
+      // empty relation
+      None
     } else {
 
       try {
