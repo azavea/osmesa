@@ -361,7 +361,7 @@ object ProcessOSM {
               case coords if coords.length == 1 =>
                 Some(GeomFactory.factory.createPoint(new jts.Coordinate(coords.head.head, coords.head.last)))
               case coords => {
-                val coordinates = coords.map(xy => new jts.Coordinate(xy.head.toDouble, xy.last.toDouble)).toArray
+                val coordinates = coords.map(xy => new jts.Coordinate(xy.head, xy.last)).toArray
                 val line = GeomFactory.factory.createLineString(coordinates)
 
                 if (isArea && line.getNumPoints >= 4 && line.isClosed)
