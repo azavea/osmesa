@@ -21,7 +21,7 @@ trait VectorGrid extends Logging {
   val DefaultBaseZoom: Int = 10
 
   // Number of cells per side in a gridded tile
-  implicit val Cells: Int = 128
+  implicit val Cells: Int = 64
 
   // Number of cells in a gridded tile at the base of the pyramid (may be used for over-zooming)
   val BaseCells: Int = Cells

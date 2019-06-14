@@ -145,8 +145,19 @@ object FacetedEditHistogramTileCreator
             // in terms of raw data, how is this different from what's measured in the stats components?
             // a) no lengths
             // b) counts nodes, not ways (good for showing where, when gridded)
+
+            val baseinstant = java.time.Instant.parse("2004-08-09T00:00:00.00Z")
+            val smoosh = org.apache.spark.sql.functions.udf { ts: java.sql.Timestamp =>
+              val day = (ts.toInstant.getEpochSecond - baseinstant.getEpochSecond) / 86400
+              val clumpingFactor = math.max(math.floor(28 * math.exp(-day / 2100.0)), 1)
+              val binned = (math.floor(day / clumpingFactor) * clumpingFactor).toLong
+              val seconds = (binned * 86400 + baseinstant.getEpochSecond).toLong
+              java.sql.Timestamp.from(java.time.Instant.ofEpochSecond(seconds))
+            }
+
             val points = processedNodes
               .where('lat =!= lit(Double.NaN) and 'lon =!= lit(Double.NaN))
+              .withColumn("updated", smoosh('updated))
               .select(
                 st_makePoint('lon, 'lat) as 'geom,
                 year('updated) * 1000 + dayofyear('updated) as 'key,
