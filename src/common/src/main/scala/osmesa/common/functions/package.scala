@@ -1,5 +1,6 @@
 package osmesa.common
 
+import com.vividsolutions.jts.geom.{Geometry, Point}
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
@@ -55,4 +56,7 @@ package object functions {
 
   val array_intersects: UserDefinedFunction = udf { (a: Seq[_], b: Seq[_]) =>
     a.intersect(b).nonEmpty}
+
+  // this was added to GeoMesa in 2.2.0; in its absence, we have a simpler implementation that only handles Points
+  val st_castToGeometry: UserDefinedFunction = udf { pt: Point => pt.asInstanceOf[Geometry] }
 }
