@@ -45,10 +45,6 @@ package object functions {
     (_: Seq[Seq[String]]).flatten.distinct
   }
 
-  val merge_sets: UserDefinedFunction = udf { (a: Iterable[String], b: Iterable[String]) =>
-    (Option(a).getOrElse(Set.empty).toSet ++ Option(b).getOrElse(Set.empty).toSet).toArray
-  }
-
   private val _mergeIntCounts = (a: Map[String, Int], b: Map[String, Int]) =>
     mergeMaps(Option(a).getOrElse(Map.empty),
       Option(b).getOrElse(Map.empty))(_ + _)
