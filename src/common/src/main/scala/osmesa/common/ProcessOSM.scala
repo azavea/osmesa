@@ -220,6 +220,8 @@ object ProcessOSM {
     */
   def constructGeometries(elements: DataFrame): DataFrame = {
     import elements.sparkSession.implicits._
+    elements.sparkSession.withJTS
+
     val st_pointToGeom = org.apache.spark.sql.functions.udf { pt: jts.Point => pt.asInstanceOf[jts.Geometry] }
 
     val nodes = ProcessOSM.preprocessNodes(elements)
@@ -246,6 +248,7 @@ object ProcessOSM {
     */
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
     import nodes.sparkSession.implicits._
+    nodes.sparkSession.withJTS
 
     val ns = preprocessNodes(nodes)
       .where(size('tags) > 0)
