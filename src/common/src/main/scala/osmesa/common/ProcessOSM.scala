@@ -3,23 +3,20 @@ package osmesa.common
 import java.io._
 import java.sql.Timestamp
 
+import com.vividsolutions.jts.{geom => jts}
 import geotrellis.vector._
 import geotrellis.vector.io._
 import geotrellis.vector.io.json._
 import org.apache.log4j.Logger
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
-import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.jts.GeometryUDT
 import org.apache.spark.sql.types._
 import org.locationtech.geomesa.spark.jts._
-import com.vividsolutions.jts.{geom => jts}
 import osmesa.common.functions._
 import osmesa.common.functions.osm._
-import osmesa.common.relations.MultiPolygons
-import osmesa.common.relations.Routes
+import osmesa.common.relations.{MultiPolygons, Routes}
 import osmesa.common.util.Caching
 import spray.json._
 
@@ -30,41 +27,6 @@ object ProcessOSM {
   val MultiPolygonRoles: Seq[String] = Set("", "outer", "inner").toSeq
 
   lazy val logger: Logger = Logger.getLogger(getClass)
-
-  lazy val BareElementSchema = StructType(
-    StructField("changeset", LongType, nullable = false) ::
-      StructField("id", LongType, nullable = false) ::
-      StructField("version", IntegerType, nullable = false) ::
-      StructField("updated", TimestampType, nullable = false) ::
-      StructField("geom", GeometryUDT) ::
-      Nil)
-
-  lazy val BareElementEncoder: Encoder[Row] = RowEncoder(BareElementSchema)
-
-  lazy val TaggedVersionedElementSchema = StructType(
-    StructField("changeset", LongType, nullable = false) ::
-      StructField("id", LongType, nullable = false) ::
-      StructField("tags", MapType(StringType, StringType, valueContainsNull = false), nullable = false) ::
-      StructField("version", IntegerType, nullable = false) ::
-      StructField("minorVersion", IntegerType, nullable = false) ::
-      StructField("updated", TimestampType, nullable = false) ::
-      StructField("validUntil", TimestampType) ::
-      StructField("geom", GeometryUDT) ::
-      Nil)
-
-  lazy val TaggedVersionedElementEncoder: Encoder[Row] = RowEncoder(TaggedVersionedElementSchema)
-
-  lazy val VersionedElementSchema = StructType(
-    StructField("changeset", LongType, nullable = false) ::
-      StructField("id", LongType, nullable = false) ::
-      StructField("version", IntegerType, nullable = false) ::
-      StructField("minorVersion", IntegerType, nullable = false) ::
-      StructField("updated", TimestampType, nullable = false) ::
-      StructField("validUntil", TimestampType) ::
-      StructField("geom", GeometryUDT) ::
-      Nil)
-
-  lazy val VersionedElementEncoder: Encoder[Row] = RowEncoder(VersionedElementSchema)
 
   /**
     * Snapshot pre-processed elements.
@@ -335,8 +297,6 @@ object ProcessOSM {
       .join(nodes.select('id as 'ref, 'timestamp, 'validUntil, 'lat, 'lon), Seq("ref"), "left_outer")
       .where('timestamp <= 'updated and 'updated < coalesce('validUntil, current_timestamp))
 
-    implicit val encoder: Encoder[Row] = BareElementEncoder
-
     val wayGeoms = waysAndNodes
       .select('changeset, 'id, 'version, 'updated, 'isArea, 'idx, 'lat, 'lon)
       .groupByKey(row =>
@@ -375,8 +335,9 @@ object ProcessOSM {
             case Some(g) if g.isValid => g
             case _ => null
           }
-          new GenericRowWithSchema(Array(changeset, id, version, updated, geometry), BareElementSchema): Row
+          (changeset, id, version, updated, geometry)
       }
+      .toDF("changeset", "id", "version", "updated", "geom")
 
     @transient val idAndVersionByUpdated = Window.partitionBy('id, 'version).orderBy('updated)
     @transient val idByUpdated = Window.partitionBy('id).orderBy('updated)
@@ -515,8 +476,6 @@ object ProcessOSM {
       .drop('memberValidUntil)
       .drop('ref)
 
-    implicit val encoder: Encoder[Row] = VersionedElementEncoder
-
     val relationGeoms = members
         .groupByKey { row =>
           (row.getAs[Long]("changeset"), row.getAs[Long]("id"), row.getAs[Integer]("version"), row.getAs[Integer]
@@ -529,11 +488,10 @@ object ProcessOSM {
             val roles = members.map(_.getAs[String]("role"))
             val geoms = members.map(_.getAs[jts.Geometry]("geom"))
 
-            val wkb = MultiPolygons.build(id, version, updated, types, roles, geoms).orNull
+            val geom = MultiPolygons.build(id, version, updated, types, roles, geoms).orNull
 
-            new GenericRowWithSchema(Array(changeset, id, version, minorVersion, updated, validUntil, wkb),
-              VersionedElementSchema): Row
-        }
+            (changeset, id, version, minorVersion, updated, validUntil, geom)
+        }.toDF("changeset", "id", "version", "minorVersion", "updated", "validUntil", "geom")
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
@@ -579,8 +537,6 @@ object ProcessOSM {
       .drop('memberValidUntil)
       .drop('ref)
 
-    implicit val encoder: Encoder[Row] = TaggedVersionedElementEncoder
-
     // leverage partitioning (avoids repeated (de-)serialization of merged coordinate arrays)
     val relationGeoms = members
       .groupByKey { row =>
@@ -597,20 +553,18 @@ object ProcessOSM {
           Routes.build(id, version, updated, types, roles, geoms) match {
             case Some(components) =>
               components.map {
-                case ("", wkb) =>
+                case ("", geom) =>
                   // no role
-                  new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
-                    validUntil, wkb), TaggedVersionedElementSchema): Row
-                case (role, wkb) =>
-                  new GenericRowWithSchema(Array(changeset, id, Map("role" -> role), version, minorVersion,
-                    updated, validUntil, wkb), TaggedVersionedElementSchema): Row
+                  (changeset, id, Map.empty[String, String], version, minorVersion, updated, validUntil, geom)
+                case (role, geom) =>
+                  (changeset, id, Map("role" -> role), version, minorVersion, updated, validUntil, geom)
               }
             case None =>
               // no geometry
-              Seq(new GenericRowWithSchema(Array(changeset, id, Map(), version, minorVersion, updated,
-                validUntil, null), TaggedVersionedElementSchema): Row)
+              Seq((changeset, id, Map.empty[String, String], version, minorVersion, updated, validUntil, null))
           }
       }
+      .toDF("changeset", "id", "tags", "version", "minorVersion", "updated", "validUntil", "geom")
 
     // Join metadata to avoid passing it through exploded shuffles
     relationGeoms
