@@ -16,7 +16,7 @@ import org.apache.spark.sql.jts.GeometryUDT
 import org.apache.spark.sql.types._
 import org.locationtech.geomesa.spark.jts._
 import com.vividsolutions.jts.{geom => jts}
-import osmesa.common.functions.asDouble
+import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.relations.MultiPolygons
 import osmesa.common.relations.Routes
@@ -220,13 +220,13 @@ object ProcessOSM {
     */
   def constructGeometries(elements: DataFrame): DataFrame = {
     import elements.sparkSession.implicits._
-    val st_pointToGeom = org.apache.spark.sql.functions.udf { pt: jts.Point => pt.asInstanceOf[jts.Geometry] }
+    elements.sparkSession.withJTS
 
     val nodes = ProcessOSM.preprocessNodes(elements)
 
     val nodeGeoms = ProcessOSM.constructPointGeometries(nodes)
       .withColumn("minorVersion", lit(0))
-      .withColumn("geom", st_pointToGeom('geom))
+      .withColumn("geom", st_castToGeometry('geom))
 
     val wayGeoms = ProcessOSM.reconstructWayGeometries(elements, nodes)
 
@@ -246,6 +246,7 @@ object ProcessOSM {
     */
   def constructPointGeometries(nodes: DataFrame): DataFrame = {
     import nodes.sparkSession.implicits._
+    nodes.sparkSession.withJTS
 
     val ns = preprocessNodes(nodes)
       .where(size('tags) > 0)
