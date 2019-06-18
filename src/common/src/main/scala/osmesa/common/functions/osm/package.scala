@@ -139,7 +139,7 @@ package object osm {
     )
   )
 
-  private val MultiPolygonTypes = Seq("multipolygon", "boundary")
+  private val MultiPolygonTypes = Seq("multipolygon")
 
   private val BooleanValues = Seq("yes", "no", "true", "false", "1", "0")
 

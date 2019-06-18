@@ -7,6 +7,7 @@ import com.monovore.decline._
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats.ChangesetMetadataForeachWriter
+import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.sources.Source
 
@@ -72,7 +73,8 @@ object StreamingChangesetMetadataUpdater
 
         (changesetSourceOpt, databaseUrlOpt, startSequenceOpt, endSequenceOpt, batchSizeOpt).mapN {
           (changesetSource, databaseUrl, startSequence, endSequence, batchSize) =>
-            implicit val ss: SparkSession = Analytics.sparkSession("StreamingChangesetMetadataUpdater")
+            implicit val ss: SparkSession =
+              Analytics.sparkSession("StreamingChangesetMetadataUpdater")
 
             import ss.implicits._
 
@@ -98,17 +100,20 @@ object StreamingChangesetMetadataUpdater
                 .load
 
             val changesetProcessor = changesets
-              .select('id,
-                      'createdAt,
-                      'closedAt,
-                      'user,
-                      'uid,
-                      'tags.getField("created_by") as 'editor,
-                      hashtags('tags.getField("comment")) as 'hashtags)
+              .select(
+                'id,
+                'createdAt,
+                'closedAt,
+                'user,
+                'uid,
+                'tags.getField("created_by") as 'editor,
+                merge_sets(hashtags('tags.getField("comment")),
+                           hashtags('tags.getField("hashtags"))) as 'hashtags
+              )
               .writeStream
               .queryName("update changeset metadata")
-              .foreach(
-                new ChangesetMetadataForeachWriter(databaseUrl, shouldUpdateUsernames = true))
+              .foreach(new ChangesetMetadataForeachWriter(databaseUrl,
+                                                          shouldUpdateUsernames = true))
               .start
 
             changesetProcessor.awaitTermination()

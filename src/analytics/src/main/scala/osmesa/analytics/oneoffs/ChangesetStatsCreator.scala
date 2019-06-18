@@ -110,7 +110,8 @@ object ChangesetStatsCreator
                        'uid,
                        'user,
                        'created_at,
-                       'tags.getItem("comment") as 'comment)
+                       'tags.getItem("comment") as 'comment,
+                       'tags.getItem("hashtags") as 'hashtag)
               .agg(first('closed_at, ignoreNulls = true) as 'closed_at)
               .select(
                 'id,
@@ -119,7 +120,7 @@ object ChangesetStatsCreator
                 'user,
                 'created_at as 'createdAt,
                 'closed_at as 'closedAt,
-                hashtags('comment) as 'hashtags
+                merge_sets(hashtags('comment), hashtags('hashtags)) as 'hashtags
               )
 
             changesetStats.foreachPartition(rows => {

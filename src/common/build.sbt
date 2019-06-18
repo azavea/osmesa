@@ -34,6 +34,8 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % Provided
 )
 
+test in assembly := {}
+
 Test / fork := true
 Test / baseDirectory := (baseDirectory.value).getParentFile
 Test / parallelExecution := false

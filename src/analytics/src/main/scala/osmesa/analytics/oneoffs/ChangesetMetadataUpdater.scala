@@ -8,6 +8,7 @@ import org.apache.spark.TaskContext
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats.ChangesetMetadataForeachWriter
+import osmesa.common.functions._
 import osmesa.common.functions.osm._
 import osmesa.common.sources.Source
 
@@ -98,13 +99,16 @@ object ChangesetMetadataUpdater
                   .load
 
               changesets
-                .select('id,
-                        'createdAt,
-                        'closedAt,
-                        'user,
-                        'uid,
-                        'tags.getField("created_by") as 'editor,
-                        hashtags('tags.getField("comment")) as 'hashtags)
+                .select(
+                  'id,
+                  'createdAt,
+                  'closedAt,
+                  'user,
+                  'uid,
+                  'tags.getField("created_by") as 'editor,
+                  merge_sets(hashtags('tags.getField("comment")),
+                             hashtags('tags.getField("hashtags"))) as 'hashtags
+                )
                 .foreachPartition(rows => {
                   val writer =
                     new ChangesetMetadataForeachWriter(databaseUrl, shouldUpdateUsernames = true)

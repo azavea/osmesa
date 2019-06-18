@@ -28,4 +28,8 @@ package object functions {
 
   val array_intersects: UserDefinedFunction = udf { (a: Seq[_], b: Seq[_]) =>
     a.intersect(b).nonEmpty}
+
+  val merge_sets: UserDefinedFunction = udf { (a: Iterable[String], b: Iterable[String]) =>
+    (Option(a).getOrElse(Set.empty).toSet ++ Option(b).getOrElse(Set.empty).toSet).toArray
+  }
 }
