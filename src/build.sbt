@@ -63,11 +63,9 @@ lazy val commonSettings = Seq(
 
 lazy val root = Project("osmesa", file("."))
   .aggregate(
-    ingest
+    analytics,
+    bm
   ).settings(commonSettings: _*)
-
-lazy val ingest = project
-  .settings(commonSettings: _*)
 
 lazy val analytics =
   project
