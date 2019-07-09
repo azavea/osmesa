@@ -10,8 +10,8 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.IntegerType
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
-import osmesa.common.ProcessOSM
-import osmesa.common.functions.osm._
+import vectorpipe.{internal => ProcessOSM}
+import vectorpipe.functions.osm._
 
 object FacetedEditHistogramTileCreator
     extends CommandApp(
