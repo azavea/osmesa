@@ -9,7 +9,7 @@ import geotrellis.vector.Geometry
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Dataset
 import osmesa.analytics.vectorgrid._
-import osmesa.common.raster.MutableSparseIntTile
+import osmesa.analytics.raster.MutableSparseIntTile
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -134,7 +134,7 @@ object Implicits extends Logging {
               }
             })
 
-            RasterTileWithKey(k, z, sk, (merged, mergedExtent))
+            RasterTileWithKey(k, z, sk, Raster[Tile](merged, mergedExtent))
         }
     }
 
@@ -169,7 +169,7 @@ object Implicits extends Logging {
                       RasterTileWithKey(tile.key,
                                         zoom,
                                         SpatialKey(tile.sk.col / factor, tile.sk.row / factor),
-                                        (parent, raster.extent)))
+                                        Raster[Tile](parent, raster.extent)))
                   } else {
                     Seq.empty[RasterTileWithKey]
                   }
@@ -224,7 +224,7 @@ object Implicits extends Logging {
                                                zoom,
                                                SpatialKey(tile.sk.col / factor,
                                                           tile.sk.row / factor),
-                                               (parent, tile.raster.extent)))
+                                               Raster[Tile](parent, tile.raster.extent)))
               }
             }
 
@@ -257,7 +257,7 @@ object Implicits extends Logging {
               }
             })
 
-            RasterTileWithKeyAndSequence(sequence, k, z, sk, (merged, mergedExtent))
+            RasterTileWithKeyAndSequence(sequence, k, z, sk, Raster[Tile](merged, mergedExtent))
         }
     }
   }
@@ -286,7 +286,7 @@ object Implicits extends Logging {
                 }
             }
 
-            RasterTileWithKey(k, z, sk, (tile, tileExtent))
+            RasterTileWithKey(k, z, sk, Raster[Tile](tile, tileExtent))
         }
     }
   }
@@ -316,7 +316,7 @@ object Implicits extends Logging {
                 }
             }
 
-            RasterTileWithKeyAndSequence(sequence, k, z, sk, (tile, tileExtent))
+            RasterTileWithKeyAndSequence(sequence, k, z, sk, Raster[Tile](tile, tileExtent))
         }
     }
   }

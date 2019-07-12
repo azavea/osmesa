@@ -7,9 +7,9 @@ import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
-import osmesa.common.functions.osm._
-import osmesa.common.sources.Source
-import osmesa.common.util.DBUtils
+import vectorpipe.functions.osm._
+import vectorpipe.sources.Source
+import vectorpipe.util.DBUtils
 
 
 /*
