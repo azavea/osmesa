@@ -18,7 +18,7 @@ import geotrellis.vectortile._
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import osmesa.analytics.updater.Implicits._
-import osmesa.common.model.ElementWithSequence
+import vectorpipe.model.ElementWithSequence
 
 import scala.collection.mutable.ListBuffer
 import scala.io.Source

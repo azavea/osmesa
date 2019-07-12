@@ -10,8 +10,8 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, Footprints, S3Utils}
-import osmesa.common.functions.asDouble
-import osmesa.common.functions.osm._
+import vectorpipe.functions.asDouble
+import vectorpipe.functions.osm._
 
 import scala.collection.JavaConversions._
 

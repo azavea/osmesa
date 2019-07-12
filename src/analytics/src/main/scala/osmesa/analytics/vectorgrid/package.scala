@@ -1,10 +1,10 @@
 package osmesa.analytics
 
-import com.vividsolutions.jts.geom.{Geometry, Point}
+import org.locationtech.jts.geom.{Coordinate, Geometry, Point}
 import geotrellis.raster.{Raster, Tile}
 import geotrellis.spark.SpatialKey
-import geotrellis.vector.{Extent, PointFeature}
-import osmesa.common.raster._
+import geotrellis.vector.{Extent, GeomFactory, PointFeature}
+import osmesa.analytics.raster._
 
 package object vectorgrid {
   case class PointWithKey(key: String, geom: Point)
@@ -42,7 +42,7 @@ package object vectorgrid {
                                           ymin: Double,
                                           xmax: Double,
                                           ymax: Double) {
-    lazy val raster: Raster[Tile] = (
+    lazy val raster = Raster[Tile](
       SparseIntTile(cols, rows, values),
       Extent(xmin, ymin, xmax, ymax)
     )
@@ -56,7 +56,7 @@ package object vectorgrid {
                                 xmax: Double,
                                 ymax: Double,
                                 sequence: Int) {
-    lazy val raster: Raster[Tile] = (
+    lazy val raster = Raster[Tile](
       SparseIntTile(cols, rows, values),
       Extent(xmin, ymin, xmax, ymax)
     )
@@ -77,7 +77,7 @@ package object vectorgrid {
                                ymin: Double,
                                xmax: Double,
                                ymax: Double) {
-    lazy val raster: Raster[Tile] = (
+    lazy val raster = Raster[Tile](
       SparseIntTile(cols, rows, values),
       Extent(xmin, ymin, xmax, ymax)
     )

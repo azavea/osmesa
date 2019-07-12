@@ -9,7 +9,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
-import osmesa.common.sources.Source
+import vectorpipe.sources.Source
 
 /*
  * Usage example:

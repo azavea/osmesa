@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit
 
 import org.apache.commons.io.IOUtils
 import org.openjdk.jmh.annotations._
-import osmesa.common.model.{Actions, Change}
+import vectorpipe.model.{Actions, Change}
 
 import java.util.zip.GZIPInputStream
 import javax.xml.parsers.{SAXParser, SAXParserFactory}

@@ -13,7 +13,7 @@ import org.apache.spark.sql._
 import osmesa.analytics.vectorgrid._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, write}
-import osmesa.common.raster._
+import osmesa.analytics.raster._
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.{ForkJoinTaskSupport, TaskSupport}
@@ -245,7 +245,7 @@ object Footprints extends VectorGrid {
            tile.zoom,
            tile.sk.col,
            tile.sk.row,
-           (newTile, targetExtent): Raster[Tile],
+           Raster[Tile](newTile, targetExtent),
            sequences)
       }
 

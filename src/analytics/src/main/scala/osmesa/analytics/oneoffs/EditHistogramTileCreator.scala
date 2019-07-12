@@ -8,7 +8,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
-import osmesa.common.functions.asDouble
+import vectorpipe.functions.asDouble
 
 object EditHistogramTileCreator
     extends CommandApp(
