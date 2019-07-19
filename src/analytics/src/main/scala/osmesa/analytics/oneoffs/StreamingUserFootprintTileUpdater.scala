@@ -8,7 +8,7 @@ import com.monovore.decline._
 import org.apache.spark.sql._
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, Footprints}
-import osmesa.common.sources.Source
+import vectorpipe.sources.Source
 
 /*
  * Usage example:

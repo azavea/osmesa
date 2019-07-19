@@ -10,8 +10,10 @@ import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
-import osmesa.common.ProcessOSM
-import osmesa.common.functions.osm._
+import vectorpipe.{internal => ProcessOSM}
+import vectorpipe.functions.merge_sets
+import vectorpipe.functions.osm._
+import vectorpipe.util.Geocode
 
 object ChangesetStatsCreator
     extends CommandApp(
@@ -44,7 +46,7 @@ object ChangesetStatsCreator
             val nodes = ProcessOSM.preprocessNodes(history)
             val ways = ProcessOSM.preprocessWays(history)
 
-            val pointGeoms = ProcessOSM.geocode(
+            val pointGeoms = Geocode(
               ProcessOSM
                 .constructPointGeometries(
                   // pre-filter to tagged nodes
@@ -52,7 +54,7 @@ object ChangesetStatsCreator
                 )
                 .withColumn("minorVersion", lit(0)))
 
-            val wayGeoms = ProcessOSM.geocode(
+            val wayGeoms = Geocode(
               ProcessOSM
                 .reconstructWayGeometries(
                   // pre-filter to tagged ways

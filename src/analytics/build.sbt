@@ -16,6 +16,7 @@ libraryDependencies ++= Seq(
 
   decline,
   sparkHive % Provided,
+  sparkJts,
   gtGeotools exclude("com.google.protobuf", "protobuf-java"),
   gtS3 exclude("com.google.protobuf", "protobuf-java") exclude("com.amazonaws", "aws-java-sdk-s3"),
   gtSpark exclude("com.google.protobuf", "protobuf-java"),

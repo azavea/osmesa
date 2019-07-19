@@ -8,10 +8,10 @@ import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import osmesa.common.functions._
-import osmesa.common.functions.osm._
-import osmesa.common.model.ElementWithSequence
-import osmesa.common.sources.Source
+import vectorpipe.functions._
+import vectorpipe.functions.osm._
+import vectorpipe.model.ElementWithSequence
+import vectorpipe.sources.Source
 
 /*
  * Usage example:

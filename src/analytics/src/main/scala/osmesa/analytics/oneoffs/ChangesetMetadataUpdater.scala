@@ -8,9 +8,9 @@ import org.apache.spark.TaskContext
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats.ChangesetMetadataForeachWriter
-import osmesa.common.functions._
-import osmesa.common.functions.osm._
-import osmesa.common.sources.Source
+import vectorpipe.functions._
+import vectorpipe.functions.osm._
+import vectorpipe.sources.Source
 
 /*
  * Usage example:

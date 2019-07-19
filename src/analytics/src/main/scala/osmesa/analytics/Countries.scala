@@ -1,6 +1,6 @@
 package osmesa.analytics
 
-import com.vividsolutions.jts.geom.Coordinate
+import org.locationtech.jts.geom.Coordinate
 import geotrellis.proj4._
 import geotrellis.vector._
 import geotrellis.vector.io._
@@ -67,10 +67,10 @@ class CountryLookup() extends Serializable {
     val t =
       new Traversable[(prepared.PreparedGeometry[MultiPolygon], CountryId)] {
         override def foreach[U](f: ((prepared.PreparedGeometry[MultiPolygon], CountryId)) => U): Unit = {
-          val visitor = new com.vividsolutions.jts.index.ItemVisitor {
+          val visitor = new org.locationtech.jts.index.ItemVisitor {
             override def visitItem(obj: AnyRef): Unit = f(obj.asInstanceOf[(prepared.PreparedGeometry[MultiPolygon], CountryId)])
           }
-          index.rtree.query(new com.vividsolutions.jts.geom.Envelope(coord), visitor)
+          index.rtree.query(new org.locationtech.jts.geom.Envelope(coord), visitor)
         }
       }
 

@@ -11,10 +11,10 @@ import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
-import osmesa.common.ProcessOSM
-import osmesa.common.functions.osm.isTagged
-import osmesa.common.model.ElementWithSequence
-import osmesa.common.sources.Source
+import vectorpipe.{internal => ProcessOSM}
+import vectorpipe.model.ElementWithSequence
+import vectorpipe.sources.Source
+import vectorpipe.util.Geocode
 
 /*
  * Usage example:
@@ -103,8 +103,7 @@ object ChangesetStatsUpdater
 
             val geoms = ss.read.format(Source.AugmentedDiffs).options(options).load
 
-            ProcessOSM
-              .geocode(geoms.where(isTagged('tags)))
+            Geocode(geoms.where(isTagged('tags)))
               .withDelta
               .select(
                 'sequence,
