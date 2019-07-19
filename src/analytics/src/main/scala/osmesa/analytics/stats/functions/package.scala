@@ -52,4 +52,8 @@ package object functions {
   private val _mergeDoubleCounts = (a: Map[String, Double], b: Map[String, Double]) =>
     mergeMaps(Option(a).getOrElse(Map.empty),
       Option(b).getOrElse(Map.empty))(_ + _)
+
+  val merge_sets: UserDefinedFunction = udf { (a: Iterable[String], b: Iterable[String]) =>
+    (Option(a).getOrElse(Set.empty).toSet ++ Option(b).getOrElse(Set.empty).toSet).toArray
+  }
 }
