@@ -7,6 +7,7 @@ import geotrellis.spark.io.kryo.KryoRegistrator
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.{Column, SparkSession}
+import org.apache.spark.sql.functions
 import org.apache.spark.sql.functions.{array_contains, isnull, not, when}
 import org.locationtech.geomesa.spark.jts._
 import org.locationtech.jts.geom._
@@ -65,8 +66,8 @@ object QATiles extends CommandApp(
 
       val features = OSM
         .toGeometry(ensureCompressedMembers(spark.read.orc(orcUri.toString)))
-        .where(not(isnull('geom)))
-        .where(isnull('validUntil))
+        .where(not(isnull('geom)) and isnull('validUntil))
+        .filter(not(QAFunctions.st_emptyGeom('geom)))
         .withColumn("layers", when(isBuilding('tags), "buildings")
                               .when(isRoad('tags), "roads")
                               .when(QAFunctions.isForest('tags), "forests")
@@ -82,6 +83,8 @@ object QATiles extends CommandApp(
 )
 
 object QAFunctions {
+  val st_emptyGeom = functions.udf { g: Geometry => g.isEmpty }
+
   def isForest(tags: Column): Column =
     array_contains(splitDelimitedValues(tags.getItem("landuse")), "forest") as 'isForest
 
