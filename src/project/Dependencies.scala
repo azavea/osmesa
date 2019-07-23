@@ -13,6 +13,7 @@ object Dependencies {
   val gtSpark        = "org.locationtech.geotrellis" %% "geotrellis-spark"            % Version.geotrellis
   val gtSparkTestKit = "org.locationtech.geotrellis" %% "geotrellis-spark-testkit"    % Version.geotrellis % "test"
   val gtVector       = "org.locationtech.geotrellis" %% "geotrellis-vector"           % Version.geotrellis
+  val gtRaster       = "org.locationtech.geotrellis" %% "geotrellis-raster"           % Version.geotrellis
   val gtShapefile    = "org.locationtech.geotrellis" %% "geotrellis-shapefile"        % Version.geotrellis
   val gtVectorTile   = "org.locationtech.geotrellis" %% "geotrellis-vectortile"       % Version.geotrellis
   val vectorpipe     = "com.azavea"                  %% "vectorpipe"                  % Version.vectorpipe

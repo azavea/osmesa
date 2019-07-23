@@ -14,6 +14,8 @@ libraryDependencies ++= Seq(
   gtShapefile exclude("com.google.protobuf", "protobuf-java"),
   "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe exclude("com.google.protobuf", "protobuf-java"),
+  gtRaster,
+  gtS3,
   cats,
   scalactic,
   scalatest,
