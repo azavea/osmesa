@@ -92,8 +92,8 @@ These tables are fairly normalized and thus not the most efficient for
 directly serving statistics. If that's your goal, it might be useful
 to create materialized views for any further aggregation. A couple example
 queries that can serve as views are provided:
-[hashtag_statistics](src/analytics/sql/materialized_views/hashtag_statistics.sql)
-and [user_statistics](src/analytics/sql/materialized_views/user_statistics.sql)
+[hashtag_statistics](https://github.com/azavea/osmesa-stat-server/blob/master/sql/hashtag_statistics.sql)
+and [user_statistics](https://github.com/azavea/osmesa-stat-server/blob/master/sql/user_statistics.sql)
 
 #### Batch
 
