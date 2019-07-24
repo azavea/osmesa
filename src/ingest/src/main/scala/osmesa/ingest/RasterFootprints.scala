@@ -164,7 +164,7 @@ object RasterizeOSM extends CommandApp(
       val aoiGeoms =
         if (!aoiUri.toString.isEmpty) {
           val geojsonString =
-            if (colorUri.getScheme == "s3")
+            if (aoiUri.getScheme == "s3")
               new String(S3RangeReader(aoiUri).readAll)
             else
               new String(FileRangeReader(aoiUri.toString).readAll)
