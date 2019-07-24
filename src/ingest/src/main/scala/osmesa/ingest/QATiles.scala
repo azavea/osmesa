@@ -2,8 +2,12 @@ package osmesa.ingest
 
 import cats.implicits._
 import com.monovore.decline._
+import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.spark.tiling.LayoutDefinition
 import geotrellis.spark.io.kryo.KryoRegistrator
+import geotrellis.spark.io.s3.util.S3RangeReader
+import geotrellis.util.FileRangeReader
+import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.{Column, SparkSession}
@@ -33,6 +37,8 @@ object QATiles extends CommandApp(
     /* CLI option handling */
     val minZoomOpt = Opts.option[Int]("minZoom", help = "Smallest (least resolute) zoom level to generate").withDefault(0)
     val maxZoomOpt = Opts.option[Int]("maxZoom", help = "Largest (most resolute) zoom level to generate").withDefault(15)
+    val aoiOpt = Opts.option[URI]("aois", help = "Location of GeoJSON file giving areas of interest").withDefault(new URI(""))
+      .validate("AOI file must be a .geojson file") { uri => uri.toString.isEmpty || uri.toString.endsWith(".geojson") }
     val orcArg = Opts
       .argument[URI]("source ORC file")//, help = "Location of the ORC file containing geometries to process")
       .validate("URI to ORC must have an s3 or file scheme") { _.getScheme != null }
@@ -46,7 +52,19 @@ object QATiles extends CommandApp(
         uri.getScheme.startsWith("s3") || uri.getScheme.startsWith("file")
       }
 
-    (minZoomOpt, maxZoomOpt, orcArg, outputArg).mapN { (minZoom, maxZoom, orcUri, outputUri) =>
+    (minZoomOpt, maxZoomOpt, aoiOpt, orcArg, outputArg).mapN { (minZoom, maxZoom, aoiUri, orcUri, outputUri) =>
+
+      val aoiGeoms =
+        if (!aoiUri.toString.isEmpty) {
+          val geojsonString =
+            if (aoiUri.getScheme == "s3")
+              new String(S3RangeReader(aoiUri).readAll)
+            else
+              new String(FileRangeReader(aoiUri.toString).readAll)
+          println(s"Narrowing to area of interest containing\n${geojsonString}")
+          Some(GeoJson.parse[JsonFeatureCollection](geojsonString).getAllGeometries.toList)
+        } else
+          None
 
       val conf =
         new SparkConf()
@@ -64,9 +82,11 @@ object QATiles extends CommandApp(
 
       import spark.implicits._
 
+      val within_aoi = functions.udf { g: Geometry => aoiGeoms.map(_.exists(_.intersects(g))).getOrElse(true) }
+
       val features = OSM
         .toGeometry(ensureCompressedMembers(spark.read.orc(orcUri.toString)))
-        .where(not(isnull('geom)) and isnull('validUntil))
+        .where(not(isnull('geom)) and isnull('validUntil) and within_aoi('geom))
         .filter(not(QAFunctions.st_emptyGeom('geom)))
         .withColumn("layers", when(isBuilding('tags), "buildings")
                               .when(isRoad('tags), "roads")
