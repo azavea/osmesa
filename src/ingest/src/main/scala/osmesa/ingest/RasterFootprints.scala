@@ -18,11 +18,14 @@ import geotrellis.spark.io.kryo.KryoRegistrator
 import geotrellis.spark.io.s3._
 import geotrellis.spark.io.s3.util.S3RangeReader
 import geotrellis.spark.io.s3.conf.S3Config
+import geotrellis.spark.util.KryoWrapper
 import geotrellis.util.FileRangeReader
 import geotrellis.vector
+import geotrellis.vector.io.json.{GeoJson, JsonFeatureCollection}
 import io.circe._
 import io.circe.parser._
 import io.circe.syntax._
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
@@ -144,6 +147,8 @@ object RasterizeOSM extends CommandApp(
           """.stripMargin
         }
 
+      println(s"Using the color rules from ${colorUri}\n${colorJsonString}")
+
       val colorRules =
         (for {
           ast <- parse(colorJsonString)
@@ -154,7 +159,19 @@ object RasterizeOSM extends CommandApp(
         }
 
       val colorToLevel = colorRules.flatMap(_.colors).toSet.toSeq.zipWithIndex.toMap
-      val colorMap = ColorMap(colorToLevel.map{ case (c, v) => (v, BigInt(c.drop(1).padTo(8,'f')).toInt) })
+      val colorMap = ColorMap(colorToLevel.map{ case (c, v) => (v, BigInt(c.drop(1).padTo(8,'f'), 16).toInt) })
+
+      val aoiGeoms =
+        if (!aoiUri.toString.isEmpty) {
+          val geojsonString =
+            if (colorUri.getScheme == "s3")
+              new String(S3RangeReader(aoiUri).readAll)
+            else
+              new String(FileRangeReader(aoiUri.toString).readAll)
+          println(s"Narrowing to area of interest containing\n${geojsonString}")
+          Some(GeoJson.parse[JsonFeatureCollection](geojsonString).getAllGeometries.toList.map(_.reproject(LatLng, WebMercator)))
+        } else
+          None
 
       val conf =
         new SparkConf()
@@ -186,7 +203,12 @@ object RasterizeOSM extends CommandApp(
         z <- Range(minZoom, maxZoom).inclusive
       } {
         val layout = zls.levelForZoom(z).layout
-        val keyed = features.flatMap(_.keyAndDiscretize(layout, colorToLevel)).groupByKey(_.key)
+        val keyed = aoiGeoms match {
+          case None => features.flatMap(_.keyAndDiscretize(layout, colorToLevel)).groupByKey(_.key)
+          case Some(geoms) =>
+            val admissible = geoms.map{ g => layout.mapTransform.extentToBounds(g.envelope) }.toSet
+            features.flatMap(_.keyAndDiscretize(layout, colorToLevel)).filter{ feat => admissible.exists(_.contains(feat.key.col, feat.key.row)) }.groupByKey(_.key)
+        }
 
         // TODO: throw away geometry outside the AOI
 
@@ -375,7 +397,7 @@ object OSMRasterizer {
     toUri: K => String,
     toBytes: K => Array[Byte]
   ): Unit = {
-    val conf = dataset.sparkSession.sparkContext.hadoopConfiguration
+    val conf = KryoWrapper(dataset.sparkSession.sparkContext.hadoopConfiguration)
 
     def saveIterator(recs: Iterator[K]): Unit = {
       val fsCache = TrieMap.empty[String, FileSystem]
@@ -385,7 +407,7 @@ object OSMRasterizer {
         val uri = new URI(path)
         val fs = fsCache.getOrElseUpdate(
           uri.getScheme,
-          FileSystem.get(uri, conf))
+          FileSystem.get(uri, new Configuration))
         val out = fs.create(new Path(path))
         try {
           out.write(toBytes(value))
