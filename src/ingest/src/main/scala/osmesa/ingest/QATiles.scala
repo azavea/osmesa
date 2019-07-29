@@ -82,11 +82,13 @@ object QATiles extends CommandApp(
 
       import spark.implicits._
 
+      val valid_geom = functions.udf { g: Geometry => !g.isEmpty && g.isValid}
       val within_aoi = functions.udf { g: Geometry => aoiGeoms.map(_.exists(_.intersects(g))).getOrElse(true) }
 
       val features = OSM
         .toGeometry(ensureCompressedMembers(spark.read.orc(orcUri.toString)))
-        .where(not(isnull('geom)) and isnull('validUntil) and within_aoi('geom))
+        .where(not(isnull('geom)) and isnull('validUntil) and valid_geom('geom))
+        .where(within_aoi('geom))
         .filter(not(QAFunctions.st_emptyGeom('geom)))
         .withColumn("layers", when(isBuilding('tags), "buildings")
                               .when(isRoad('tags), "roads")
