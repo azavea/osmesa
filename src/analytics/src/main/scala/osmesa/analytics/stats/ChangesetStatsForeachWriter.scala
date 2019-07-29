@@ -6,7 +6,7 @@ import java.sql.{Connection, PreparedStatement, Types}
 import io.circe.syntax._
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{ForeachWriter, Row}
-import osmesa.common.util.DBUtils
+import vectorpipe.util.DBUtils
 
 class ChangesetStatsForeachWriter(databaseUri: URI,
                                   shouldUpdateUsernames: Boolean = false,

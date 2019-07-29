@@ -6,6 +6,7 @@ import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
+import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.sources.Source
 import vectorpipe.util.DBUtils

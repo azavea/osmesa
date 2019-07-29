@@ -5,7 +5,7 @@ import java.sql.{Connection, PreparedStatement, Timestamp}
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{ForeachWriter, Row}
-import osmesa.common.util.DBUtils
+import vectorpipe.util.DBUtils
 
 class ChangesetMetadataForeachWriter(databaseUri: URI,
                                      shouldUpdateUsernames: Boolean = false,
