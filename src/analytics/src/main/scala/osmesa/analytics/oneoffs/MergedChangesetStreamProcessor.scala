@@ -8,6 +8,7 @@ import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.model.ElementWithSequence
 import vectorpipe.sources.Source

@@ -5,7 +5,7 @@ import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 import org.apache.spark.sql.types.IntegerType
 import org.apache.spark.sql.functions._
 import osmesa.analytics.stats.functions._
-import osmesa.common.functions.osm._
+import vectorpipe.functions.osm._
 import org.locationtech.geomesa.spark.jts._
 
 package object stats {

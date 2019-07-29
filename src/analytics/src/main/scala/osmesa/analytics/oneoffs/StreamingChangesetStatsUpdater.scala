@@ -8,14 +8,14 @@ import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
+import osmesa.analytics.stats._
+import osmesa.analytics.stats.functions._
 import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.model.ElementWithSequence
 import vectorpipe.sources.Source
 import vectorpipe.util.{DBUtils, Geocode}
-import osmesa.analytics.stats._
-import osmesa.analytics.stats.functions._
 
 /*
  * Usage example:
@@ -107,8 +107,7 @@ object StreamingChangesetStatsUpdater
               // aggregations are triggered when an event with a later timestamp ("event time") is received
               // in practice, this means that aggregation doesn't occur until the *next* sequence is received
 
-              val query = ProcessOSM
-                .geocode(geoms.where(isTagged('tags)))
+              val query = Geocode(geoms.where(isTagged('tags)))
                 .withColumn("timestamp", to_timestamp('sequence * 60 + 1347432900))
                 // if sequences are received sequentially (and atomically), 0 seconds should suffice; anything received with an
                 // earlier timestamp after that point will be dropped
