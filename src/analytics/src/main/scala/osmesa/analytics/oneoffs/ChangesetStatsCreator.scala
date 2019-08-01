@@ -111,17 +111,17 @@ object ChangesetStatsCreator
                        'tags.getItem("created_by") as 'editor,
                        'uid,
                        'user,
-                       'created_at,
+                       'createdAt,
                        'tags.getItem("comment") as 'comment,
-                       'tags.getItem("hashtags") as 'hashtag)
-              .agg(first('closed_at, ignoreNulls = true) as 'closed_at)
+                       'tags.getItem("hashtags") as 'hashtags)
+              .agg(first('closedAt, ignoreNulls = true) as 'closedAt)
               .select(
                 'id,
                 'editor,
                 'uid,
                 'user,
-                'created_at as 'createdAt,
-                'closed_at as 'closedAt,
+                'createdAt,
+                'closedAt,
                 merge_sets(hashtags('comment), hashtags('hashtags)) as 'hashtags
               )
 
