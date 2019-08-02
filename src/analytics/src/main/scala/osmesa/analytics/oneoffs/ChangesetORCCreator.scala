@@ -154,13 +154,11 @@ object ChangesetORCUpdaterUtils {
     val response =
       Http(baseURI.resolve(path).toString).asString
 
-    val state = yaml.parser
+    yaml.parser
       .parse(response.body)
       .leftMap(err => err: Error)
       .flatMap(_.as[Sequence])
       .valueOr(throw _)
-
-    state
   }
 
   def estimateSequenceNumber(modifiedTime: Instant, baseURI: URI): Long = {
