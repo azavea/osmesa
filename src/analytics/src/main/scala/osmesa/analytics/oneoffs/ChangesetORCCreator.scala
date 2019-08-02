@@ -92,6 +92,22 @@ object ChangesetORCUpdater
 
         val changesets = spark.read.format(Source.Changesets).options(options).load
         changesets
+          .drop("comments", "sequence")
+          .union(df.select(
+            'id,
+            'tags,
+            'created_at as 'createdAt,
+            'open,
+            'closed_at as 'closedAt,
+            'comments_count as 'commentsCount,
+            'min_lat as 'minLat,
+            'max_lat as 'maxLat,
+            'min_lon as 'minLon,
+            'max_lon as 'maxLon,
+            'num_changes as 'numChanges,
+            'uid,
+            'user)
+          )
           .repartition(1)
           .write
           .orc(outputURI.toString)
