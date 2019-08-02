@@ -30,8 +30,8 @@ import scalaj.http.Http
  */
 object ChangesetORCUpdater
   extends CommandApp(
-    name = "osmesa-changeset-stats-updater",
-    header = "Update statistics from augmented diffs",
+    name = "osmesa-changeset-orc-updater",
+    header = "Bring existing changesets ORC file up to date using changeset stream",
     main = {
 
       import ChangesetORCUpdaterUtils._
@@ -126,16 +126,6 @@ object ChangesetORCUpdaterUtils {
 
     override def defaultMetavar: String = "time"
   }
-
-  // implicit val TimestampFormat : Decoder[Timestamp] = new Decoder[Timestamp] {
-  //   private val sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss XXX")
-
-  //   override def apply(c: HCursor): Decoder.Result[Timestamp] =
-  //     c.get[String]("last_run").map{ str =>
-  //       val splt = str.split(".")
-  //       Timestamp.from(sdf.parse(splt(0) ++ splt(1).split(" ")(1)).toInstant)
-  //     }
-  // }
 
   private val formatter = DateTimeFormat.forPattern("y-M-d H:m:s.SSSSSSSSS Z")
 
