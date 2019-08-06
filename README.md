@@ -54,33 +54,60 @@ configuration.
 Summary statistics aggregated at the user and hashtag level that are
 supported by OSMesa:
 
-- Number of added buildings
-- Number of modified buildings
-- Number of deleted buildings
-- Number of added roads
-- Number of modified roads
-- Number of deleted roads
-- km of added roads
-- km of modified roads
-- km of deleted roads
-- Number of added waterways
-- Number of modified waterways
-- Number of deleted waterways
-- km of added waterways
-- km of modified waterways
-- km of deleted waterways
-- Number of added coastlines
-- Number of modified coastlines
-- Number of deleted coastlines
-- km of added coastline
-- km of modified coastline
-- km of deleted coastline
-- Number of added points of interest
-- Number of modified points of interest
-- Number of deleted points of interest
-- Number of added "other" (not otherwise tracked, but tagged in OSM) features
-- Number of modified "other" features
-- Number of deleted "other" features
+- Number of added [buildings](https://wiki.openstreetmap.org/wiki/Buildings) (`building=*`,
+  `version=1`)
+- Number of modified [buildings](https://wiki.openstreetmap.org/wiki/Buildings) (`building=*`,
+  `version > 1 || minorVersion > 0`)
+- Number of deleted [buildings](https://wiki.openstreetmap.org/wiki/Buildings) (`building=*`,
+  `visible == false`)
+- Number of added [roads](https://wiki.openstreetmap.org/wiki/Highways) (`highway=*`,
+  `version=1`)
+- Number of modified [roads](https://wiki.openstreetmap.org/wiki/Highways) (`highway=*`,
+  `version > 1 || minorVersion > 0`)
+- Number of deleted [roads](https://wiki.openstreetmap.org/wiki/Highways) (`highway=*`,
+  `visible == false`)
+- km of added [roads](https://wiki.openstreetmap.org/wiki/Highways) (`highway=*`, `version=1`)
+- km of modified [roads](https://wiki.openstreetmap.org/wiki/Highways) (`highway=*`,
+  `version > 1 || minorVersion > 0`)
+- km of deleted [roads](https://wiki.openstreetmap.org/wiki/Highways) (`highway=*`,
+  `visible == false`)
+- Number of added [waterways](https://wiki.openstreetmap.org/wiki/Waterways)
+  (`waterway={river,riverbank,canal,stream,stream_end,brook,drain,ditch,dam,weir,waterfall,pressurised}`,
+  `version=1`)
+- Number of modified [waterways](https://wiki.openstreetmap.org/wiki/Waterways)
+  (`waterway={river,riverbank,canal,stream,stream_end,brook,drain,ditch,dam,weir,waterfall,pressurised}`,
+  `version > 1 || minorVersion > 0`)
+- Number of deleted [waterways](https://wiki.openstreetmap.org/wiki/Waterways)
+  (`waterway={river,riverbank,canal,stream,stream_end,brook,drain,ditch,dam,weir,waterfall,pressurised}`,
+  `version > 1 || minorVersion > 0`)
+- km of added [waterways](https://wiki.openstreetmap.org/wiki/Waterways) (`waterway=*`,
+  `version=1`)
+- km of modified [waterways](https://wiki.openstreetmap.org/wiki/Waterways) (`waterway=*`,
+  `version > 1 || minorVersion > 0`)
+- km of deleted [waterways](https://wiki.openstreetmap.org/wiki/Waterways) (`waterway=*`,
+  `version > 1 || minorVersion > 0`)
+- Number of added [coastlines](https://wiki.openstreetmap.org/wiki/Coastline)
+  (`natural=coastline`, `version=1`)
+- Number of modified [coastlines](https://wiki.openstreetmap.org/wiki/Coastline)
+  (`natural=coastline`, `version > 1 || minorVersion > 0`)
+- Number of deleted [coastlines](https://wiki.openstreetmap.org/wiki/Coastline)
+  (`natural=coastline`, `visible == false`)
+- km of added [coastline](https://wiki.openstreetmap.org/wiki/Coastline) (`natural=coastline`,
+  `version=1`)
+- km of modified [coastline](https://wiki.openstreetmap.org/wiki/Coastline) (`natural=coastline`,
+  `version > 1 || minorVersion > 0`)
+- km of deleted [coastline](https://wiki.openstreetmap.org/wiki/Coastline) (`natural=coastline`,
+  `visible == false`)
+- Number of added [points of interest](https://wiki.openstreetmap.org/wiki/Points_of_interest)
+  (`{amenity,shop,craft,office,leisure,aeroway}=*`, `version=1`)
+- Number of modified [points of interest](https://wiki.openstreetmap.org/wiki/Points_of_interest)
+  (`{amenity,shop,craft,office,leisure,aeroway}=*`, `version > 1 || minorVersion > 0`)
+- Number of deleted [points of interest](https://wiki.openstreetmap.org/wiki/Points_of_interest)
+  (`{amenity,shop,craft,office,leisure,aeroway}*`, `visible == false`)
+- Number of added "other" (not otherwise tracked, but tagged in OSM) features (not otherwise
+  captured, `version=1`)
+- Number of modified "other" features (not otherwise captured, `version > 1 || minorVersion > 0`)
+- Number of deleted "other" features (not otherwise captured, `visible == false`)
 
 ### SQL Tables
 
