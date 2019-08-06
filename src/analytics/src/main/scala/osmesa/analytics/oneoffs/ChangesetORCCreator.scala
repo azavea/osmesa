@@ -11,9 +11,10 @@ import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
 import osmesa.analytics.Analytics
 import vectorpipe.sources.{ChangesetSource, Source}
+import vectorpipe.util.DBUtils
 
 import java.net.URI
-import java.sql.Timestamp
+import java.sql._
 import java.time.Instant
 import scalaj.http.Http
 
@@ -25,8 +26,10 @@ import scalaj.http.Http
  * spark-submit \
  *   --class osmesa.analytics.oneoffs.ChangesetORCUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
- *   --changeset-source http://somewhere/diffs/ \
- *   --database-url $DATABASE_URL
+ *   --changesets http://location/of/changeset/replications \
+ *   --end-time 1970-01-01T13:00:00Z
+ *   s3://path/to/history.orc
+ *   s3://path/to/output.orc
  */
 object ChangesetORCUpdater
   extends CommandApp(
@@ -74,7 +77,7 @@ object ChangesetORCUpdater
        orcArg,
        outputArg).mapN {
         (changesetSource, endTime, orcUri, outputURI) =>
-        implicit val spark: SparkSession = Analytics.sparkSession("ChangesetStatsUpdater")
+        implicit val spark: SparkSession = Analytics.sparkSession("ChangesetORCCreator")
 
         import spark.implicits._
 
@@ -175,5 +178,27 @@ object ChangesetORCUpdaterUtils {
     while (getSequence(baseURI, guess).last_run.isBefore(target)) { guess += 1 }
 
     getSequence(baseURI, guess).sequence
+  }
+
+  def saveLocations(procName: String, sequence: Int, databaseURI: URI) = {
+    var connection = null.asInstanceOf[Connection]
+    try {
+      connection = DBUtils.getJdbcConnection(databaseURI)
+      val upsertSequence =
+        connection.prepareStatement(
+          """
+          |INSERT INTO checkpoints (proc_name, sequence)
+          |VALUES (?, ?)
+          |ON CONFLICT (proc_name)
+          |DO UPDATE SET sequence = ?
+          """.stripMargin
+        )
+      upsertSequence.setString(1, procName)
+      upsertSequence.setInt(2, sequence)
+      upsertSequence.setInt(3, sequence)
+      upsertSequence.execute()
+    } finally {
+      if (connection != null) connection.close()
+    }
   }
 }

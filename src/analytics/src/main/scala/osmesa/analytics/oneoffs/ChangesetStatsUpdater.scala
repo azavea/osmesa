@@ -91,7 +91,8 @@ object ChangesetStatsUpdater
             import ss.implicits._
 
             val options = Map(
-              Source.BaseURI -> augmentedDiffSource.toString
+              Source.BaseURI -> augmentedDiffSource.toString,
+              Source.ProcessName -> "AugmentedDiffStream"
             ) ++
               startSequence
                 .map(s => Map(Source.StartSequence -> s.toString))
