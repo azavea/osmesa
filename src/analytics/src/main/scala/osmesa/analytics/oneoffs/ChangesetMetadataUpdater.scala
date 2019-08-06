@@ -80,7 +80,8 @@ object ChangesetMetadataUpdater
               import ss.implicits._
 
               val options = Map(
-                Source.BaseURI -> changesetSource.toString
+                Source.BaseURI -> changesetSource.toString,
+                Source.ProcessName -> "ChangesetStream"
               ) ++
                 startSequence
                   .map(s => Map(Source.StartSequence -> s.toString))
