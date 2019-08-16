@@ -1,0 +1,39 @@
+################################################################################
+# AWS properties
+################################################################################
+export KEYPAIR :=
+export SUBNET :=
+export AWS_REGION := us-east-1
+
+################################################################################
+#                                                 Streaming resource definitions
+################################################################################
+export CLUSTER_NAME := osm-stat-stream-cluster
+export STREAMING_INSTANCE_TYPE := m4.xlarge
+export ECR_IMAGE :=
+export AWS_LOG_GROUP := streaming-stats-updater
+export ECS_SUBNET := ${SUBNET}
+export ECS_SECURITY_GROUP :=
+
+export AUGDIFF_SOURCE :=
+export CHANGESET_SOURCE :=
+
+export DB_BASE_URI :=
+export PRODUCTION_DB :=
+export STAGING_DB :=
+
+################################################################################
+#                                                     Batch resource definitions
+################################################################################
+export SERVICE_ACCESS_SECURITY_GROUP := ${ECS_SECURITY_GROUP}
+export EMR_MASTER_SECURITY_GROUP :=
+export EMR_SLAVE_SECURITY_GROUP :=
+
+export BATCH_INSTANCE_TYPE := m4.xlarge
+export OSMESA_ANALYTICS_JAR := s3://<bucket>/osmesa-analytics.jar
+
+export NOME_HISTORY_ORC :=
+export NOME_CHANGESETS_ORC :=
+
+export FOOTPRINT_VT_LOCATION :=
+export HISTOGRAM_VT_LOCATION :=
