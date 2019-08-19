@@ -4,6 +4,7 @@
 export KEYPAIR :=
 export SUBNET :=
 export AWS_REGION := us-east-1
+export IAM_ACCOUNT :=
 
 ################################################################################
 #                                                 Streaming resource definitions

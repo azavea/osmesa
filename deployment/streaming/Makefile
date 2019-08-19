@@ -1,17 +1,19 @@
 include config-deployment.mk
 
 # If the user is on master branch, see if we should deploy to production
-VERSION_TAG=$(shell ./get-tag.sh)
+VERSION_TAG=$(shell ./scripts/get-tag.sh)
 ifeq ($(VERSION_TAG), production)
 	DATABASE=${PRODUCTION_DB}
-	ECS_CLUSTER=osm-stat-stream-cluster
+	ECS_CLUSTER=${CLUSTER_NAME_DEPLOYMENT}
 	TASK_SUFFIX=
 else
 	DATABASE=${STAGING_DB}
-	ECS_CLUSTER=osm-stats-staging
+	ECS_CLUSTER=${CLUSTER_NAME_STAGING}
 	TASK_SUFFIX="-staging"
 endif
 DB_URI=${DB_BASE_URI}${DATABASE}
+
+.EXPORT_ALL_VARIABLES:
 
 #############################
 #  Docker image management  #
@@ -29,215 +31,29 @@ tag-image: build-container
 	docker tag osm_analytics:${VERSION_TAG} ${ECR_IMAGE}:${VERSION_TAG}
 
 push-image: login-aws-registry tag-image
-	docker push ${ECR_IMAGE}${VERSION_TAG}
+	docker push ${ECR_IMAGE}:${VERSION_TAG}
 
 #######################
 # Streaming AWS Tasks #
 #######################
 
-.PHONY: define-tasks configure-cluster
+.PHONY: create-log-groups define-streaming-vectortile-tasks define-staging-streaming-update-tasks define-production-streaming-update-tasks deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater deploy-streaming-stats-updaters
 
 create-log-groups:
-	aws logs create-log-group \
-	  --log-group-name /ecs/${AWS_LOG_GROUP}
-	aws logs create-log-group \
-	  --log-group-name /ecs/${AWS_LOG_GROUP}-staging
-	aws logs create-log-group \
-	  --log-group-name /ecs/streaming-user-footprint-tile-updater
-	aws logs create-log-group \
-	  --log-group-name /ecs/streaming-edit-histogram-tile-updater
+	./scripts/create-log-groups.sh
 
 define-streaming-vectortile-tasks:
-	aws ecs register-task-definition \
-	  --family osmesa-streaming-edit-histogram-tile-updater \
-	  --task-role-arn "arn:aws:iam::<account>:role/ECSTaskS3" \
-	  --execution-role-arn "arn:aws:iam::<account>:role/ecsTaskExecutionRole" \
-	  --network-mode awsvpc \
-	  --requires-compatibilities EC2 FARGATE \
-	  --cpu "1 vCPU" \
-	  --memory "2 GB" \
-	  --container-definitions '[
-	    {
-	      "logConfiguration": {
-	        "logDriver": "awslogs",
-	        "options": {
-	          "awslogs-group": "/ecs/streaming-edit-histogram-tile-updater",
-	          "awslogs-region": "${AWS_REGION}",
-	          "awslogs-stream-prefix": "ecs"
-	        }
-	      },
-	      "command": [
-	        "/spark/bin/spark-submit",
-	        "--driver-memory", "2048m",
-	        "--class", "osmesa.analytics.oneoffs.StreamingFacetedEditHistogramTileUpdater",
-	        "/opt/osmesa-analytics.jar",
-	        "--augmented-diff-source", "${AUGDIFF_SOURCE}",
-	        "--tile-source", "${HISTOGRAM_VT_LOCATION}"
-	      ],
-	      "environment": [
-	        {
-	          "name": "DATABASE_URL",
-	          "value": "${DB_BASE_URI}${PRODUCTION_DB}"
-	        }
-	      ],
-	      "image": "${ECR_IMAGE}",
-	      "name": "streaming-edit-histogram-tile-updater"
-	    },
-	    {
-	      "logConfiguration": {
-	        "logDriver": "awslogs",
-	        "options": {
-	          "awslogs-group": "/ecs/streaming-user-footprint-tile-updater",
-	          "awslogs-region": "${AWS_REGION}",
-	          "awslogs-stream-prefix": "ecs"
-	        }
-	      },
-	      "command": [
-	        "/spark/bin/spark-submit",
-	        "--driver-memory", "2048m",
-	        "--class", "osmesa.analytics.oneoffs.StreamingUserFootprintTileUpdater",
-	        "/opt/osmesa-analytics.jar",
-	        "--change-source", "${CHANGESET_SOURCE}",
-	        "--tile-source", "${FOOTPRINT_VT_LOCATION}"
-	      ],
-	      "environment": [
-	        {
-	          "name": "DATABASE_URL",
-	          "value": "${DB_BASE_URI}${PRODUCTION_DB}"
-	        }
-	      ],
-	      "image": "${ECR_IMAGE}:production",
-	      "name": "streaming-user-footprint-tile-updater"
-	    }
-	  ]'
+	./scripts/define-streaming-vectortile-tasks.sh
 
 define-staging-streaming-update-tasks:
-	aws ecs register-task-definition \
-	  --family osmesa-streaming-stats-updater \
-	  --task-role-arn "arn:aws:iam::<account>:role/ECSTaskS3" \
-	  --execution-role-arn "arn:aws:iam::<account>:role/ecsTaskExecutionRole" \
-	  --network-mode awsvpc \
-	  --requires-compatibilities EC2 FARGATE \
-	  --cpu "1 vCPU" \
-	  --memory "4 GB" \
-	  --container-definitions '[
-	    {
-	      "logConfiguration": {
-	        "logDriver": "awslogs",
-	        "options": {
-	          "awslogs-group": "/ecs/${AWS_LOG_GROUP}-staging",
-	          "awslogs-region": "${AWS_REGION}",
-	          "awslogs-stream-prefix": "ecs"
-	        }
-	      },
-	      "command": [
-	        "/spark/bin/spark-submit",
-	        "--driver-memory", "2048m",
-	        "--class", "osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor",
-	        "/opt/osmesa-analytics.jar",
-	        "--augmented-diff-source", "${AUGDIFF_SOURCE}"
-	      ],
-	      "environment": [
-	        {
-	          "name": "DATABASE_URL",
-	          "value": "${DB_BASE_URI}${STAGING_DB}"
-	        }
-	      ],
-	      "image": "${ECR_IMAGE}:latest",
-	      "name": "streaming-augmented-diffs-stats-updater-staging"
-	    },
-	    {
-	      "logConfiguration": {
-	        "logDriver": "awslogs",
-	        "options": {
-	          "awslogs-group": "/ecs/${AWS_LOG_GROUP}-staging",
-	          "awslogs-region": "${AWS_REGION}",
-	          "awslogs-stream-prefix": "ecs"
-	        }
-	      },
-	      "command": [
-	        "/spark/bin/spark-submit",
-	        "--driver-memory", "2048m",
-	        "--class", "osmesa.analytics.oneoffs.ChangesetStreamProcessor",
-	        "/opt/osmesa-analytics.jar",
-	        "--changeset-source", "${CHANGESET_SOURCE}"
-	      ],
-	      "environment": [
-	        {
-	          "name": "DATABASE_URL",
-	          "value": "${DB_URI}${STAGING_DB}"
-	        }
-	      ],
-	      "image": "${ECR_IMAGE}:latest",
-	      "name": "streaming-changesets-stats-updater-staging"
-	    }
-	  ]'
+	./scripts/define-staging-streaming-update-tasks.sh
 
 define-production-streaming-update-tasks:
-	aws ecs register-task-definition \
-	  --family osmesa-streaming-stats-updater \
-	  --task-role-arn "arn:aws:iam::<account>:role/ECSTaskS3" \
-	  --execution-role-arn "arn:aws:iam::<account>:role/ecsTaskExecutionRole" \
-	  --network-mode awsvpc \
-	  --requires-compatibilities EC2 FARGATE \
-	  --cpu "1 vCPU" \
-	  --memory "4 GB" \
-	  --container-definitions '[
-	    {
-	      "logConfiguration": {
-	        "logDriver": "awslogs",
-	        "options": {
-	          "awslogs-group": "/ecs/${AWS_LOG_GROUP}",
-	          "awslogs-region": "${AWS_REGION}",
-	          "awslogs-stream-prefix": "ecs"
-	        }
-	      },
-	      "command": [
-	        "/spark/bin/spark-submit",
-	        "--driver-memory", "2048m",
-	        "--class", "osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor",
-	        "/opt/osmesa-analytics.jar",
-	        "--augmented-diff-source", "${AUGDIFF_SOURCE}"
-	      ],
-	      "environment": [
-	        {
-	          "name": "DATABASE_URL",
-	          "value": "${DB_URI}${PRODUCTION_DB}"
-	        }
-	      ],
-	      "image": "${ECR_IMAGE}:production",
-	      "name": "streaming-augmented-diffs-stats-updater"
-	    },
-	    {
-	      "logConfiguration": {
-	        "logDriver": "awslogs",
-	        "options": {
-	          "awslogs-group": "/ecs/${AWS_LOG_GROUP}",
-	          "awslogs-region": "${AWS_REGION}",
-	          "awslogs-stream-prefix": "ecs"
-	        }
-	      },
-	      "command": [
-	        "/spark/bin/spark-submit",
-	        "--driver-memory", "2048m",
-	        "--class", "osmesa.analytics.oneoffs.ChangesetStreamProcessor",
-	        "/opt/osmesa-analytics.jar",
-	        "--changeset-source", "${CHANGESET_SOURCE}"
-	      ],
-	      "environment": [
-	        {
-	          "name": "DATABASE_URL",
-	          "value": "${DB_URI}${PRODUCTION_DB}"
-	        }
-	      ],
-	      "image": "${ECR_IMAGE}:production",
-	      "name": "streaming-changesets-stats-updater"
-	    }
-	  ]'
+	./scripts/define-production-streaming-update-tasks.sh
 
 deploy-streaming-footprint-updater:
 	aws ecs create-service \
-	  --cluster "osm-stat-stream-cluster" \
+	  --cluster "${CLUSTER_NAME_DEPLOYMENT}" \
 	  --service-name "streaming-user-footprint-tile-updater" \
 	  --task-definition "streaming-edit-histogram-tile-updater" \
 	  --desired-count 1 \
@@ -253,7 +69,7 @@ deploy-streaming-footprint-updater:
 
 deploy-streaming-edit-histogram-updater:
 	aws ecs create-service \
-	  --cluster "osm-stat-stream-cluster" \
+	  --cluster "${CLUSTER_NAME_DEPLOYMENT}" \
 	  --service-name "streaming-edit-histogram-tile-updater" \
 	  --task-definition "streaming-edit-histogram-tile-updater" \
 	  --desired-count 1 \
@@ -297,7 +113,9 @@ deploy-streaming-stats-updaters:
 	    }
 	  }'
 
-deploy-all-streaming-tasks: deploy-footprint-updater deploy-streaming-edit-histogram-updater deploy-streaming-stats-updaters
+deploy-streaming-vectortile-tasks: deploy-footprint-updater deploy-streaming-edit-histogram-updater
+
+deploy-all-streaming-tasks: deploy-streaming-vectortile-tasks deploy-streaming-stats-updaters
 
 ###################
 # Batch AWS Tasks #
