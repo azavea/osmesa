@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ -z ${VERSION_TAG+x} ]; then
-    echo "No version tag has been set.  Do not run this script directly; rather issue"
+    echo "No version tag has been set.  Do not run this script directly; instead, issue"
     echo "                              make build-container"
     echo "from the 'streaming' directory."
     exit 1
