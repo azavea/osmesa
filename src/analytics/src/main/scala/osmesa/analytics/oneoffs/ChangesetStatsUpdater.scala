@@ -92,7 +92,7 @@ object ChangesetStatsUpdater
 
             val options = Map(
               Source.BaseURI -> augmentedDiffSource.toString,
-              Source.ProcessName -> "AugmentedDiffStream"
+              Source.ProcessName -> "ChangesetStatsUpdater"
             ) ++
               startSequence
                 .map(s => Map(Source.StartSequence -> s.toString))

@@ -6,7 +6,7 @@ if [ -z ${AWS_REGION+x} ]; then
 fi
 
 aws ecs register-task-definition \
-    --family osmesa-streaming-edit-histogram-tile-updater \
+    --family streaming-edit-histogram-tile-updater \
     --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
