@@ -81,7 +81,7 @@ object ChangesetMetadataUpdater
 
               val options = Map(
                 Source.BaseURI -> changesetSource.toString,
-                Source.ProcessName -> "ChangesetStream"
+                Source.ProcessName -> "ChangesetMetadataUpdater"
               ) ++
                 startSequence
                   .map(s => Map(Source.StartSequence -> s.toString))

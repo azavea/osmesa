@@ -6,7 +6,7 @@ if [ -z ${AWS_REGION+x} ]; then
 fi
 
 aws ecs register-task-definition \
-    --family osmesa-streaming-stats-updater \
+    --family streaming-stats-updater-production \
     --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
@@ -33,7 +33,7 @@ aws ecs register-task-definition \
 	      \"environment\": [
 	        {
 	          \"name\": \"DATABASE_URL\",
-	          \"value\": \"${DB_URI}${PRODUCTION_DB}\"
+	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:production\",
@@ -58,7 +58,7 @@ aws ecs register-task-definition \
 	      \"environment\": [
 	        {
 	          \"name\": \"DATABASE_URL\",
-	          \"value\": \"${DB_URI}${PRODUCTION_DB}\"
+	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:production\",

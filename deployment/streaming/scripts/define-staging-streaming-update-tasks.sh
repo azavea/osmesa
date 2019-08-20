@@ -6,7 +6,7 @@ if [ -z ${AWS_REGION+x} ]; then
 fi
 
 aws ecs register-task-definition \
-    --family osmesa-streaming-stats-updater \
+    --family streaming-stats-updater-staging \
     --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
@@ -26,14 +26,14 @@ aws ecs register-task-definition \
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
 	        \"--driver-memory\", \"2048m\",
-	        \"--class\", \"osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor\",
+	        \"--class\", \"osmesa.analytics.oneoffs.StreamingChangesetStatsUpdater\",
 	        \"/opt/osmesa-analytics.jar\",
 	        \"--augmented-diff-source\", \"${AUGDIFF_SOURCE}\"
 	      ],
 	      \"environment\": [
 	        {
 	          \"name\": \"DATABASE_URL\",
-	          \"value\": \"${DB_BASE_URI}${STAGING_DB}\"
+	          \"value\": \"${DB_BASE_URI}/${STAGING_DB}\"
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:latest\",
@@ -51,14 +51,14 @@ aws ecs register-task-definition \
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
 	        \"--driver-memory\", \"2048m\",
-	        \"--class\", \"osmesa.analytics.oneoffs.ChangesetStreamProcessor\",
+	        \"--class\", \"osmesa.analytics.oneoffs.StreamingChangesetMetadataUpdater\",
 	        \"/opt/osmesa-analytics.jar\",
 	        \"--changeset-source\", \"${CHANGESET_SOURCE}\"
 	      ],
 	      \"environment\": [
 	        {
 	          \"name\": \"DATABASE_URL\",
-	          \"value\": \"${DB_URI}${STAGING_DB}\"
+	          \"value\": \"${DB_BASE_URI}/${STAGING_DB}\"
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:latest\",
