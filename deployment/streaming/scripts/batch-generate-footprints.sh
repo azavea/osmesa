@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ -z ${AWS_REGION+x} ]; then
+if [ -z ${VERSION_TAG+x} ]; then
     echo "Do not run this script directly.  Use the Makefile in the parent directory."
     exit 1
 fi
