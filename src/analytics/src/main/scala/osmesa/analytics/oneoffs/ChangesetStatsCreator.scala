@@ -179,13 +179,13 @@ object ChangesetStatsCreator
               })
 
             // Distributing these writes to the executors to avoid no suitable driver errors on master node
-            logger.warn(s"Writing AugmentedDiffStream sequence number as $augdiffEndSequence to $databaseUrl")
+            logger.warn(s"Writing augmented diff sequence number as $augdiffEndSequence to $databaseUrl")
             spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
-              ChangesetORCUpdaterUtils.saveLocations("AugmentedDiffStream", augdiffEndSequence, uri)
+              ChangesetORCUpdaterUtils.saveLocations("ChangesetStatsUpdater", augdiffEndSequence, uri)
             }
-            logger.warn(s"Writing ChangesetStream sequence number as $changesetsEndSequence to $databaseUrl")
+            logger.warn(s"Writing changeset stream sequence number as $changesetsEndSequence to $databaseUrl")
             spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
-              ChangesetORCUpdaterUtils.saveLocations("ChangesetStream", changesetsEndSequence, uri)
+              ChangesetORCUpdaterUtils.saveLocations("ChangesetMetadataUpdater", changesetsEndSequence, uri)
             }
 
             spark.stop()
