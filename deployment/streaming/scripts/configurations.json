@@ -1,0 +1,88 @@
+[
+  {
+    "Classification": "spark",
+    "Properties": {
+      "maximizeResourceAllocation": "false"
+    }
+  },
+  {
+    "Classification": "spark-defaults",
+    "Properties": {
+        "spark.driver.maxResultSize": "3G",
+        "spark.dynamicAllocation.enabled": "true",
+        "spark.shuffle.service.enabled": "true",
+        "spark.shuffle.compress": "true",
+        "spark.shuffle.spill.compress": "true",
+        "spark.rdd.compress": "true",
+        "spark.executor.memoryOverhead": "1G",
+        "spark.driver.memoryOverhead": "1G",
+        "spark.driver.maxResultSize": "3G",
+        "spark.executor.extraJavaOptions" : "-XX:+UseParallelGC -Dgeotrellis.s3.threads.rdd.write=64"
+    }
+  },
+  {
+    "Classification": "hdfs-site",
+    "Properties": {
+      "dfs.replication": "1",
+      "dfs.permissions": "false",
+      "dfs.datanode.max.xcievers": "16384",
+      "dfs.datanode.max.transfer.threads": "16384",
+      "dfs.datanode.balance.max.concurrent.moves": "1000",
+      "dfs.datanode.balance.bandwidthPerSec": "100000000"
+    }
+  },
+  {
+    "Classification": "yarn-site",
+    "Properties": {
+      "yarn.resourcemanager.am.max-attempts": "1",
+      "yarn.nodemanager.vmem-check-enabled": "false",
+      "yarn.nodemanager.pmem-check-enabled": "false"
+    }
+  },
+  {
+    "Classification": "hadoop-env",
+    "Configurations": [
+      {
+        "Classification": "export",
+        "Properties": {
+          "JAVA_HOME": "/usr/lib/jvm/java-1.8.0",
+          "GDAL_DATA": "/usr/local/share/gdal",
+          "LD_LIBRARY_PATH": "/usr/local/lib",
+          "PYSPARK_PYTHON": "python27",
+          "PYSPARK_DRIVER_PYTHON": "python27"
+        }
+      }
+    ]
+  },
+  {
+    "Classification": "spark-env",
+    "Configurations": [
+      {
+        "Classification": "export",
+        "Properties": {
+          "JAVA_HOME": "/usr/lib/jvm/java-1.8.0",
+          "GDAL_DATA": "/usr/local/share/gdal",
+          "LD_LIBRARY_PATH": "/usr/local/lib",
+          "SPARK_PRINT_LAUNCH_COMMAND": "1",
+          "PYSPARK_PYTHON": "python27",
+          "PYSPARK_DRIVER_PYTHON": "python27"
+        }
+      }
+    ]
+  },
+  {
+    "Classification": "yarn-env",
+    "Configurations": [
+      {
+        "Classification": "export",
+        "Properties": {
+          "JAVA_HOME": "/usr/lib/jvm/java-1.8.0",
+          "GDAL_DATA": "/usr/local/share/gdal",
+          "LD_LIBRARY_PATH": "/usr/local/lib",
+          "PYSPARK_PYTHON": "python27",
+          "PYSPARK_DRIVER_PYTHON": "python27"
+        }
+      }
+    ]
+  }
+]
