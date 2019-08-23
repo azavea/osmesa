@@ -51,14 +51,10 @@ define-staging-streaming-update-tasks:
 define-production-streaming-update-tasks:
 	./scripts/define-production-streaming-update-tasks.sh
 
-deploy-streaming-footprint-updater: export NETWORK_CONFIGURATION='{\
-	    "awsvpcConfiguration": {\
-	      "subnets": ["${ECS_SUBNET}"],\
-	      "securityGroups": ["${ECS_SECURITY_GROUP}"],\
-	      "assignPublicIp": "DISABLED"\
-	    }\
-	}'
-deploy-streaming-footprint-updater:
+stop-streaming-footprint-updater:
+	./scripts/stop-streaming-service.sh streaming-user-footprint-tile-updater
+
+deploy-streaming-footprint-updater: stop-streaming-footprint-updater
 	aws ecs create-service \
 	  --cluster "${CLUSTER_NAME_DEPLOYMENT}" \
 	  --service-name "streaming-user-footprint-tile-updater" \
@@ -68,14 +64,10 @@ deploy-streaming-footprint-updater:
 	  --scheduling-strategy REPLICA \
 	  --network-configuration ${NETWORK_CONFIGURATION}
 
-deploy-streaming-edit-histogram-updater: export NETWORK_CONFIGURATION='{\
-	    "awsvpcConfiguration": {\
-	      "subnets": ["${ECS_SUBNET}"],\
-	      "securityGroups": ["${ECS_SECURITY_GROUP}"],\
-	      "assignPublicIp": "DISABLED"\
-	    }\
-	}'
-deploy-streaming-edit-histogram-updater:
+stop-streaming-edit-histogram-updater:
+	./scripts/stop-streaming-service.sh streaming-edit-histogram-tile-updater
+
+deploy-streaming-edit-histogram-updater: stop-streaming-edit-histogram-updater
 	aws ecs create-service \
 	  --cluster "${CLUSTER_NAME_DEPLOYMENT}" \
 	  --service-name "streaming-edit-histogram-tile-updater" \
@@ -85,14 +77,10 @@ deploy-streaming-edit-histogram-updater:
 	  --scheduling-strategy REPLICA \
 	  --network-configuration ${NETWORK_CONFIGURATION}
 
-deploy-streaming-stats-updaters: export NETWORK_CONFIGURATION='{\
-	    "awsvpcConfiguration": {\
-	      "subnets": ["${ECS_SUBNET}"],\
-	      "securityGroups": ["${ECS_SECURITY_GROUP}"],\
-	      "assignPublicIp": "DISABLED"\
-	    }\
-	}'
-deploy-streaming-stats-updaters:
+stop-streaming-stats-updaters:
+	./scripts/stop-streaming-service.sh streaming-stats-updater
+
+deploy-streaming-stats-updaters: stop-streaming-stats-updaters
 	aws ecs create-service \
 	  --cluster "${ECS_CLUSTER}" \
 	  --service-name "streaming-stats-updater" \
@@ -104,8 +92,6 @@ deploy-streaming-stats-updaters:
 
 deploy-streaming-vectortile-tasks: deploy-footprint-updater deploy-streaming-edit-histogram-updater
 
-deploy-all-streaming-tasks: deploy-streaming-vectortile-tasks deploy-streaming-stats-updaters
-
 ###################
 # Batch AWS Tasks #
 ###################
@@ -115,3 +101,6 @@ batch-generate-footprints:
 
 batch-generate-edit-histograms:
 	./scripts/batch-generate-edit-histograms.sh
+
+batch-generate-db-backfill:
+	./scripts/batch-process.sh "OSMesa Batch Process" "ChangesetStatsCreator" 64 "[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.analytics.oneoffs.ChangesetStatsCreator\", \"--conf\", \"spark.executor.memoryOverhead=2g\", \"--conf\", \"spark.sql.shuffle.partitions=2000\", \"--conf\", \"spark.speculation=true\", \"${OSMESA_ANALYTICS_JAR}\", \"--history\", \"${NOME_HISTORY_ORC}\", \"--changesets\", \"${NOME_CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"]"
