@@ -23,6 +23,8 @@ export DB_BASE_URI :=
 export PRODUCTION_DB :=
 export STAGING_DB :=
 
+export NETWORK_CONFIGURATION="{\"awsvpcConfiguration\": {\"subnets\": [\"${ECS_SUBNET}\"], \"securityGroups\": [\"${ECS_SECURITY_GROUP}\"], \"assignPublicIp\": \"DISABLED\"}}"
+
 ################################################################################
 #                                                     Batch resource definitions
 ################################################################################
