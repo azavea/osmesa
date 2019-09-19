@@ -31,13 +31,14 @@ import scalaj.http.Http
  *   s3://path/to/history.orc
  *   s3://path/to/output.orc
  */
-object ChangesetORCUpdater
+object MergeChangesets
   extends CommandApp(
     name = "osmesa-changeset-orc-updater",
     header = "Bring existing changesets ORC file up to date using changeset stream",
     main = {
 
-      import ChangesetORCUpdaterUtils._
+      import MergeChangesetUtils._
+      import ChangesetSource._
 
       val changesetSourceOpt =
         Opts
@@ -77,7 +78,7 @@ object ChangesetORCUpdater
        orcArg,
        outputArg).mapN {
         (changesetSource, endTime, orcUri, outputURI) =>
-        implicit val spark: SparkSession = Analytics.sparkSession("ChangesetORCCreator")
+        implicit val spark: SparkSession = Analytics.sparkSession("MergeChangesets")
 
         import spark.implicits._
 
@@ -85,7 +86,7 @@ object ChangesetORCUpdater
         val lastModified = df.select(max(coalesce('closed_at, 'created_at))).first.getAs[Timestamp](0)
 
         val startSequence = findSequenceFor(lastModified.toInstant, changesetSource)
-        val endSequence = endTime.map(findSequenceFor(_, changesetSource)).getOrElse(getCurrentSequence(changesetSource).sequence)
+        val endSequence = endTime.map(findSequenceFor(_, changesetSource)).getOrElse(getCurrentSequence(changesetSource).get.sequence)
 
         val options = Map(
           Source.BaseURI -> changesetSource.toString,
@@ -120,7 +121,7 @@ object ChangesetORCUpdater
     }
 )
 
-object ChangesetORCUpdaterUtils {
+object MergeChangesetUtils {
   implicit val readInstant: Argument[Instant] = new Argument[Instant] {
     override def read(string: String): ValidatedNel[String, Instant] = {
       try { Validated.valid(Instant.parse(string)) }
@@ -134,51 +135,6 @@ object ChangesetORCUpdaterUtils {
 
   private implicit val dateTimeDecoder: Decoder[DateTime] =
     Decoder.instance(a => a.as[String].map(DateTime.parse(_, formatter)))
-
-  case class Sequence(last_run: DateTime, sequence: Long)
-
-  def getCurrentSequence(baseURI: URI): Sequence = {
-    val response =
-      Http(baseURI.resolve("state.yaml").toString).asString
-
-    val state = yaml.parser
-      .parse(response.body)
-      .leftMap(err => err: Error)
-      .flatMap(_.as[Sequence])
-      .valueOr(throw _)
-
-    state
-  }
-
-  def getSequence(baseURI: URI, sequence: Long): Sequence = {
-    val s = f"${sequence+1}%09d"
-    val path = s"${s.slice(0, 3)}/${s.slice(3, 6)}/${s.slice(6, 9)}.state.txt"
-
-    val response =
-      Http(baseURI.resolve(path).toString).asString
-
-    yaml.parser
-      .parse(response.body)
-      .leftMap(err => err: Error)
-      .flatMap(_.as[Sequence])
-      .valueOr(throw _)
-  }
-
-  def estimateSequenceNumber(modifiedTime: Instant, baseURI: URI): Long = {
-    val current = getCurrentSequence(baseURI)
-    val diffMinutes = (current.last_run.toInstant.getMillis/1000 - modifiedTime.getEpochSecond) / 60
-    current.sequence - diffMinutes
-  }
-
-  def findSequenceFor(modifiedTime: Instant, baseURI: URI): Long = {
-    var guess = estimateSequenceNumber(modifiedTime, baseURI)
-    val target = org.joda.time.Instant.parse(modifiedTime.toString)
-
-    while (getSequence(baseURI, guess).last_run.isAfter(target)) { guess -= 1 }
-    while (getSequence(baseURI, guess).last_run.isBefore(target)) { guess += 1 }
-
-    getSequence(baseURI, guess).sequence
-  }
 
   def saveLocations(procName: String, sequence: Int, databaseURI: URI) = {
     var connection = null.asInstanceOf[Connection]
