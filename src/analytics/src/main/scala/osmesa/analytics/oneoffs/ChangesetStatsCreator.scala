@@ -14,6 +14,7 @@ import osmesa.analytics.stats.functions._
 import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
+import vectorpipe.sources.ChangesetSource
 import vectorpipe.util.{DBUtils, Geocode}
 
 object ChangesetStatsCreator
@@ -126,7 +127,7 @@ object ChangesetStatsCreator
             val changesets = spark.read.orc(changesetSource)
             val changesetsEndSequence = {
               val t = changesets.select(max(coalesce('createdAt, 'closedAt))).first.getAs[java.sql.Timestamp](0)
-              ChangesetORCUpdaterUtils.findSequenceFor(t.toInstant, changesetBaseURI).toInt
+              ChangesetSource.findSequenceFor(t.toInstant, changesetBaseURI).toInt
             }
 
             val changesetMetadata = changesets
@@ -181,11 +182,11 @@ object ChangesetStatsCreator
             // Distributing these writes to the executors to avoid no suitable driver errors on master node
             logger.warn(s"Writing augmented diff sequence number as $augdiffEndSequence to $databaseUrl")
             spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
-              ChangesetORCUpdaterUtils.saveLocations("ChangesetStatsUpdater", augdiffEndSequence, uri)
+              MergeChangesetUtils.saveLocations("ChangesetStatsUpdater", augdiffEndSequence, uri)
             }
             logger.warn(s"Writing changeset stream sequence number as $changesetsEndSequence to $databaseUrl")
             spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
-              ChangesetORCUpdaterUtils.saveLocations("ChangesetMetadataUpdater", changesetsEndSequence, uri)
+              MergeChangesetUtils.saveLocations("ChangesetMetadataUpdater", changesetsEndSequence, uri)
             }
 
             spark.stop()
