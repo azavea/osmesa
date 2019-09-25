@@ -137,7 +137,7 @@ object MergeChangesetUtils {
     Decoder.instance(a => a.as[String].map(DateTime.parse(_, formatter)))
 
   def saveLocations(procName: String, sequence: Int, databaseURI: URI) = {
-    var connection = null.asInstanceOf[Connection]
+    var connection: Connection = null
     try {
       connection = DBUtils.getJdbcConnection(databaseURI)
       val upsertSequence =

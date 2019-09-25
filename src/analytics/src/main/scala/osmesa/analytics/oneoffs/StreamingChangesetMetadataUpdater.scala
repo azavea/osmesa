@@ -24,8 +24,8 @@ import osmesa.analytics.stats.ChangesetMetadataForeachWriter
  */
 object StreamingChangesetMetadataUpdater
     extends CommandApp(
-      name = "osmesa-augmented-diff-stream-processor",
-      header = "Update statistics from streaming augmented diffs",
+      name = "osmesa-changeset-stream-processor",
+      header = "Update statistics from changeset replication stream",
       main = {
         val changesetSourceOpt =
           Opts

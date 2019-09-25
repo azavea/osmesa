@@ -14,7 +14,7 @@ import osmesa.analytics.stats.functions._
 import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
-import vectorpipe.sources.ChangesetSource
+import vectorpipe.sources.{AugmentedDiffSource, ChangesetSource}
 import vectorpipe.util.{DBUtils, Geocode}
 
 object ChangesetStatsCreator
@@ -59,8 +59,8 @@ object ChangesetStatsCreator
             val history = spark.read.orc(historySource)
 
             val augdiffEndSequence = {
-              val t = history.select(max('timestamp)).first.getAs[java.sql.Timestamp](0).toInstant
-              ((t.getEpochSecond - 1347432900) / 60).toInt
+              val t = history.select(max('timestamp)).first.getAs[java.sql.Timestamp](0)
+              AugmentedDiffSource.timestampToSequence(t)
             }
 
             val nodes = ProcessOSM.preprocessNodes(history)

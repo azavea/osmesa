@@ -14,7 +14,7 @@ import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.model.ElementWithSequence
-import vectorpipe.sources.Source
+import vectorpipe.sources.{AugmentedDiffSource, Source}
 import vectorpipe.util.{DBUtils, Geocode}
 
 /*
@@ -108,7 +108,7 @@ object StreamingChangesetStatsUpdater
               // in practice, this means that aggregation doesn't occur until the *next* sequence is received
 
               val query = Geocode(geoms.where(isTagged('tags)))
-                .withColumn("timestamp", to_timestamp('sequence * 60 + 1347432900))
+                .withColumn("timestamp", AugmentedDiffSource.sequenceToTimestamp('sequence))
                 // if sequences are received sequentially (and atomically), 0 seconds should suffice; anything received with an
                 // earlier timestamp after that point will be dropped
                 .withWatermark("timestamp", "0 seconds")
