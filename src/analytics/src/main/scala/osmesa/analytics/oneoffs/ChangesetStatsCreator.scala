@@ -29,15 +29,15 @@ object ChangesetStatsCreator
           Opts
             .option[String]("changesets", help = "Location of the Changesets ORC file to process.")
 
-      val changesetBaseOpt =
-        Opts
-          .option[URI](
-          "changeset-stream",
-          short = "c",
-          metavar = "uri",
-          help = "HTTP Location of replication changesets"
-        )
-        .validate("Changeset source must have trailing '/'") { _.getPath.endsWith("/") }
+        val changesetBaseOpt =
+          Opts
+            .option[URI](
+            "changeset-stream",
+            short = "c",
+            metavar = "uri",
+            help = "HTTP Location of replication changesets"
+          )
+          .validate("Changeset source must have trailing '/'") { _.getPath.endsWith("/") }
 
         val databaseUrlOpt =
           Opts

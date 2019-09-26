@@ -95,6 +95,9 @@ object MergeChangesets
         )
 
         val changesets = spark.read.format(Source.Changesets).options(options).load
+
+        // TODO: Clean up the following by providing and using a function in VP to coerce the
+        // column names into camel case (see https://github.com/geotrellis/vectorpipe/issues/113)
         changesets
           .drop("comments", "sequence")
           .union(df.select(
