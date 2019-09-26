@@ -24,7 +24,7 @@ import scalaj.http.Http
  * sbt "project analytics" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.ChangesetORCUpdater \
+ *   --class osmesa.analytics.oneoffs.MergeChangesets \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --changesets http://location/of/changeset/replications \
  *   --end-time 1970-01-01T13:00:00Z
