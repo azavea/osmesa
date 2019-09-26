@@ -12,7 +12,6 @@ ARGS=$4
 
 set -x
 aws emr create-cluster \
-    --configurations "file://$(pwd)/scripts/configurations.json" \
     --applications Name=Ganglia Name=Spark \
     --log-uri ${S3_LOG_URI} \
     --ebs-root-volume-size 10 \
