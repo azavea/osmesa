@@ -48,7 +48,7 @@ aws emr create-cluster \
 	          "--conf", "spark.speculation=true",
 	          "${OSMESA_ANALYTICS_JAR}",
 	          "--history", "${HISTORY_ORC}",
-	          "--changesets", "${CHANGESETS_ORC",
+	          "--changesets", "${CHANGESETS_ORC}",
 	          "--out", "${FOOTPRINT_VT_LOCATION}",
 	          "--type", "users",
 	        ],
