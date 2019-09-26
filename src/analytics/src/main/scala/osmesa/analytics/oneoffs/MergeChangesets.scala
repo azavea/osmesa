@@ -33,8 +33,8 @@ import scalaj.http.Http
  */
 object MergeChangesets
   extends CommandApp(
-    name = "osmesa-changeset-orc-updater",
-    header = "Bring existing changesets ORC file up to date using changeset stream",
+    name = "osmesa-merge-changesets",
+    header = "Bring existing changeset ORC file up to date using changeset stream",
     main = {
 
       import MergeChangesetUtils._
