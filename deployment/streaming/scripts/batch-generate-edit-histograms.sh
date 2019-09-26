@@ -47,7 +47,7 @@ aws emr create-cluster \
 	          "--conf", "spark.sql.shuffle.partitions=2000",
 	          "--conf", "spark.speculation=true",
 	          "${OSMESA_ANALYTICS_JAR}",
-	          "--history", "${NOME_HISTORY_ORC}",
+	          "--history", "${HISTORY_ORC}",
 	          "--out", "${HISTOGRAM_VT_LOCATION}"
 	        ],
 	        "Type": "CUSTOM_JAR",
