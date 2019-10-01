@@ -11,7 +11,7 @@ import org.apache.spark.sql.functions._
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.model.ElementWithSequence
-import vectorpipe.sources.Source
+import vectorpipe.sources.{AugmentedDiffSource, Source}
 
 /*
  * Usage example:
@@ -160,10 +160,7 @@ object MergedChangesetStreamProcessor
               )
 
             val geomsWithWatermark = geoms
-              .withColumn(
-                "timestamp",
-                to_timestamp('sequence * 60 + 1347432900)
-              )
+              .withColumn("timestamp", AugmentedDiffSource.sequenceToTimestamp('sequence))
               // geoms are standalone; no need to wait for anything
               .withWatermark("timestamp", "0 seconds")
               .select('timestamp, 'changeset, '_type, 'id, 'version, 'minorVersion, 'updated)

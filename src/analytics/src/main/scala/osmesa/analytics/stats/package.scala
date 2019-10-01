@@ -46,13 +46,27 @@ package object stats {
     isCoastline(tags) or
     isPOI(tags) as 'isInterestingWay
 
-  def isLinear(tags: Column): Column = isRoad(tags) or isWaterway(tags) or isCoastline(tags) as 'isLinear
+  // Does this feature represent a rail-related site or area (not track)
+  def isRailFeature(tags: Column): Column =
+    array_contains(splitDelimitedValues(tags.getItem("railway")), "station") or
+    array_contains(splitDelimitedValues(tags.getItem("railway")), "yard") or
+    array_contains(splitDelimitedValues(tags.getItem("landuse")), "railway") as 'isRailSite
+
+  // Does this feature represent a section of rail track
+  def isRailLine(tags: Column): Column = not(isRailFeature(tags)) and tags.getItem("railway").isNotNull as 'isRailLine
+
+  // Does this feature represent a rail-related entity
+  def isRailway(tags: Column): Column =
+    tags.getItem("railway").isNotNull or array_contains(splitDelimitedValues(tags.getItem("landuse")), "railway") as 'isRailway
+
+  def isLinear(tags: Column): Column = isRoad(tags) or isWaterway(tags) or isCoastline(tags) or isRailLine(tags) as 'isLinear
 
   def isOther(tags: Column): Column = isTagged(tags) and
     not(isRoad((tags))) and
     not(isWaterway(tags)) and
     not(isCoastline(tags)) and
     not(isBuilding(tags)) and
+    not(isRailway(tags)) and
     not(isPOI(tags)) as 'isOther
 
   def DefaultMeasurements(implicit sparkSession: SparkSession): Column = {
@@ -67,7 +81,10 @@ package object stats {
       lit("waterway_km_deleted"), (isWaterway('tags) and !'visible).cast(IntegerType) * 'delta / 1000,
       lit("coastline_km_added"), (isCoastline('tags) and isNew('version, 'minorVersion)).cast(IntegerType) * 'delta / 1000,
       lit("coastline_km_modified"), (isCoastline('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType) * 'delta / 1000,
-      lit("coastline_km_deleted"), (isCoastline('tags) and !'visible).cast(IntegerType) * 'delta / 1000
+      lit("coastline_km_deleted"), (isCoastline('tags) and !'visible).cast(IntegerType) * 'delta / 1000,
+      lit("railline_km_added"), (isRailLine('tags) and isNew('version, 'minorVersion)).cast(IntegerType) * 'delta / 1000,
+      lit("railline_km_modified"), (isRailLine('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType) * 'delta / 1000,
+      lit("railline_km_deleted"), (isRailLine('tags) and !'visible).cast(IntegerType) * 'delta / 1000
     )) as 'measurements
   }
 
@@ -87,6 +104,12 @@ package object stats {
       lit("buildings_added"), (isBuilding('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
       lit("buildings_modified"), (isBuilding('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
       lit("buildings_deleted"), (isBuilding('tags) and !'visible).cast(IntegerType),
+      lit("railway_features_added"), (isRailFeature('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
+      lit("railway_features_modified"), (isRailFeature('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
+      lit("railway_features_deleted"), (isRailFeature('tags) and !'visible).cast(IntegerType),
+      lit("raillines_added"), (isRailLine('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
+      lit("raillines_modified"), (isRailLine('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
+      lit("raillines_deleted"), (isRailLine('tags) and !'visible).cast(IntegerType),
       lit("pois_added"), (isPOI('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
       lit("pois_modified"), (isPOI('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
       lit("pois_deleted"), (isPOI('tags) and !'visible).cast(IntegerType),
