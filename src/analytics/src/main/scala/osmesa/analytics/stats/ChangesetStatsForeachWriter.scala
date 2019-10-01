@@ -23,7 +23,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
       |    ?::jsonb AS measurements,
       |    ?::jsonb AS counts,
       |    ? AS total_edits,
-      |    ? AS augmented_diffs,
+      |    ?::integer[] AS augmented_diffs,
       |    current_timestamp AS updated_at
       |)
       |INSERT INTO changesets AS c (
@@ -41,7 +41,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
       |  measurements = (
       |    SELECT jsonb_object_agg(key, value)
       |    FROM (
-      |      SELECT key, sum(value::numeric) AS value
+      |      SELECT key, sum((value->>0)::numeric) AS value
       |      FROM (
       |        SELECT * from jsonb_each(c.measurements)
       |        UNION ALL
@@ -54,7 +54,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
       |  counts = (
       |    SELECT jsonb_object_agg(key, value)
       |    FROM (
-      |      SELECT key, sum(value::numeric) AS value
+      |      SELECT key, sum((value->>0)::numeric) AS value
       |      FROM (
       |        SELECT * from jsonb_each(c.counts)
       |        UNION ALL

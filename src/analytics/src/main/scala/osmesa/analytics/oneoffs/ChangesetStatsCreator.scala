@@ -1,6 +1,7 @@
 package osmesa.analytics.oneoffs
 
 import java.net.URI
+import java.sql._
 
 import cats.implicits._
 import com.monovore.decline.{CommandApp, Opts}
@@ -13,7 +14,8 @@ import osmesa.analytics.stats.functions._
 import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
-import vectorpipe.util.Geocode
+import vectorpipe.sources.{AugmentedDiffSource, ChangesetSource}
+import vectorpipe.util.{DBUtils, Geocode}
 
 object ChangesetStatsCreator
     extends CommandApp(
@@ -27,6 +29,16 @@ object ChangesetStatsCreator
           Opts
             .option[String]("changesets", help = "Location of the Changesets ORC file to process.")
 
+        val changesetBaseOpt =
+          Opts
+            .option[URI](
+            "changeset-stream",
+            short = "c",
+            metavar = "uri",
+            help = "HTTP Location of replication changesets"
+          )
+          .validate("Changeset source must have trailing '/'") { _.getPath.endsWith("/") }
+
         val databaseUrlOpt =
           Opts
             .option[URI](
@@ -37,12 +49,20 @@ object ChangesetStatsCreator
             )
             .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
 
-        (historyOpt, changesetsOpt, databaseUrlOpt).mapN {
-          (historySource, changesetSource, databaseUrl) =>
+        (historyOpt, changesetsOpt, changesetBaseOpt, databaseUrlOpt).mapN {
+          (historySource, changesetSource, changesetBaseURI, databaseUrl) =>
             implicit val spark: SparkSession = Analytics.sparkSession("ChangesetStats")
             import spark.implicits._
 
+            val logger = org.apache.log4j.Logger.getLogger(getClass())
+
             val history = spark.read.orc(historySource)
+
+            val augdiffEndSequence = {
+              val t = history.select(max('timestamp)).first.getAs[java.sql.Timestamp](0)
+              AugmentedDiffSource.timestampToSequence(t)
+            }
+
             val nodes = ProcessOSM.preprocessNodes(history)
             val ways = ProcessOSM.preprocessWays(history)
 
@@ -105,23 +125,27 @@ object ChangesetStatsCreator
               )
 
             val changesets = spark.read.orc(changesetSource)
+            val changesetsEndSequence = {
+              val t = changesets.select(max(coalesce('createdAt, 'closedAt))).first.getAs[java.sql.Timestamp](0)
+              ChangesetSource.findSequenceFor(t.toInstant, changesetBaseURI).toInt
+            }
 
             val changesetMetadata = changesets
               .groupBy('id,
                        'tags.getItem("created_by") as 'editor,
                        'uid,
                        'user,
-                       'created_at,
+                       'createdAt,
                        'tags.getItem("comment") as 'comment,
-                       'tags.getItem("hashtags") as 'hashtag)
-              .agg(first('closed_at, ignoreNulls = true) as 'closed_at)
+                       'tags.getItem("hashtags") as 'hashtags)
+              .agg(first('closedAt, ignoreNulls = true) as 'closedAt)
               .select(
                 'id,
                 'editor,
                 'uid,
                 'user,
-                'created_at as 'createdAt,
-                'closed_at as 'closedAt,
+                'createdAt,
+                'closedAt,
                 merge_sets(hashtags('comment), hashtags('hashtags)) as 'hashtags
               )
 
@@ -154,6 +178,16 @@ object ChangesetStatsCreator
                   }
                 }
               })
+
+            // Distributing these writes to the executors to avoid no suitable driver errors on master node
+            logger.warn(s"Writing augmented diff sequence number as $augdiffEndSequence to $databaseUrl")
+            spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
+              MergeChangesetUtils.saveLocations("ChangesetStatsUpdater", augdiffEndSequence, uri)
+            }
+            logger.warn(s"Writing changeset stream sequence number as $changesetsEndSequence to $databaseUrl")
+            spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
+              MergeChangesetUtils.saveLocations("ChangesetMetadataUpdater", changesetsEndSequence, uri)
+            }
 
             spark.stop()
         }
