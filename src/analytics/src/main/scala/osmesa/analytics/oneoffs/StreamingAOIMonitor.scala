@@ -11,8 +11,10 @@ import org.locationtech.jts.{geom => jts}
 import org.locationtech.jts.geom.prep._
 import osmesa.analytics.Analytics
 import vectorpipe.sources.Source
+import vectorpipe.util.DBUtils
 
 import java.net.URI
+import java.sql._
 
 // These only required for test getAreaIndex implementation
 import geotrellis.vector.io._
@@ -25,8 +27,8 @@ object StreamingAOIMonitor extends CommandApp(
   main = {
     val intervalOpt =
       Opts
-        .option[String]("interval", help = "Period of time to aggregate over (d=daily, w=weekly, m=monthly)")
-        .validate("Must be one of 'd', 'w', or 'm'") { arg: String => arg.length == 1 && "dwm".contains(arg.apply(0)) }
+        .option[String]("interval", help = "Period of time to aggregate over (d=daily, w=weekly)")
+        .validate("Must be one of 'd', 'w'") { arg: String => arg.length == 1 && "dwm".contains(arg.apply(0)) }
 
     val databaseUrlOpt =
       Opts
@@ -79,19 +81,36 @@ object StreamingAOIMonitor extends CommandApp(
 
       val aoiIndex = getAreaIndex(/*databaseUri*/)
 
+      val startPosition =
+        if (startSequence isDefined)
+          startSequence.get
+        else {
+          getLastSequence(interval) match {
+            case Some(seq) => seq
+            case None =>
+              AugmentedDiffSource.getCurrentSequence(augmentedDiffSource) match {
+                case Some(currentSequence) =>
+                  interval match {
+                    case "d" => currentSequence - 1440
+                    case "w" => currentSequence - (1440 * 7)
+                  }
+                case None =>
+                  throw new RuntimeException(s"Could not pull current AugmentedDiff sequence from $augmentedDiffSource, and no alternative was provided")
+              }
+          }
+        }
+
       val options = Map(
         Source.BaseURI -> augmentedDiffSource.toString,
-        Source.ProcessName -> appName
+        Source.ProcessName -> appName,
+        Source.StartSequence -> startPosition.toString,
       ) ++
-      startSequence
-        .map(s => Map(Source.StartSequence -> s.toString))
-        .getOrElse(Map.empty[String, String]) ++
       endSequence
         .map(s => Map(Source.EndSequence -> s.toString))
         .getOrElse(Map.empty[String, String])
 
       val diffs = spark
-        .readStream
+        .read
         .format(Source.AugmentedDiffs)
         .options(options)
         .load
@@ -172,5 +191,28 @@ object AOIMonitorUtils {
     // Store in an AOIIndex
 
     ???
+  }
+
+  def getLastSequence(databaseURI: URI, procName: String): Option[Int] = {
+    var connection: Connection = null
+    try {
+      connection = DBUtils.getJdbcConnection(dbUri)
+      val preppedStatement =
+        connection.prepareStatement("SELECT sequence FROM checkpoints WHERE proc_name = ?")
+      preppedStatement.setString(1, procName)
+      val rs = preppedStatement.executeQuery()
+      if (rs.next()) {
+        rs.getInt("sequence") match {
+          case 0 => None
+          // sequence was checkpointed after completion; start with the next one
+          case seq => Some(seq + 1)
+        }
+      } else {
+        None
+      }
+    } finally {
+      if (connection != null) connection.close()
+    }
+
   }
 }
