@@ -26,11 +26,6 @@ import vectorpipe.sources.Source
 import scala.collection.mutable.ListBuffer
 import scala.util.Properties
 
-// These only required for test getAreaIndex implementation
-import geotrellis.vector.io._
-import geotrellis.vector.io.json._
-import spray.json._
-
 object StreamingAOIMonitor
     extends CommandApp(
       name = "streaming-aoi-monitor",
@@ -80,8 +75,9 @@ object StreamingAOIMonitor
             spark.withJTS
             import AOIMonitorUtils._
 
-            val areasOfInterest: List[NotificationData] = queryAreasOfInterest(interval)
-            areasOfInterest.foreach { println(_) }
+            val notifications: List[Notification] = queryNotifications(interval)
+            notifications.foreach { println(_) }
+            val aoiIndex = AOIIndex(notifications)
 
             lazy val currentSequence = getCurrentSequence(augmentedDiffSource, interval).getOrElse(
               throw new RuntimeException(
@@ -136,7 +132,6 @@ object StreamingAOIMonitor
                 .map(s => Map(Source.EndSequence -> s.toString))
                 .getOrElse(Map.empty[String, String])
 
-            val aoiIndex = getAreaIndex( /*databaseUri*/ )
             val aoiTag = udf { g: jts.Geometry =>
               aoiIndex(g).toList
             }
@@ -144,7 +139,7 @@ object StreamingAOIMonitor
             // 1. READ IN DIFF STREAM
             //    This non-streaming process will grab a finite set of diffs, beginning
             //    with the starting sequence, and give a DataFrame.  Tag each diff with
-            //    The set of participating AOIs.
+            //    The set of participating aoi notifications.
             val diffs = spark.read
               .format(Source.AugmentedDiffs)
               .options(options)
@@ -155,11 +150,7 @@ object StreamingAOIMonitor
             //    Prepare a dataset of summaries, one for each AOI/user combo carrying
             //    the information we want to communicate in email.  Daily and weekly
             //    summaries will differ in terms of message content.
-
-            // NOTE: The following does not compile because Dataset[T] is not invariant
-            // over T.  We will need to convert to some common representation (say, the
-            // email message itself).
-            val messageInfo: Dataset[AOIUserSummary] = {
+            val messageInfo: Dataset[NotificationSummary] = {
               val stats = diffs.withDelta
                 .withColumn("measurements", DefaultMeasurements)
                 .withColumn("counts", DefaultCounts)
@@ -171,7 +162,8 @@ object StreamingAOIMonitor
 //                      sum_measurements(collect_list('measurements)) as 'measurements,
                   count('id) as 'edit_count,
                   size(collect_set('changeset)) as 'changeset_count
-                ).as[AOIUserSummary]
+                )
+                .as[NotificationSummary]
             }
 
             // 3. CONSTRUCT LOOKUP TABLE FOR AOI INFO
@@ -196,44 +188,29 @@ object StreamingAOIMonitor
 
 object AOIMonitorUtils extends Logging {
 
-  case class AOIUserSummary(
-      aoi: Int,
-      uid: Long,
+  case class NotificationData(notificationId: UUID, userId: UUID, name: String, email: String)
+
+  type Notification = Feature[Geometry, NotificationData]
+
+  case class NotificationSummary(
+      notificationId: UUID,
+      userId: UUID,
+      aoiName: String,
+      email: String,
       edit_count: Long,
       changeset_count: Int
   ) {
     def toMessageBody(): String = ???
   }
 
-  case class Country(name: String)
-
-  object MyJsonProtocol extends DefaultJsonProtocol {
-    implicit object CountryJsonFormat extends RootJsonFormat[Country] {
-      def read(value: JsValue): Country =
-        value.asJsObject.getFields("ENAME") match {
-          case Seq(JsString(name)) =>
-            Country(name)
-          case v =>
-            throw DeserializationException(s"Country expected, got $v")
-        }
-
-      def write(v: Country): JsValue =
-        JsObject(
-          "name" -> JsString(v.name)
-        )
-    }
-  }
-
-  import MyJsonProtocol._
-
-  class AOIIndex(index: SpatialIndex[(PreparedGeometry, Country)]) extends Serializable {
-    def apply(g: jts.Geometry): Traversable[Country] = {
+  class AOIIndex(index: SpatialIndex[(PreparedGeometry, NotificationData)]) extends Serializable {
+    def apply(g: jts.Geometry): Traversable[NotificationData] = {
       val t =
-        new Traversable[(PreparedGeometry, Country)] {
-          override def foreach[U](f: ((PreparedGeometry, Country)) => U): Unit = {
+        new Traversable[(PreparedGeometry, NotificationData)] {
+          override def foreach[U](f: ((PreparedGeometry, NotificationData)) => U): Unit = {
             val visitor = new org.locationtech.jts.index.ItemVisitor {
               override def visitItem(obj: AnyRef): Unit =
-                f(obj.asInstanceOf[(PreparedGeometry, Country)])
+                f(obj.asInstanceOf[(PreparedGeometry, NotificationData)])
             }
             index.rtree.query(Geometry(g).jtsGeom.getEnvelopeInternal, visitor)
           }
@@ -243,7 +220,7 @@ object AOIMonitorUtils extends Logging {
     }
   }
   object AOIIndex {
-    def apply(features: Seq[Feature[Geometry, Country]]): AOIIndex =
+    def apply(features: Seq[Notification]): AOIIndex =
       new AOIIndex(
         SpatialIndex.fromExtents(
           features.map { mpf =>
@@ -251,21 +228,6 @@ object AOIMonitorUtils extends Logging {
           }
         ) { case (pg, _) => pg.getGeometry.getEnvelopeInternal }
       )
-  }
-
-  def getAreaIndex(): AOIIndex = {
-    val collection = vectorpipe.util.Resource("aois.geojson").parseGeoJson[JsonFeatureCollection]
-    val polys = collection.getAllPolygonFeatures[Country].map(_.mapGeom(MultiPolygon(_)))
-    val mps = collection.getAllMultiPolygonFeatures[Country]
-
-    AOIIndex(polys ++ mps)
-  }
-
-  def getAreaIndex(databaseURI: URI): AOIIndex = {
-    // Load a database table, grabbing names and geometries (decode geoms from WKB?)
-    // Store in an AOIIndex
-
-    ???
   }
 
   def getLastSequence(interval: Interval): Option[Int] = {
@@ -325,10 +287,10 @@ object AOIMonitorUtils extends Logging {
     }
   }
 
-  def queryAreasOfInterest(interval: Interval): List[NotificationData] = {
+  def queryNotifications(interval: Interval): List[Notification] = {
     var connection: Connection = null
     val wkbReader = new WKBReader(new GeometryFactory(new PrecisionModel(), 4326))
-    val data = ListBuffer[NotificationData]()
+    val data = ListBuffer[Notification]()
     try {
       connection = AOIDatabaseConfig.getConnection
       val now = new Timestamp(new java.util.Date().getTime)
@@ -351,13 +313,13 @@ object AOIMonitorUtils extends Logging {
       preppedStatement.setTimestamp(2, now)
       val rs = preppedStatement.executeQuery()
       while (rs.next()) {
-        val userId = UUID.fromString(rs.getString("user_id"))
         val notificationId = UUID.fromString(rs.getString("notification_id"))
+        val userId = UUID.fromString(rs.getString("user_id"))
         val geom = wkbReader.read(rs.getBytes("geometry"))
         val name = rs.getString("name")
         val email = rs.getString("email")
-        val aoiData = NotificationData(userId, notificationId, geom, name, email)
-        data.prepend(aoiData)
+        val notification = Feature(Geometry(geom), NotificationData(notificationId, userId, name, email))
+        data.prepend(notification)
       }
     } finally {
       if (connection != null) connection.close()
@@ -365,12 +327,6 @@ object AOIMonitorUtils extends Logging {
     data.toList
   }
 }
-
-case class NotificationData(userId: UUID,
-                            notificationId: UUID,
-                            geom: Geometry,
-                            name: String,
-                            email: String)
 
 sealed trait Interval {
   def value: String
