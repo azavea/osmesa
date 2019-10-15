@@ -135,6 +135,9 @@ object StreamingAOIMonitor
             val aoiTag = udf { g: jts.Geometry =>
               aoiIndex(g).toList
             }
+            val notificationId = udf { n: NotificationData =>
+              n.notificationId
+            }
 
             // 1. READ IN DIFF STREAM
             //    This non-streaming process will grab a finite set of diffs, beginning
@@ -144,7 +147,8 @@ object StreamingAOIMonitor
               .format(Source.AugmentedDiffs)
               .options(options)
               .load
-              .withColumn("aoi", explode(aoiTag('geom)))
+              .withColumn("data", explode(aoiTag('geom)))
+              .withColumn("notificationId", notificationId('data))
 
             // 2. EXTRACT SALIENT INFO FROM DIFFS
             //    Prepare a dataset of summaries, one for each AOI/user combo carrying
@@ -156,7 +160,7 @@ object StreamingAOIMonitor
                 .withColumn("counts", DefaultCounts)
 
               stats
-                .groupBy('aoi, 'uid)
+                .groupBy('notificationId)
                 .agg(
 //                      sum_counts(collect_list('counts)) as 'counts,
 //                      sum_measurements(collect_list('measurements)) as 'measurements,
@@ -193,10 +197,7 @@ object AOIMonitorUtils extends Logging {
   type Notification = Feature[Geometry, NotificationData]
 
   case class NotificationSummary(
-      notificationId: UUID,
-      userId: UUID,
-      aoiName: String,
-      email: String,
+      data: NotificationData,
       edit_count: Long,
       changeset_count: Int
   ) {
