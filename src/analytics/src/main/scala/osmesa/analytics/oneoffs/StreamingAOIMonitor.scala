@@ -175,6 +175,8 @@ object StreamingAOIMonitor
             // 4. SEND MESSAGES TO QUEUE
             //    We need to craft an email from each record and queue it for sending
             messageInfo.foreach { info =>
+              warnMessage(
+                s"Message: ${info.notificationId}, ${info.edit_count}, ${info.changeset_count}")
             }
 
             // 5. SAVE CURRENT END POSITION IN DB FOR NEXT RUN
@@ -192,7 +194,7 @@ object AOIMonitorUtils extends Logging {
   type Notification = Feature[Geometry, NotificationData]
 
   case class NotificationSummary(
-      data: NotificationData,
+      notificationId: String,
       edit_count: Long,
       changeset_count: Int
   ) {
