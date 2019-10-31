@@ -3,7 +3,6 @@ package osmesa.analytics.oneoffs
 import java.net.URI
 import java.sql.{Connection, DriverManager, Timestamp}
 import java.time.Instant
-import java.util.UUID
 
 import cats.data.Validated
 import cats.implicits._
@@ -72,11 +71,12 @@ object StreamingAOIMonitor
             implicit val spark: SparkSession = Analytics.sparkSession("Streaming AOI Monitor")
 
             import spark.implicits._
-            spark.withJTS
             import AOIMonitorUtils._
 
             val notifications: List[Notification] = queryNotifications(interval)
             notifications.foreach { println(_) }
+            val notificationsDf = notifications
+              .toDF("notificationId", "userId", "geom", "name", "email")
             val aoiIndex = AOIIndex(notifications)
 
             lazy val currentSequence = AugmentedDiffSource
@@ -133,9 +133,6 @@ object StreamingAOIMonitor
             val aoiTag = udf { g: jts.Geometry =>
               aoiIndex(g).toList
             }
-            val notificationId = udf { n: NotificationData =>
-              n.notificationId
-            }
 
             // 1. READ IN DIFF STREAM
             //    This non-streaming process will grab a finite set of diffs, beginning
@@ -145,8 +142,8 @@ object StreamingAOIMonitor
               .format(Source.AugmentedDiffs)
               .options(options)
               .load
-              .withColumn("data", explode(aoiTag('geom)))
-              .withColumn("notificationId", notificationId('data))
+              // Given Diff geom, return exploded list of matching notificationIds
+              .withColumn("notificationId", explode(aoiTag('geom)))
 
             // 2. EXTRACT SALIENT INFO FROM DIFFS
             //    Prepare a dataset of summaries, one for each notification to send.
@@ -163,14 +160,14 @@ object StreamingAOIMonitor
                   count('id) as 'edit_count,
                   size(collect_set('changeset)) as 'changeset_count
                 )
+                // 3. CONSTRUCT LOOKUP TABLE FOR AOI INFO
+                //    We need to package up the information about AOIs (specifically the
+                //    name and subscriber list) so that we may associate that with each info
+                //    message and send the email.  This should be a map?  Or is this a
+                //    separate DataFrame that we join to `diffs` before step 2?
+                .join(notificationsDf, "notificationId")
                 .as[NotificationSummary]
             }
-
-            // 3. CONSTRUCT LOOKUP TABLE FOR AOI INFO
-            //    We need to package up the information about AOIs (specifically the
-            //    name and subscriber list) so that we may associate that with each info
-            //    message and send the email.  This should be a map?  Or is this a
-            //    separate DataFrame that we join to `diffs` before step 2?
 
             // 4. SEND MESSAGES TO QUEUE
             //    We need to craft an email from each record and queue it for sending
@@ -191,26 +188,31 @@ object AOIMonitorUtils extends Logging {
 
   case class NotificationData(notificationId: String, userId: String, name: String, email: String)
 
-  type Notification = Feature[Geometry, NotificationData]
+  // notificationId, userId, geom, name, email
+  type Notification = (String, String, jts.Geometry, String, String)
 
   case class NotificationSummary(
       notificationId: String,
       edit_count: Long,
-      changeset_count: Int
+      changeset_count: Int,
+      userId: String,
+      geom: jts.Geometry,
+      name: String,
+      email: String
   ) {
     def toMessageBody(): String = ???
   }
 
-  class AOIIndex(index: SpatialIndex[(PreparedGeometry, NotificationData)]) extends Serializable {
-    def apply(g: jts.Geometry): Traversable[NotificationData] = {
+  class AOIIndex(index: SpatialIndex[(PreparedGeometry, String)]) extends Serializable {
+    def apply(g: jts.Geometry): Traversable[String] = {
       val t =
-        new Traversable[(PreparedGeometry, NotificationData)] {
-          override def foreach[U](f: ((PreparedGeometry, NotificationData)) => U): Unit = {
+        new Traversable[(PreparedGeometry, String)] {
+          override def foreach[U](f: ((PreparedGeometry, String)) => U): Unit = {
             val visitor = new org.locationtech.jts.index.ItemVisitor {
               override def visitItem(obj: AnyRef): Unit =
-                f(obj.asInstanceOf[(PreparedGeometry, NotificationData)])
+                f(obj.asInstanceOf[(PreparedGeometry, String)])
             }
-            index.rtree.query(Geometry(g).jtsGeom.getEnvelopeInternal, visitor)
+            index.rtree.query(g.getEnvelopeInternal, visitor)
           }
         }
       t.filter(_._1.intersects(g)).map(_._2)
@@ -221,7 +223,7 @@ object AOIMonitorUtils extends Logging {
       new AOIIndex(
         SpatialIndex.fromExtents(
           notifications.map { n =>
-            (PreparedGeometryFactory.prepare(n.geom.jtsGeom), n.data)
+            (PreparedGeometryFactory.prepare(n._3), n._1)
           }
         ) { case (pg, _) => pg.getGeometry.getEnvelopeInternal }
       )
@@ -315,10 +317,7 @@ object AOIMonitorUtils extends Logging {
         val geom = wkbReader.read(rs.getBytes("geometry"))
         val name = rs.getString("name")
         val email = rs.getString("email")
-        val notification = Feature(
-          Geometry(geom),
-          NotificationData(notificationId, userId, name, email)
-        )
+        val notification = (notificationId, userId, geom, name, email)
         data.prepend(notification)
       }
     } finally {
