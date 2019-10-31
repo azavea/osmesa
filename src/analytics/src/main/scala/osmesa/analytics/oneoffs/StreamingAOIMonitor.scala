@@ -77,7 +77,7 @@ object StreamingAOIMonitor
             notifications.foreach { println(_) }
             val notificationsDf = notifications
               .toDF("notificationId", "userId", "geom", "name", "email")
-            val aoiIndex = AOIIndex(notifications)
+            val aoiIndex = spark.sparkContext.broadcast(AOIIndex(notifications))
 
             lazy val currentSequence = AugmentedDiffSource
               .getCurrentSequence(augmentedDiffSource)
@@ -131,7 +131,7 @@ object StreamingAOIMonitor
             )
 
             val aoiTag = udf { g: jts.Geometry =>
-              aoiIndex(g).toList
+              aoiIndex.value(g).toList
             }
 
             // 1. READ IN DIFF STREAM
