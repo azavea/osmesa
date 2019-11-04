@@ -2,7 +2,7 @@ package osmesa.analytics.oneoffs
 
 import java.net.URI
 import java.sql.{Connection, DriverManager, Timestamp}
-import java.util.UUID
+import java.time.Instant
 
 import cats.data.Validated
 import cats.implicits._
@@ -10,7 +10,7 @@ import com.monovore.decline.{Argument, CommandApp, Opts}
 import geotrellis.vector._
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions.{collect_list, collect_set, count, explode, size, udf}
+import org.apache.spark.sql.functions.{collect_set, count, explode, size, udf}
 import org.locationtech.geomesa.spark.jts._
 import org.locationtech.jts.geom.{GeometryFactory, PrecisionModel}
 import org.locationtech.jts.{geom => jts}
@@ -19,17 +19,10 @@ import org.locationtech.jts.io.WKBReader
 import osmesa.analytics.Analytics
 import osmesa.analytics.oneoffs.Interval._
 import osmesa.analytics.stats._
-import osmesa.analytics.stats.functions._
-import vectorpipe.functions._
-import vectorpipe.sources.Source
+import vectorpipe.sources.{AugmentedDiffSource, Source}
 
 import scala.collection.mutable.ListBuffer
 import scala.util.Properties
-
-// These only required for test getAreaIndex implementation
-import geotrellis.vector.io._
-import geotrellis.vector.io.json._
-import spray.json._
 
 object StreamingAOIMonitor
     extends CommandApp(
@@ -66,27 +59,30 @@ object StreamingAOIMonitor
               "end-sequence",
               short = "e",
               metavar = "sequence",
-              help = "Ending sequence. If absent, this will be an infinite stream."
+              help = "Ending sequence. If absent, this will default to the sequence for Instant.now()."
             )
             .orNone
 
         (intervalOpt, augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt).mapN {
           (interval, augmentedDiffSource, startSequence, endSequence) =>
             val appName = "StreamingAOIMonitor"
+            val now = Timestamp.from(Instant.now)
 
             implicit val spark: SparkSession = Analytics.sparkSession("Streaming AOI Monitor")
 
             import spark.implicits._
-            spark.withJTS
             import AOIMonitorUtils._
 
-            val areasOfInterest: List[NotificationData] = queryAreasOfInterest(interval)
-            areasOfInterest.foreach { println(_) }
+            val notifications: List[Notification] = queryNotifications(interval)
+            notifications.foreach { println(_) }
+            val notificationsDf = notifications
+              .toDF("notificationId", "userId", "geom", "name", "email")
+            val aoiIndex = spark.sparkContext.broadcast(AOIIndex(notifications))
 
-            lazy val currentSequence = getCurrentSequence(augmentedDiffSource, interval).getOrElse(
-              throw new RuntimeException(
-                s"Could not pull current AugmentedDiff sequence from $augmentedDiffSource, and no alternative was provided")
-            )
+            lazy val currentSequence = AugmentedDiffSource
+              .getCurrentSequence(augmentedDiffSource)
+              // Include small offset so that we're not processing the sequence for exactly now
+              .getOrElse(AugmentedDiffSource.timestampToSequence(now) - 10)
 
             val endPosition =
               if (endSequence isDefined)
@@ -103,8 +99,8 @@ object StreamingAOIMonitor
                     seq
                   case None =>
                     interval match {
-                      case Daily  => currentSequence - 1440
-                      case Weekly => currentSequence - (1440 * 7)
+                      case Daily  => endPosition - 1440
+                      case Weekly => endPosition - (1440 * 7)
                     }
                 }
               }
@@ -123,68 +119,62 @@ object StreamingAOIMonitor
                 warnMessage(
                   s"WHILE RUNNING WEEKLY UPDATE: catching up on too many weeks (${diff.toDouble / 10080}) of logs!")
               case _ =>
-                throw new IllegalArgumentException(
-                  s"""Cannot process stream for interval "$interval" and sequence [$startPosition, $endPosition]""")
+                warnMessage(
+                  s"""Processing stream for interval "$interval" and sequence [$startPosition, $endPosition]""")
             }
 
             val options = Map(
               Source.BaseURI -> augmentedDiffSource.toString,
               Source.ProcessName -> appName,
-              Source.StartSequence -> startPosition.toString
-            ) ++
-              endSequence
-                .map(s => Map(Source.EndSequence -> s.toString))
-                .getOrElse(Map.empty[String, String])
+              Source.StartSequence -> startPosition.toString,
+              Source.EndSequence -> endPosition.toString
+            )
 
-            val aoiIndex = getAreaIndex( /*databaseUri*/ )
             val aoiTag = udf { g: jts.Geometry =>
-              aoiIndex(g).toList
+              aoiIndex.value(g).toList
             }
 
             // 1. READ IN DIFF STREAM
             //    This non-streaming process will grab a finite set of diffs, beginning
             //    with the starting sequence, and give a DataFrame.  Tag each diff with
-            //    The set of participating AOIs.
+            //    the set of participating aoi notifications.
             val diffs = spark.read
               .format(Source.AugmentedDiffs)
               .options(options)
               .load
-              .withColumn("aoi", explode(aoiTag('geom)))
+              // Given Diff geom, return exploded list of matching notificationIds
+              .withColumn("notificationId", explode(aoiTag('geom)))
 
             // 2. EXTRACT SALIENT INFO FROM DIFFS
-            //    Prepare a dataset of summaries, one for each AOI/user combo carrying
-            //    the information we want to communicate in email.  Daily and weekly
-            //    summaries will differ in terms of message content.
-
-            // NOTE: The following does not compile because Dataset[T] is not invariant
-            // over T.  We will need to convert to some common representation (say, the
-            // email message itself).
-            val messageInfo: Dataset[AOIUserSummary] = {
+            //    Prepare a dataset of summaries, one for each notification to send.
+            val messageInfo: Dataset[NotificationSummary] = {
               val stats = diffs.withDelta
                 .withColumn("measurements", DefaultMeasurements)
                 .withColumn("counts", DefaultCounts)
 
               stats
-                .groupBy('aoi, 'uid)
+                .groupBy('notificationId)
                 .agg(
 //                      sum_counts(collect_list('counts)) as 'counts,
 //                      sum_measurements(collect_list('measurements)) as 'measurements,
                   count('id) as 'edit_count,
                   size(collect_set('changeset)) as 'changeset_count
-                ).as[AOIUserSummary]
+                )
+                // 3. CONSTRUCT LOOKUP TABLE FOR AOI INFO
+                //    We need to package up the information about AOIs (specifically the
+                //    name and subscriber list) so that we may associate that with each info
+                //    message and send the email.  This should be a map?  Or is this a
+                //    separate DataFrame that we join to `diffs` before step 2?
+                .join(notificationsDf, "notificationId")
+                .as[NotificationSummary]
             }
-
-            // 3. CONSTRUCT LOOKUP TABLE FOR AOI INFO
-            //    We need to package up the information about AOIs (specifically the
-            //    name and subscriber list) so that we may associate that with each info
-            //    message and send the email.  This should be a map?  Or is this a
-            //    separate DataFrame that we join to `diffs` before step 2?
 
             // 4. SEND MESSAGES TO QUEUE
             //    We need to craft an email from each record and queue it for sending
-            //    via SES.
             messageInfo.foreach { info =>
-              }
+              warnMessage(
+                s"Message: ${info.notificationId}, ${info.edit_count}, ${info.changeset_count}")
+            }
 
             // 5. SAVE CURRENT END POSITION IN DB FOR NEXT RUN
             setBeginSequence(interval, endPosition)
@@ -196,76 +186,47 @@ object StreamingAOIMonitor
 
 object AOIMonitorUtils extends Logging {
 
-  case class AOIUserSummary(
-      aoi: Int,
-      uid: Long,
+  case class NotificationData(notificationId: String, userId: String, name: String, email: String)
+
+  // notificationId, userId, geom, name, email
+  type Notification = (String, String, jts.Geometry, String, String)
+
+  case class NotificationSummary(
+      notificationId: String,
       edit_count: Long,
-      changeset_count: Int
+      changeset_count: Int,
+      userId: String,
+      geom: jts.Geometry,
+      name: String,
+      email: String
   ) {
     def toMessageBody(): String = ???
   }
 
-  case class Country(name: String)
-
-  object MyJsonProtocol extends DefaultJsonProtocol {
-    implicit object CountryJsonFormat extends RootJsonFormat[Country] {
-      def read(value: JsValue): Country =
-        value.asJsObject.getFields("ENAME") match {
-          case Seq(JsString(name)) =>
-            Country(name)
-          case v =>
-            throw DeserializationException(s"Country expected, got $v")
-        }
-
-      def write(v: Country): JsValue =
-        JsObject(
-          "name" -> JsString(v.name)
-        )
-    }
-  }
-
-  import MyJsonProtocol._
-
-  class AOIIndex(index: SpatialIndex[(PreparedGeometry, Country)]) extends Serializable {
-    def apply(g: jts.Geometry): Traversable[Country] = {
+  class AOIIndex(index: SpatialIndex[(PreparedGeometry, String)]) extends Serializable {
+    def apply(g: jts.Geometry): Traversable[String] = {
       val t =
-        new Traversable[(PreparedGeometry, Country)] {
-          override def foreach[U](f: ((PreparedGeometry, Country)) => U): Unit = {
+        new Traversable[(PreparedGeometry, String)] {
+          override def foreach[U](f: ((PreparedGeometry, String)) => U): Unit = {
             val visitor = new org.locationtech.jts.index.ItemVisitor {
               override def visitItem(obj: AnyRef): Unit =
-                f(obj.asInstanceOf[(PreparedGeometry, Country)])
+                f(obj.asInstanceOf[(PreparedGeometry, String)])
             }
-            index.rtree.query(Geometry(g).jtsGeom.getEnvelopeInternal, visitor)
+            index.rtree.query(g.getEnvelopeInternal, visitor)
           }
         }
-
       t.filter(_._1.intersects(g)).map(_._2)
     }
   }
   object AOIIndex {
-    def apply(features: Seq[Feature[Geometry, Country]]): AOIIndex =
+    def apply(notifications: Seq[Notification]): AOIIndex =
       new AOIIndex(
         SpatialIndex.fromExtents(
-          features.map { mpf =>
-            (PreparedGeometryFactory.prepare(mpf.geom.jtsGeom), mpf.data)
+          notifications.map { n =>
+            (PreparedGeometryFactory.prepare(n._3), n._1)
           }
         ) { case (pg, _) => pg.getGeometry.getEnvelopeInternal }
       )
-  }
-
-  def getAreaIndex(): AOIIndex = {
-    val collection = vectorpipe.util.Resource("aois.geojson").parseGeoJson[JsonFeatureCollection]
-    val polys = collection.getAllPolygonFeatures[Country].map(_.mapGeom(MultiPolygon(_)))
-    val mps = collection.getAllMultiPolygonFeatures[Country]
-
-    AOIIndex(polys ++ mps)
-  }
-
-  def getAreaIndex(databaseURI: URI): AOIIndex = {
-    // Load a database table, grabbing names and geometries (decode geoms from WKB?)
-    // Store in an AOIIndex
-
-    ???
   }
 
   def getLastSequence(interval: Interval): Option[Int] = {
@@ -277,7 +238,7 @@ object AOIMonitorUtils extends Logging {
     spark.sparkContext
       .parallelize(Seq(augmentedDiffSource))
       .map { uri =>
-        queryBeginSequence(interval)
+        AugmentedDiffSource.getCurrentSequence(uri)
       }
       .collect
       .apply(0)
@@ -325,10 +286,10 @@ object AOIMonitorUtils extends Logging {
     }
   }
 
-  def queryAreasOfInterest(interval: Interval): List[NotificationData] = {
+  def queryNotifications(interval: Interval): List[Notification] = {
     var connection: Connection = null
     val wkbReader = new WKBReader(new GeometryFactory(new PrecisionModel(), 4326))
-    val data = ListBuffer[NotificationData]()
+    val data = ListBuffer[Notification]()
     try {
       connection = AOIDatabaseConfig.getConnection
       val now = new Timestamp(new java.util.Date().getTime)
@@ -351,13 +312,13 @@ object AOIMonitorUtils extends Logging {
       preppedStatement.setTimestamp(2, now)
       val rs = preppedStatement.executeQuery()
       while (rs.next()) {
-        val userId = UUID.fromString(rs.getString("user_id"))
-        val notificationId = UUID.fromString(rs.getString("notification_id"))
+        val notificationId = rs.getString("notification_id")
+        val userId = rs.getString("user_id")
         val geom = wkbReader.read(rs.getBytes("geometry"))
         val name = rs.getString("name")
         val email = rs.getString("email")
-        val aoiData = NotificationData(userId, notificationId, geom, name, email)
-        data.prepend(aoiData)
+        val notification = (notificationId, userId, geom, name, email)
+        data.prepend(notification)
       }
     } finally {
       if (connection != null) connection.close()
@@ -365,12 +326,6 @@ object AOIMonitorUtils extends Logging {
     data.toList
   }
 }
-
-case class NotificationData(userId: UUID,
-                            notificationId: UUID,
-                            geom: Geometry,
-                            name: String,
-                            email: String)
 
 sealed trait Interval {
   def value: String
