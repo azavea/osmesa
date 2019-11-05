@@ -2,7 +2,8 @@ package osmesa.analytics.oneoffs
 
 import java.net.URI
 import java.sql.{Connection, DriverManager, Timestamp}
-import java.time.Instant
+import java.time.temporal.ChronoUnit
+import java.time.{Instant, ZoneId, ZonedDateTime}
 
 import cats.data.Validated
 import cats.implicits._
@@ -66,6 +67,7 @@ object StreamingAOIMonitor
         (intervalOpt, augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt).mapN {
           (interval, augmentedDiffSource, startSequence, endSequence) =>
             val appName = "StreamingAOIMonitor"
+            val environment = Properties.envOrElse("ENVIRONMENT", "development")
             val now = Timestamp.from(Instant.now)
 
             implicit val spark: SparkSession = Analytics.sparkSession("Streaming AOI Monitor")
@@ -89,6 +91,7 @@ object StreamingAOIMonitor
                 endSequence.get
               else
                 currentSequence
+            val endTimestamp = AugmentedDiffSource.sequenceToTimestamp(endPosition)
 
             val startPosition =
               if (startSequence isDefined)
@@ -104,9 +107,17 @@ object StreamingAOIMonitor
                     }
                 }
               }
+            val startTimestamp = AugmentedDiffSource.sequenceToTimestamp(startPosition)
 
-            warnMessage(
-              s"Running stream process from $startPosition to $endPosition in replication stream")
+            val positionMessage =
+              s"""
+                | Running stream process from:
+                |   $startPosition ($startTimestamp)
+                | to:
+                |   $endPosition ($endTimestamp)
+                | in replication stream
+                |""".stripMargin
+            warnMessage(positionMessage)
 
             // Lodge a warning message if we're processing a stream covering more than
             // 36 hours (8 days) for daily (weekly) interval
@@ -172,12 +183,21 @@ object StreamingAOIMonitor
             // 4. SEND MESSAGES TO QUEUE
             //    We need to craft an email from each record and queue it for sending
             messageInfo.foreach { info =>
-              warnMessage(
-                s"Message: ${info.notificationId}, ${info.edit_count}, ${info.changeset_count}")
+              if (environment == "staging" || environment == "production") {
+                warnMessage(s"NOT IMPLEMENTED: SKIPPING SEND IN STAGING + PRODUCTION ENVIRONMENTS")
+              } else {
+                val message = info.toMessageBody(endTimestamp, interval)
+                warnMessage(
+                  s"Sending Notification for ${info.notificationId}:\n$message")
+
+              }
             }
 
             // 5. SAVE CURRENT END POSITION IN DB FOR NEXT RUN
-            setBeginSequence(interval, endPosition)
+            val setBeginResult = setBeginSequence(interval, endPosition)
+            if (setBeginResult > 0) {
+              warnMessage(s"checkpoint_interval set: (${interval.value}, $endPosition, $endTimestamp)")
+            }
 
             spark.stop
         }
@@ -200,7 +220,21 @@ object AOIMonitorUtils extends Logging {
       name: String,
       email: String
   ) {
-    def toMessageBody(): String = ???
+    def toMessageBody(endTime: Timestamp, interval: Interval): String = {
+      val startTime = interval.subtractFrom(endTime)
+      s"""
+        |
+        | AOI Notification for: $name
+        |
+        | There were:
+        |
+        |   - $edit_count edits
+        |   - $changeset_count changesets
+        |
+        | for the ${interval.value} interval from $startTime to $endTime.
+        |
+        |""".stripMargin
+    }
   }
 
   class AOIIndex(index: SpatialIndex[(PreparedGeometry, String)]) extends Serializable {
@@ -268,18 +302,26 @@ object AOIMonitorUtils extends Logging {
     }
   }
 
-  def setBeginSequence(interval: Interval, lastSequence: Int) = {
+  def setBeginSequence(interval: Interval, lastSequence: Int): Int = {
     var connection: Connection = null
     try {
       connection = AOIDatabaseConfig.getConnection
-      val preppedStatement =
-        connection.prepareStatement("INSERT INTO checkpoint_interval VALUES (?, ?)")
+      val sql =
+        """
+          |INSERT INTO checkpoint_interval (interval, sequence)
+          |VALUES (?, ?)
+          |ON CONFLICT (interval)
+          |DO UPDATE SET sequence = ?
+          |""".stripMargin
+      val preppedStatement = connection.prepareStatement(sql)
       preppedStatement.setString(1, interval.value)
       preppedStatement.setLong(2, lastSequence)
-      preppedStatement.executeQuery()
+      preppedStatement.setLong(3, lastSequence)
+      preppedStatement.executeUpdate()
     } catch {
       case e: Throwable => {
         warnMessage(s"ERROR in setBeginSequence: ${e.getMessage}")
+        0
       }
     } finally {
       if (connection != null) connection.close()
@@ -330,15 +372,24 @@ object AOIMonitorUtils extends Logging {
 sealed trait Interval {
   def value: String
   def shortCode: String
+  def chronoUnit: ChronoUnit
+  def subtractFrom(time: Timestamp): Timestamp = {
+    val utcZone = ZoneId.of("Etc/UTC")
+    val timeZdt = ZonedDateTime.ofInstant(time.toInstant, utcZone)
+    val startZdt = timeZdt.minus(1, chronoUnit)
+    Timestamp.from(startZdt.toInstant)
+  }
 }
 object Interval {
   case object Weekly extends Interval {
     val value = "weekly"
     val shortCode = "w"
+    val chronoUnit = ChronoUnit.WEEKS
   }
   case object Daily extends Interval {
     val value = "daily"
     val shortCode = "d"
+    val chronoUnit = ChronoUnit.DAYS
   }
 
   val options: Set[Interval] = Set(Daily, Weekly)
