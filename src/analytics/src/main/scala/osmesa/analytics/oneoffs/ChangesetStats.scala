@@ -13,6 +13,7 @@ import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.util.Geocode
+import osmesa.analytics.stats.functions._
 
 object ChangesetStats extends CommandApp(
   name = "changeset-stats",
@@ -221,7 +222,7 @@ object ChangesetStats extends CommandApp(
        val changesets = spark.read.orc(changesetSource)
 
       val changesetMetadata = changesets
-        .groupBy('id, 'tags.getItem("created_by") as 'editor, 'uid, 'user, 'created_at, 'tags.getItem("comment") as 'comment)
+        .groupBy('id, 'tags.getItem("created_by") as 'editor, 'uid, 'user, 'created_at, 'tags.getItem("comment") as 'comment, 'tags.getItem("hashtags") as 'hashtags)
         .agg(first('closed_at, ignoreNulls = true) as 'closed_at)
         .select(
           'id as 'changeset,
@@ -230,7 +231,7 @@ object ChangesetStats extends CommandApp(
           'user as 'name,
           'created_at,
           'closed_at,
-          hashtags('comment) as 'hashtags
+          merge_sets(hashtags('comment), hashtags('hashtags)) as 'hashtags
         )
 
       val changesetStats = rawChangesetStats
