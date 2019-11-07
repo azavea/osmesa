@@ -13,7 +13,7 @@ import osmesa.analytics.{Analytics, EditHistogram}
 import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.internal.{NodeType, WayType}
 import vectorpipe.functions.osm._
-import vectorpipe.sources.Source
+import vectorpipe.sources.{AugmentedDiffSource, Source}
 
 object StreamingFacetedEditHistogramTileUpdater
     extends CommandApp(
@@ -117,7 +117,7 @@ object StreamingFacetedEditHistogramTileUpdater
                 .options(options)
                 .load
                 // convert sequence into timestamp
-                .withColumn("watermark", to_timestamp(from_unixtime('sequence * 60 + 1347432900)))
+                .withColumn("watermark", AugmentedDiffSource.sequenceToTimestamp('sequence))
                 .withWatermark("watermark", "0 seconds")
 
               val nodes = diffs

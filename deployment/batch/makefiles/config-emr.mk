@@ -6,9 +6,9 @@ export SANDBOX_SG := sg-6b227c23
 
 export MASTER_INSTANCE := m3.xlarge
 export MASTER_PRICE := 0.10
-export WORKER_INSTANCE := m3.xlarge
-export WORKER_PRICE := 0.07
-export WORKER_COUNT := 32
+export WORKER_INSTANCE := r3.xlarge
+export WORKER_PRICE := 0.20
+export WORKER_COUNT := 64
 export USE_SPOT := true
 
 export DRIVER_MEMORY := 10000M
@@ -16,3 +16,7 @@ export DRIVER_CORES := 4
 export EXECUTOR_MEMORY := 10000M
 export EXECUTOR_CORES := 8
 export YARN_OVERHEAD := 1500
+
+# Uncomment/edit the followings line to add extra attributes to the cluster creation
+#export MASTER_EMR_ATTRS :=
+export CORE_EMR_ATTRS := EbsConfiguration={EbsOptimized=true,EbsBlockDeviceConfigs=[{VolumeSpecification={VolumeType=gp2,SizeInGB=1024}}]}

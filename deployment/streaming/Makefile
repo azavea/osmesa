@@ -1,104 +1,106 @@
-include config-aws.mk  # Variables for AWS options
-include config-local.mk   # Variables related to running locally
+include config-deployment.mk
 
-# The osmesa container
-LOCAL_IMG := osm_analytics:latest
+# If the user is on master branch, see if we should deploy to production
+VERSION_TAG=$(shell ./scripts/get-tag.sh)
+ifeq ($(VERSION_TAG), production)
+	DATABASE=${PRODUCTION_DB}
+	ECS_CLUSTER=${CLUSTER_NAME_DEPLOYMENT}
+	TASK_SUFFIX=
+else
+	DATABASE=${STAGING_DB}
+	ECS_CLUSTER=${CLUSTER_NAME_STAGING}
+	TASK_SUFFIX=-staging
+endif
+DB_URI=${DB_BASE_URI}/${DATABASE}
 
+.EXPORT_ALL_VARIABLES:
 
-#########
-# LOCAL #
-#########
-docker-compose.local.yml:
-	export LOCAL_IMG=${LOCAL_IMG}; \
-	export AUGDIFF_SOURCE=${LOCAL_AUGDIFF_SOURCE}; \
-	export CHANGESET_SOURCE=${LOCAL_CHANGESET_SOURCE}; \
-	export CHANGE_SOURCE=${LOCAL_CHANGE_SOURCE}; \
-	export AUGDIFF_START=${LOCAL_AUGDIFF_START}; \
-	export CHANGESET_START=${LOCAL_CHANGESET_START}; \
-	export CHANGE_START=${LOCAL_CHANGE_START}; \
-		./expand.sh docker-compose.local.yml.tpl > docker-compose.local.yml
+#############################
+#  Docker image management  #
+#############################
 
-start-local: docker-compose.local.yml
-	docker-compose -f docker-compose.local.yml up
+.PHONY: build-container login-aws-registry tag-image push-image
 
-stop-local:
-	docker-compose -f docker-compose.local.yml down
-
-
-#########
-#  AWS  #
-#########
+build-container:
+	cd .. && VERSION_TAG=${VERSION_TAG} ./build-container.sh
 
 login-aws-registry:
 	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
-tag-image:
-	docker tag ${LOCAL_IMG} ${ECR_REPO}
+tag-image: build-container
+	docker tag osm_analytics:${VERSION_TAG} ${ECR_IMAGE}:${VERSION_TAG}
 
 push-image: login-aws-registry tag-image
-	docker push ${ECR_REPO}
+	docker push ${ECR_IMAGE}:${VERSION_TAG}
 
-.PHONY: docker-compose.deploy.yml
+#######################
+# Streaming AWS Tasks #
+#######################
 
-docker-compose.deploy.yml: docker-compose.deploy.yml.tpl
-	export ECR_REPO=${ECR_REPO}
-	export AWS_LOG_GROUP=${AWS_LOG_GROUP}; \
-	export AWS_REGION=${AWS_REGION}; \
-	export AUGDIFF_SOURCE=${AUGDIFF_SOURCE}; \
-	export AUGDIFF_START=${AUGDIFF_START}; \
-	export CHANGESET_SOURCE=${CHANGESET_SOURCE}; \
-	export CHANGESET_START=${CHANGESET_START}; \
-	export DB_URI=${DB_URI}; \
-		./expand.sh $< > $@
+.PHONY: create-log-groups define-streaming-vectortile-tasks define-staging-streaming-update-tasks define-production-streaming-update-tasks deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater deploy-streaming-stats-updaters
 
-.PHONY: configure-cluster
+create-log-groups:
+	./scripts/create-log-groups.sh
 
-configure-cluster:
-	ecs-cli configure \
-	  --cluster ${CLUSTER_NAME} \
-	  --region ${AWS_REGION} \
-	  --config-name ${CONFIG_NAME}
+define-streaming-vectortile-tasks:
+	./scripts/define-streaming-vectortile-tasks.sh
 
-cluster-up:
-	ecs-cli up \
-	  --keypair ${KEYPAIR} \
-	  --instance-role ${INSTANCE_ROLE} \
-	  --security-group ${SECURITY_GROUP} \
-	  --size 1 \
-	  --instance-type ${INSTANCE_TYPE} \
-	  --cluster-config ${CONFIG_NAME} \
-	  --subnets ${SUBNETS} \
-	  --vpc ${VPC} \
-	  --force \
-	  --verbose
+define-staging-streaming-update-tasks:
+	./scripts/define-staging-streaming-update-tasks.sh
 
-cluster-down:
-	ecs-cli down --cluster-config ${CONFIG_NAME}
+define-production-streaming-update-tasks:
+	./scripts/define-production-streaming-update-tasks.sh
 
-.PHONY: create-service
+stop-streaming-footprint-updater:
+	./scripts/stop-streaming-service.sh streaming-user-footprint-tile-updater
 
-create-service: docker-compose.deploy.yml configure-cluster
-	ecs-cli compose \
-	  --file $< create \
-	  --cluster ${CLUSTER_NAME}
+deploy-streaming-footprint-updater: stop-streaming-footprint-updater
+	aws ecs create-service \
+	  --cluster "${CLUSTER_NAME_DEPLOYMENT}" \
+	  --service-name "streaming-user-footprint-tile-updater" \
+	  --task-definition "streaming-edit-histogram-tile-updater" \
+	  --desired-count 1 \
+	  --launch-type FARGATE \
+	  --scheduling-strategy REPLICA \
+	  --network-configuration ${NETWORK_CONFIGURATION}
 
-start-service: docker-compose.deploy.yml configure-cluster create-service
-	ecs-cli compose --file $< service up \
-	  --deployment-min-healthy-percent 0 \
-	  --create-log-groups \
-	  --cluster ${CLUSTER_NAME}
+stop-streaming-edit-histogram-updater:
+	./scripts/stop-streaming-service.sh streaming-edit-histogram-tile-updater
 
-stop-service: docker-compose.deploy.yml
-	ecs-cli compose --file $< down
+deploy-streaming-edit-histogram-updater: stop-streaming-edit-histogram-updater
+	aws ecs create-service \
+	  --cluster "${CLUSTER_NAME_DEPLOYMENT}" \
+	  --service-name "streaming-edit-histogram-tile-updater" \
+	  --task-definition "streaming-edit-histogram-tile-updater" \
+	  --desired-count 1 \
+	  --launch-type FARGATE \
+	  --scheduling-strategy REPLICA \
+	  --network-configuration ${NETWORK_CONFIGURATION}
 
+stop-streaming-stats-updaters:
+	./scripts/stop-streaming-service.sh streaming-stats-updater
 
-#########
-#  ALL  #
-#########
-build-container:
-	cd .. && ./build-container.sh
+deploy-streaming-stats-updaters: stop-streaming-stats-updaters
+	aws ecs create-service \
+	  --cluster "${ECS_CLUSTER}" \
+	  --service-name "streaming-stats-updater" \
+	  --task-definition "streaming-stats-updater${TASK_SUFFIX}" \
+	  --desired-count 1 \
+	  --launch-type FARGATE \
+	  --scheduling-strategy REPLICA \
+	  --network-configuration ${NETWORK_CONFIGURATION}
 
-clean:
-	rm -f docker-compose.local.yml
-	rm -f docker-compose.deploy.yml
+deploy-streaming-vectortile-tasks: deploy-footprint-updater deploy-streaming-edit-histogram-updater
 
+###################
+# Batch AWS Tasks #
+###################
+
+batch-generate-footprints:
+	./scripts/batch-generate-footprints.sh
+
+batch-generate-edit-histograms:
+	./scripts/batch-generate-edit-histograms.sh
+
+batch-generate-db-backfill:
+	./scripts/batch-process.sh "OSMesa Batch Process" "ChangesetStatsCreator" 64 "[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.analytics.oneoffs.ChangesetStatsCreator\", \"--conf\", \"spark.executor.memoryOverhead=2g\", \"--conf\", \"spark.sql.shuffle.partitions=2000\", \"--conf\", \"spark.speculation=true\", \"${OSMESA_ANALYTICS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"]"
