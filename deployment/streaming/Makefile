@@ -1,7 +1,7 @@
 include config-deployment.mk
 
 # If the user is on master branch, see if we should deploy to production
-VERSION_TAG=$(shell ./scripts/get-tag.sh)
+VERSION_TAG:=$(shell ./scripts/get-tag.sh)
 ifeq ($(VERSION_TAG), production)
 	DATABASE=${PRODUCTION_DB}
 	ECS_CLUSTER=${CLUSTER_NAME_DEPLOYMENT}
@@ -58,7 +58,7 @@ deploy-streaming-footprint-updater: stop-streaming-footprint-updater
 	aws ecs create-service \
 	  --cluster "${CLUSTER_NAME_DEPLOYMENT}" \
 	  --service-name "streaming-user-footprint-tile-updater" \
-	  --task-definition "streaming-edit-histogram-tile-updater" \
+	  --task-definition "streaming-user-footprint-tile-updater" \
 	  --desired-count 1 \
 	  --launch-type FARGATE \
 	  --scheduling-strategy REPLICA \
