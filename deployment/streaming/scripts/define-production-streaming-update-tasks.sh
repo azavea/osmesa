@@ -6,7 +6,7 @@ if [ -z ${VERSION_TAG+x} ]; then
 fi
 
 aws ecs register-task-definition \
-    --family streaming-stats-updater-production \
+    --family streaming-stats-updater \
     --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
@@ -26,7 +26,7 @@ aws ecs register-task-definition \
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
 	        \"--driver-memory\", \"2048m\",
-	        \"--class\", \"osmesa.analytics.oneoffs.AugmentedDiffStreamProcessor\",
+	        \"--class\", \"osmesa.analytics.oneoffs.StreamingChangesetStatsUpdater\",
 	        \"/opt/osmesa-analytics.jar\",
 	        \"--augmented-diff-source\", \"${AUGDIFF_SOURCE}\"
 	      ],
@@ -51,7 +51,7 @@ aws ecs register-task-definition \
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
 	        \"--driver-memory\", \"2048m\",
-	        \"--class\", \"osmesa.analytics.oneoffs.ChangesetStreamProcessor\",
+	        \"--class\", \"osmesa.analytics.oneoffs.StreamingChangesetMetadataUpdater\",
 	        \"/opt/osmesa-analytics.jar\",
 	        \"--changeset-source\", \"${CHANGESET_SOURCE}\"
 	      ],

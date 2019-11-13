@@ -34,12 +34,23 @@ aws ecs register-task-definition \
 	      \"environment\": [
 	        {
 	          \"name\": \"DATABASE_URL\",
-	          \"value\": \"${DB_BASE_URI}${PRODUCTION_DB}\"
+	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}\",
+	      \"image\": \"${ECR_IMAGE}:production\",
 	      \"name\": \"streaming-edit-histogram-tile-updater\"
-	    },
+	    }
+	  ]"
+
+aws ecs register-task-definition \
+    --family streaming-user-footprint-tile-updater \
+    --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
+    --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
+    --network-mode awsvpc \
+    --requires-compatibilities EC2 FARGATE \
+    --cpu "1 vCPU" \
+    --memory "2 GB" \
+    --container-definitions "[
 	    {
 	      \"logConfiguration\": {
 	        \"logDriver\": \"awslogs\",
@@ -54,13 +65,13 @@ aws ecs register-task-definition \
 	        \"--driver-memory\", \"2048m\",
 	        \"--class\", \"osmesa.analytics.oneoffs.StreamingUserFootprintTileUpdater\",
 	        \"/opt/osmesa-analytics.jar\",
-	        \"--change-source\", \"${CHANGESET_SOURCE}\",
+	        \"--change-source\", \"${CHANGE_SOURCE}\",
 	        \"--tile-source\", \"${FOOTPRINT_VT_LOCATION}\"
 	      ],
 	      \"environment\": [
 	        {
 	          \"name\": \"DATABASE_URL\",
-	          \"value\": \"${DB_BASE_URI}${PRODUCTION_DB}\"
+	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:production\",
