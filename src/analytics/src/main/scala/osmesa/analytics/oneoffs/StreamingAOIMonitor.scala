@@ -32,8 +32,11 @@ object StreamingAOIMonitor
       main = {
         val intervalOpt =
           Opts
-            .option[Interval]("interval",
-                              help = "Period of time to aggregate over (d=daily, w=weekly)")
+            .option[Interval](
+              "interval",
+              help =
+                "Period of time to aggregate over (d=daily, w=weekly). Can also be provided via AOI_INTERVAL environment variable. Default: daily.")
+            .orNone
 
         val augmentedDiffSourceOpt =
           Opts
@@ -60,12 +63,13 @@ object StreamingAOIMonitor
               "end-sequence",
               short = "e",
               metavar = "sequence",
-              help = "Ending sequence. If absent, this will default to the sequence for Instant.now()."
+              help =
+                "Ending sequence. If absent, this will default to the sequence for Instant.now()."
             )
             .orNone
 
         (intervalOpt, augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt).mapN {
-          (interval, augmentedDiffSource, startSequence, endSequence) =>
+          (intervalArg, augmentedDiffSource, startSequence, endSequence) =>
             val appName = "StreamingAOIMonitor"
             val environment = Properties.envOrElse("ENVIRONMENT", "development")
             val now = Timestamp.from(Instant.now)
@@ -74,6 +78,15 @@ object StreamingAOIMonitor
 
             import spark.implicits._
             import AOIMonitorUtils._
+
+            val defaultInterval: Interval = Daily
+            val interval: Interval = intervalArg match {
+              case Some(i) => i
+              case None =>
+                Interval
+                  .unapply(Properties.envOrElse("AOI_INTERVAL", ""))
+                  .getOrElse(defaultInterval)
+            }
 
             val notifications: List[Notification] = queryNotifications(interval)
             notifications.foreach { println(_) }
@@ -187,8 +200,7 @@ object StreamingAOIMonitor
                 warnMessage(s"NOT IMPLEMENTED: SKIPPING SEND IN STAGING + PRODUCTION ENVIRONMENTS")
               } else {
                 val message = info.toMessageBody(endTimestamp, interval)
-                warnMessage(
-                  s"Sending Notification for ${info.notificationId}:\n$message")
+                warnMessage(s"Sending Notification for ${info.notificationId}:\n$message")
 
               }
             }
@@ -196,7 +208,8 @@ object StreamingAOIMonitor
             // 5. SAVE CURRENT END POSITION IN DB FOR NEXT RUN
             val setBeginResult = setBeginSequence(interval, endPosition)
             if (setBeginResult > 0) {
-              warnMessage(s"checkpoint_interval set: (${interval.value}, $endPosition, $endTimestamp)")
+              warnMessage(
+                s"checkpoint_interval set: (${interval.value}, $endPosition, $endTimestamp)")
             }
 
             spark.stop
