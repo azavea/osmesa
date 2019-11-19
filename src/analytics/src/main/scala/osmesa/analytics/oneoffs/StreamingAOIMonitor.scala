@@ -9,6 +9,8 @@ import cats.data.Validated
 import cats.implicits._
 import com.monovore.decline.{Argument, CommandApp, Opts}
 import geotrellis.vector._
+import javax.mail.internet.InternetAddress
+import org.apache.commons.mail._
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{collect_set, count, explode, size, udf}
@@ -22,6 +24,7 @@ import osmesa.analytics.oneoffs.Interval._
 import osmesa.analytics.stats._
 import vectorpipe.sources.{AugmentedDiffSource, Source}
 
+import collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.util.Properties
 
@@ -195,14 +198,39 @@ object StreamingAOIMonitor
 
             // 4. SEND MESSAGES TO QUEUE
             //    We need to craft an email from each record and queue it for sending
-            messageInfo.foreach { info =>
-              if (environment == "staging" || environment == "production") {
-                warnMessage(s"NOT IMPLEMENTED: SKIPPING SEND IN STAGING + PRODUCTION ENVIRONMENTS")
-              } else {
+            messageInfo.foreach {
+              info =>
+                val subject =
+                  s"${interval.value.capitalize} AOI Summary for ${info.name} ending $endTimestamp"
                 val message = info.toMessageBody(endTimestamp, interval)
-                warnMessage(s"Sending Notification for ${info.notificationId}:\n$message")
+                val fromAddress = AOIEmailConfig.fromAddress
+                if (!fromAddress.isEmpty) {
+                  val toAddress = new InternetAddress(info.email)
+                  val email = new SimpleEmail()
+                  email.setHostName(AOIEmailConfig.smtpHostname)
+                  email.setSmtpPort(AOIEmailConfig.smtpPort)
 
-              }
+                  email.setFrom(AOIEmailConfig.fromAddress)
+                  email.setTo(Seq(toAddress).asJavaCollection)
+                  email.setSubject(subject)
+                  email.setMsg(message)
+                  try {
+                    val messageId = email.send
+                    warnMessage(s"SUCCESS Message $messageId sent for ${info.notificationId}")
+                  } catch {
+                    case error: Throwable => {
+                      val msg =
+                        s"""
+                          |ERROR Unable to send message for notification ${info.notificationId}
+                          |Trace:
+                          |${error.getStackTrace.mkString("\n")}
+                          |""".stripMargin
+                      warnMessage(msg)
+                    }
+                  }
+                } else {
+                  warnMessage(s"Sending Notification for ${info.notificationId}:\n$message")
+                }
             }
 
             // 5. SAVE CURRENT END POSITION IN DB FOR NEXT RUN
@@ -451,4 +479,10 @@ object AOIDatabaseConfig {
   def getConnection(): Connection = {
     DriverManager.getConnection(jdbcUrl, dbUser, dbPassword)
   }
+}
+
+object AOIEmailConfig {
+  val smtpHostname: String = Properties.envOrElse("AOI_SMTP_HOSTNAME", "localhost")
+  val smtpPort: Int = Properties.envOrElse("AOI_SMTP_PORT", "25").toInt
+  val fromAddress: String = Properties.envOrElse("AOI_FROM_ADDRESS", "")
 }

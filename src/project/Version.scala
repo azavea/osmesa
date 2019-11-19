@@ -15,4 +15,5 @@ object Version {
   val scalaLogging = "3.5.0"
   val commonsIO = "2.5"
   val osmosis = "0.46"
+  val apacheCommonsEmail = "1.5"
 }
