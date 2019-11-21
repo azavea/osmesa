@@ -18,6 +18,7 @@ object Dependencies {
   val scalactic      = "org.scalactic"               %% "scalactic"                   % Version.scalactic
   val scalatest      = "org.scalatest"               %%  "scalatest"                  % Version.scalatest % "test"
   val jaiCore        = "javax.media" % "jai_core" % "1.1.3" % "test" from "http://download.osgeo.org/webdav/geotools/javax/media/jai_core/1.1.3/jai_core-1.1.3.jar"
+  val apacheCommonsEmail = "org.apache.commons" % "commons-email" % Version.apacheCommonsEmail
   val hbaseCommon    = "org.apache.hbase" % "hbase-common" % "1.3.1"
   val hbaseClient    = "org.apache.hbase" % "hbase-client" % "1.3.1"
   val hbaseServer    = "org.apache.hbase" % "hbase-server" % "1.3.1"
