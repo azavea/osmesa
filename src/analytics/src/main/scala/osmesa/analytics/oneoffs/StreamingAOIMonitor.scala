@@ -74,7 +74,6 @@ object StreamingAOIMonitor
         (intervalOpt, augmentedDiffSourceOpt, startSequenceOpt, endSequenceOpt).mapN {
           (intervalArg, augmentedDiffSource, startSequence, endSequence) =>
             val appName = "StreamingAOIMonitor"
-            val environment = Properties.envOrElse("ENVIRONMENT", "development")
             val now = Timestamp.from(Instant.now)
 
             implicit val spark: SparkSession = Analytics.sparkSession("Streaming AOI Monitor")
@@ -91,11 +90,9 @@ object StreamingAOIMonitor
                   .getOrElse(defaultInterval)
             }
 
-            val notifications: List[Notification] = queryNotifications(interval)
-            notifications.foreach { println(_) }
-            val notificationsDf = notifications
-              .toDF("notificationId", "userId", "geom", "name", "email")
-            val aoiIndex = spark.sparkContext.broadcast(AOIIndex(notifications))
+            val notificationList: List[Notification] = queryNotifications(interval)
+            val notifications = spark.createDataset(notificationList)
+            val aoiIndex = spark.sparkContext.broadcast(AOIIndex(notificationList))
 
             lazy val currentSequence = AugmentedDiffSource
               .getCurrentSequence(augmentedDiffSource)
@@ -174,27 +171,42 @@ object StreamingAOIMonitor
 
             // 2. EXTRACT SALIENT INFO FROM DIFFS
             //    Prepare a dataset of summaries, one for each notification to send.
-            val messageInfo: Dataset[NotificationSummary] = {
+            val changeSummary = {
               val stats = diffs.withDelta
-                .withColumn("measurements", DefaultMeasurements)
-                .withColumn("counts", DefaultCounts)
+                .withColumn("osmUser", 'user)
+                .drop('user)
 
               stats
-                .groupBy('notificationId)
+                .groupBy('notificationId, 'osmUser)
                 .agg(
-//                      sum_counts(collect_list('counts)) as 'counts,
-//                      sum_measurements(collect_list('measurements)) as 'measurements,
-                  count('id) as 'edit_count,
-                  size(collect_set('changeset)) as 'changeset_count
+                  count('id) as 'editCount,
+                  size(collect_set('changeset)) as 'changesetCount
                 )
-                // 3. CONSTRUCT LOOKUP TABLE FOR AOI INFO
-                //    We need to package up the information about AOIs (specifically the
-                //    name and subscriber list) so that we may associate that with each info
-                //    message and send the email.  This should be a map?  Or is this a
-                //    separate DataFrame that we join to `diffs` before step 2?
-                .join(notificationsDf, "notificationId")
-                .as[NotificationSummary]
+                .orderBy('editCount.desc)
+                .as[UserChangeSummary]
             }
+            val groupedChanges = changeSummary.groupByKey(_.notificationId)
+            val notificationsByKey = notifications.groupByKey(_.notificationId)
+            val messageInfo: Dataset[NotificationSummary] =
+              groupedChanges.cogroup(notificationsByKey) {
+                case (notificationId: String,
+                      changes: Iterator[UserChangeSummary],
+                      notifications: Iterator[Notification]) => {
+                  if (changes.hasNext && notifications.hasNext) {
+                    val data = notifications.next
+                    Some(
+                      NotificationSummary(notificationId,
+                                          data.userId,
+                                          data.aoi,
+                                          data.name,
+                                          data.email,
+                                          changes.toSeq))
+                  } else {
+                    None
+                  }
+                }
+                case _ => None
+              }
 
             // 4. SEND MESSAGES TO QUEUE
             //    We need to craft an email from each record and queue it for sending
@@ -202,7 +214,7 @@ object StreamingAOIMonitor
               info =>
                 val subject =
                   s"${interval.value.capitalize} AOI Summary for ${info.name} ending $endTimestamp"
-                val message = info.toMessageBody(endTimestamp, interval)
+                val message = info.toMessageBody(startTimestamp, endTimestamp, interval)
                 val fromAddress = AOIEmailConfig.fromAddress
                 if (!fromAddress.isEmpty) {
                   val toAddress = new InternetAddress(info.email)
@@ -247,30 +259,39 @@ object StreamingAOIMonitor
 
 object AOIMonitorUtils extends Logging {
 
-  case class NotificationData(notificationId: String, userId: String, name: String, email: String)
+  case class Notification(notificationId: String,
+                          userId: String,
+                          aoi: jts.Geometry,
+                          name: String,
+                          email: String)
 
-  // notificationId, userId, geom, name, email
-  type Notification = (String, String, jts.Geometry, String, String)
+  case class UserChangeSummary(notificationId: String,
+                               osmUser: String,
+                               editCount: Long,
+                               changesetCount: Int)
 
   case class NotificationSummary(
       notificationId: String,
-      edit_count: Long,
-      changeset_count: Int,
       userId: String,
       geom: jts.Geometry,
       name: String,
-      email: String
+      email: String,
+      changes: Seq[UserChangeSummary]
   ) {
-    def toMessageBody(endTime: Timestamp, interval: Interval): String = {
-      val startTime = interval.subtractFrom(endTime)
+    def toMessageBody(startTime: Timestamp, endTime: Timestamp, interval: Interval): String = {
+      val messageUserList = changes
+        .map { ucs =>
+          s"   - ${ucs.osmUser}: ${ucs.editCount} edits, ${ucs.changesetCount} changesets"
+        }
+        .mkString("\n")
+
       s"""
         |
         | AOI Notification for: $name
         |
-        | There were:
+        | Summary by user:
         |
-        |   - $edit_count edits
-        |   - $changeset_count changesets
+        |$messageUserList
         |
         | for the ${interval.value} interval from $startTime to $endTime.
         |
@@ -298,7 +319,7 @@ object AOIMonitorUtils extends Logging {
       new AOIIndex(
         SpatialIndex.fromExtents(
           notifications.map { n =>
-            (PreparedGeometryFactory.prepare(n._3), n._1)
+            (PreparedGeometryFactory.prepare(n.aoi), n.notificationId)
           }
         ) { case (pg, _) => pg.getGeometry.getEnvelopeInternal }
       )
@@ -400,7 +421,7 @@ object AOIMonitorUtils extends Logging {
         val geom = wkbReader.read(rs.getBytes("geometry"))
         val name = rs.getString("name")
         val email = rs.getString("email")
-        val notification = (notificationId, userId, geom, name, email)
+        val notification = Notification(notificationId, userId, geom, name, email)
         data.prepend(notification)
       }
     } finally {
