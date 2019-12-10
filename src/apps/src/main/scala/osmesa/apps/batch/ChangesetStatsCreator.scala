@@ -1,7 +1,6 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.batch
 
 import java.net.URI
-import java.sql._
 
 import cats.implicits._
 import com.monovore.decline.{CommandApp, Opts}
@@ -9,13 +8,14 @@ import org.apache.spark.TaskContext
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
+import osmesa.analytics.oneoffs.MergeChangesetUtils
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
-import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.sources.{AugmentedDiffSource, ChangesetSource}
-import vectorpipe.util.{DBUtils, Geocode}
+import vectorpipe.util.Geocode
+import vectorpipe.{internal => ProcessOSM}
 
 object ChangesetStatsCreator
     extends CommandApp(

@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.batch
 
 import java.net.URI
 
@@ -9,11 +9,10 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.Analytics
-import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.util.Geocode
-import osmesa.analytics.stats.functions._
+import vectorpipe.{internal => ProcessOSM}
 
 object ChangesetStats extends CommandApp(
   name = "changeset-stats",
