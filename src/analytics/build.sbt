@@ -29,7 +29,6 @@ libraryDependencies ++= Seq(
   gtSparkTestKit,
   logging,
   scalatest,
-  apacheCommonsEmail,
 
   "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % Provided
 )
