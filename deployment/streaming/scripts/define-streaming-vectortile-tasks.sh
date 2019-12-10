@@ -26,8 +26,8 @@ aws ecs register-task-definition \
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
 	        \"--driver-memory\", \"2048m\",
-	        \"--class\", \"osmesa.analytics.oneoffs.StreamingFacetedEditHistogramTileUpdater\",
-	        \"/opt/osmesa-analytics.jar\",
+	        \"--class\", \"osmesa.apps.streaming.StreamingFacetedEditHistogramTileUpdater\",
+	        \"/opt/osmesa-apps.jar\",
 	        \"--augmented-diff-source\", \"${AUGDIFF_SOURCE}\",
 	        \"--tile-source\", \"${HISTOGRAM_VT_LOCATION}\"
 	      ],
@@ -63,8 +63,8 @@ aws ecs register-task-definition \
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
 	        \"--driver-memory\", \"2048m\",
-	        \"--class\", \"osmesa.analytics.oneoffs.StreamingUserFootprintTileUpdater\",
-	        \"/opt/osmesa-analytics.jar\",
+	        \"--class\", \"osmesa.apps.streaming.StreamingUserFootprintTileUpdater\",
+	        \"/opt/osmesa-apps.jar\",
 	        \"--change-source\", \"${CHANGE_SOURCE}\",
 	        \"--tile-source\", \"${FOOTPRINT_VT_LOCATION}\"
 	      ],
