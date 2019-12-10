@@ -42,11 +42,11 @@ aws emr create-cluster \
 	        "Args": [
 	          "spark-submit",
 	          "--deploy-mode", "cluster",
-	          "--class", "osmesa.analytics.oneoffs.FootprintCommand",
+	          "--class", "osmesa.apps.batch.FootprintCreator",
 	          "--conf", "spark.executor.memoryOverhead=2g",
 	          "--conf", "spark.sql.shuffle.partitions=2000",
 	          "--conf", "spark.speculation=true",
-	          "${OSMESA_ANALYTICS_JAR}",
+	          "${OSMESA_APPS_JAR}",
 	          "--history", "${HISTORY_ORC}",
 	          "--changesets", "${CHANGESETS_ORC}",
 	          "--out", "${FOOTPRINT_VT_LOCATION}",
@@ -56,6 +56,6 @@ aws emr create-cluster \
 	        "ActionOnFailure": "TERMINATE_CLUSTER",
 	        "Jar": "command-runner.jar",
 	        "Properties": "",
-	        "Name": "FootprintCommand"
+	        "Name": "FootprintCreator"
 	      }
 	    ]'
