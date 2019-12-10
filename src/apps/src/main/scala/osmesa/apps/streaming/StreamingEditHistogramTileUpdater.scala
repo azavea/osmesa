@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.io._
 import java.net.URI
@@ -14,13 +14,13 @@ import vectorpipe.sources.Source
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.EditHistogramTileUpdater \
- *   ingest/target/scala-2.11/osmesa-analytics.jar
+ *   --class osmesa.apps.streaming.StreamingEditHistogramTileUpdater \
+ *   ingest/target/scala-2.11/osmesa-apps.jar
  */
-object EditHistogramTileUpdater
+object StreamingEditHistogramTileUpdater
     extends CommandApp(
       name = "osmesa-edit-histogram-tile-updater",
       header = "Consume minutely diffs to update edit histogram MVTs",
@@ -41,20 +41,11 @@ object EditHistogramTileUpdater
               "Minutely diff starting sequence. If absent, the current (remote) sequence will be used.")
           .orNone
 
-        val endSequenceOpt = Opts
-          .option[Int](
-            "end-sequence",
-            short = "e",
-            metavar = "sequence",
-            help =
-              "Minutely diff ending sequence. If absent, the current (remote) sequence will be used.")
-          .orNone
-
-        val partitionCountOpt = Opts
-          .option[Int]("partition-count",
-                       short = "p",
-                       metavar = "partition count",
-                       help = "Change partition count.")
+        val batchSizeOpt = Opts
+          .option[Int]("batch-size",
+                       short = "b",
+                       metavar = "batch size",
+                       help = "Change batch size.")
           .orNone
 
         val tileSourceOpt = Opts
@@ -73,6 +64,17 @@ object EditHistogramTileUpdater
                        help = "Set the number of concurrent uploads.")
           .orNone
 
+        val databaseUrlOpt =
+          Opts
+            .option[URI](
+              "database-url",
+              short = "d",
+              metavar = "database URL",
+              help = "Database URL (default: DATABASE_URL environment variable)"
+            )
+            .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
+            .orNone
+
         val baseZoomOpt = Opts
           .option[Int]("base-zoom",
                        short = "z",
@@ -82,17 +84,17 @@ object EditHistogramTileUpdater
 
         (changeSourceOpt,
          startSequenceOpt,
-         endSequenceOpt,
-         partitionCountOpt,
+         batchSizeOpt,
          tileSourceOpt,
          concurrentUploadsOpt,
+         databaseUrlOpt,
          baseZoomOpt).mapN {
           (changeSource,
            startSequence,
-           endSequence,
-           partitionCount,
+           batchSize,
            tileSource,
            _concurrentUploads,
+           databaseUrl,
            baseZoom) =>
             val AppName = "EditHistogramTileUpdater"
 
@@ -101,18 +103,19 @@ object EditHistogramTileUpdater
             implicit val concurrentUploads: Option[Int] = _concurrentUploads
             spark.withJTS
 
-            val changeOptions = Map(Source.BaseURI -> changeSource.toString) ++
+            val changeOptions = Map(Source.BaseURI -> changeSource.toString,
+                                    Source.ProcessName -> AppName) ++
+              databaseUrl
+                .map(x => Map(Source.DatabaseURI -> x.toString))
+                .getOrElse(Map.empty) ++
               startSequence
                 .map(x => Map(Source.StartSequence -> x.toString))
                 .getOrElse(Map.empty) ++
-              endSequence
-                .map(x => Map(Source.EndSequence -> x.toString))
-                .getOrElse(Map.empty) ++
-              partitionCount
-                .map(x => Map(Source.PartitionCount -> x.toString))
+              batchSize
+                .map(x => Map(Source.BatchSize -> x.toString))
                 .getOrElse(Map.empty)
 
-            val changes = spark.read
+            val changes = spark.readStream
               .format(Source.Changes)
               .options(changeOptions)
               .load
@@ -120,17 +123,21 @@ object EditHistogramTileUpdater
             val changedNodes = changes
               .where('type === "node" and 'lat.isNotNull and 'lon.isNotNull)
               .select('sequence,
-                      st_makePoint('lon, 'lat) as 'geom,
-                      year('timestamp) * 1000 + dayofyear('timestamp) as 'key)
+                      year('timestamp) * 1000 + dayofyear('timestamp) as 'key,
+                      st_makePoint('lon, 'lat) as 'geom)
 
             val tiledNodes = EditHistogram.update(changedNodes,
                                                   tileSource,
                                                   baseZoom.getOrElse(EditHistogram.DefaultBaseZoom))
 
-            val lastSequence =
-              changedNodes.select(max('sequence) as 'sequence).first.getAs[Int]("sequence")
+            val query = tiledNodes.writeStream
+              .queryName("edit histogram tiles")
+              .format("console")
+              .start
 
-            println(s"${tiledNodes.count} tiles updated to ${lastSequence}.")
+            query.awaitTermination()
+
+            spark.stop()
         }
       }
     )

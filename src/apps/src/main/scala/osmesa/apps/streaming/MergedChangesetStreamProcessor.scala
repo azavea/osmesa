@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.net.URI
 
@@ -7,7 +7,6 @@ import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark._
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions._
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.model.ElementWithSequence
@@ -16,11 +15,11 @@ import vectorpipe.sources.{AugmentedDiffSource, Source}
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.MergedChangesetStreamProcessor \
- *   ingest/target/scala-2.11/osmesa-analytics.jar \
+ *   --class osmesa.apps.streaming.MergedChangesetStreamProcessor \
+ *   ingest/target/scala-2.11/osmesa-apps.jar \
  *   --augmented-diff-source s3://somewhere/diffs/ \
  */
 object MergedChangesetStreamProcessor

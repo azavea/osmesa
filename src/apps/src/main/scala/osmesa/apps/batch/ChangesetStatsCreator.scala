@@ -8,7 +8,6 @@ import org.apache.spark.TaskContext
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
-import osmesa.analytics.oneoffs.MergeChangesetUtils
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
 import vectorpipe.functions._

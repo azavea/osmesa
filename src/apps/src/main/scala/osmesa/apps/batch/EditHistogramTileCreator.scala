@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.batch
 
 import java.net.URI
 
