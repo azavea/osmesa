@@ -56,29 +56,6 @@ create-cluster:
 upload-apps: ${APPS_ASSEMBLY}
 	@aws s3 cp ${APPS_ASSEMBLY} ${S3_URI}/
 
-generate-changesets:
-	aws emr add-steps --output text --cluster-id ${CLUSTER_ID} \
---steps Type=CUSTOM_JAR,Name="Generate Changeset Stats",Jar=command-runner.jar,Args=[\
-spark-submit,--master,yarn,\
---class,osmesa.apps.batch.ChangesetStats,\
---driver-memory,${DRIVER_MEMORY},\
---driver-cores,${DRIVER_CORES},\
---executor-memory,${EXECUTOR_MEMORY},\
---executor-cores,${EXECUTOR_CORES},\
---conf,spark.driver.maxResultSize=3g,\
---conf,spark.dynamicAllocation.enabled=true,\
---conf,spark.executor.memoryOverhead=${YARN_OVERHEAD},\
---conf,spark.driver.memoryOverhead=${YARN_OVERHEAD},\
---conf,spark.shuffle.io.numConnectionsPerPeer=4,\
---conf,spark.shuffle.io.connectionTimeout=18000s,\
---conf,spark.shuffle.service.enabled=true,\
---conf,spark.sql.shuffle.partitions=1024,\
-${S3_URI}/${APPS_JAR},\
---history=${OSM_HISTORY},\
---changesets=${CHANGESET_URI},\
---output=${OUTPUT_LOCATION}\
-] | cut -f2 | tee last-step-id.txt
-
 ssh:
 	@aws emr ssh --cluster-id $(CLUSTER_ID) --key-pair-file "${PEM_FILE}"
 
