@@ -10,6 +10,7 @@ import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
+import osmesa.apps.DbUtils
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.sources.{AugmentedDiffSource, ChangesetSource}
@@ -181,11 +182,11 @@ object ChangesetStatsCreator
             // Distributing these writes to the executors to avoid no suitable driver errors on master node
             logger.warn(s"Writing augmented diff sequence number as $augdiffEndSequence to $databaseUrl")
             spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
-              MergeChangesetUtils.saveLocations("ChangesetStatsUpdater", augdiffEndSequence, uri)
+              DbUtils.saveLocations("ChangesetStatsUpdater", augdiffEndSequence, uri)
             }
             logger.warn(s"Writing changeset stream sequence number as $changesetsEndSequence to $databaseUrl")
             spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
-              MergeChangesetUtils.saveLocations("ChangesetMetadataUpdater", changesetsEndSequence, uri)
+              DbUtils.saveLocations("ChangesetMetadataUpdater", changesetsEndSequence, uri)
             }
 
             spark.stop()
