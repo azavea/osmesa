@@ -15,9 +15,9 @@ import vectorpipe.functions.osm._
 
 import scala.collection.JavaConversions._
 
-object FootprintCommand
+object FootprintCreator
     extends CommandApp(
-      name = "footprint",
+      name = "footprint-creator",
       header = "Create footprint vector tiles",
       main = {
 
