@@ -36,7 +36,7 @@ object MergeChangesets
     main = {
 
       import ChangesetSource._
-      import MergeChangesetUtils._
+      import MergeChangesetsImplicits._
 
       val changesetSourceOpt =
         Opts
@@ -121,8 +121,7 @@ object MergeChangesets
       }
     }
 )
-
-object MergeChangesetUtils {
+object MergeChangesetsImplicits {
   implicit val readInstant: Argument[Instant] = new Argument[Instant] {
     override def read(string: String): ValidatedNel[String, Instant] = {
       try { Validated.valid(Instant.parse(string)) }
@@ -136,26 +135,4 @@ object MergeChangesetUtils {
 
   private implicit val dateTimeDecoder: Decoder[DateTime] =
     Decoder.instance(a => a.as[String].map(DateTime.parse(_, formatter)))
-
-  def saveLocations(procName: String, sequence: Int, databaseURI: URI) = {
-    var connection: Connection = null
-    try {
-      connection = DBUtils.getJdbcConnection(databaseURI)
-      val upsertSequence =
-        connection.prepareStatement(
-          """
-          |INSERT INTO checkpoints (proc_name, sequence)
-          |VALUES (?, ?)
-          |ON CONFLICT (proc_name)
-          |DO UPDATE SET sequence = ?
-          """.stripMargin
-        )
-      upsertSequence.setString(1, procName)
-      upsertSequence.setInt(2, sequence)
-      upsertSequence.setInt(3, sequence)
-      upsertSequence.execute()
-    } finally {
-      if (connection != null) connection.close()
-    }
-  }
 }
