@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.batch
 
 import java.net.URI
 
@@ -10,8 +10,8 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.IntegerType
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
-import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions.osm._
+import vectorpipe.{internal => ProcessOSM}
 
 object FacetedEditHistogramTileCreator
     extends CommandApp(
