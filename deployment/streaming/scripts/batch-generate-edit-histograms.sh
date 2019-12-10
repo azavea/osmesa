@@ -42,11 +42,11 @@ aws emr create-cluster \
 	        "Args": [
 	          "spark-submit",
 	          "--deploy-mode", "cluster",
-	          "--class", "osmesa.analytics.oneoffs.FacetedEditHistogramTileCreator",
+	          "--class", "osmesa.apps.batch.FacetedEditHistogramTileCreator",
 	          "--conf", "spark.executor.memoryOverhead=2g",
 	          "--conf", "spark.sql.shuffle.partitions=2000",
 	          "--conf", "spark.speculation=true",
-	          "${OSMESA_ANALYTICS_JAR}",
+	          "${OSMESA_APPS_JAR}",
 	          "--history", "${HISTORY_ORC}",
 	          "--out", "${HISTOGRAM_VT_LOCATION}"
 	        ],
