@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.net.URI
 
@@ -15,10 +15,10 @@ import vectorpipe.sources.Source
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.ChangesetMetadataUpdater \
+ *   --class osmesa.apps.streaming.ChangesetMetadataUpdater \
  *   ingest/target/scala-2.11/osmesa-analytics.jar \
  *   --database-url $DATABASE_URL
  */

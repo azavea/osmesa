@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.io.File
 import java.net.URI
@@ -10,12 +10,11 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.IntegerType
 import org.locationtech.geomesa.spark.jts._
 import osmesa.analytics.{Analytics, EditHistogram}
-import vectorpipe.{internal => ProcessOSM}
-import vectorpipe.internal.{NodeType, WayType}
 import vectorpipe.functions.osm._
-import vectorpipe.sources.Source
+import vectorpipe.internal.{NodeType, WayType}
+import vectorpipe.sources.{AugmentedDiffSource, Source}
 
-object FacetedEditHistogramTileUpdater
+object StreamingFacetedEditHistogramTileUpdater
     extends CommandApp(
       name = "faceted-edit-histogram-tile-updater",
       header = "Update vector tiles containing faceted histograms of editing activity",
@@ -36,20 +35,11 @@ object FacetedEditHistogramTileUpdater
           )
           .orNone
 
-        val endSequenceOpt = Opts
-          .option[Int](
-            "end-sequence",
-            short = "e",
-            metavar = "sequence",
-            help = "Ending sequence. If absent, the current (remote) sequence will be used."
-          )
-          .orNone
-
-        val partitionCountOpt = Opts
-          .option[Int]("partition-count",
-                       short = "p",
-                       metavar = "partition count",
-                       help = "Change partition count.")
+        val batchSizeOpt = Opts
+          .option[Int]("batch-size",
+                       short = "b",
+                       metavar = "batch size",
+                       help = "Change batch size.")
           .orNone
 
         val tileSourceOpt = Opts
@@ -68,6 +58,17 @@ object FacetedEditHistogramTileUpdater
                        help = "Set the number of concurrent uploads.")
           .orNone
 
+        val databaseUrlOpt =
+          Opts
+            .option[URI](
+              "database-url",
+              short = "d",
+              metavar = "database URL",
+              help = "Database URL (default: DATABASE_URL environment variable)"
+            )
+            .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
+            .orNone
+
         val baseZoomOpt = Opts
           .option[Int]("base-zoom",
                        short = "z",
@@ -77,71 +78,90 @@ object FacetedEditHistogramTileUpdater
 
         (augmentedDiffSourceOpt,
          startSequenceOpt,
-         endSequenceOpt,
-         partitionCountOpt,
+         batchSizeOpt,
          tileSourceOpt,
          concurrentUploadsOpt,
+         databaseUrlOpt,
          baseZoomOpt)
           .mapN {
             (augmentedDiffSource,
              startSequence,
-             endSequence,
-             partitionCount,
+             batchSize,
              tileSource,
              _concurrentUploads,
+             databaseUrl,
              baseZoom) =>
+              val AppName = "FacetedEditHistogramTileUpdater"
+
               implicit val spark: SparkSession =
                 Analytics.sparkSession("State of the Data faceted tile generation")
               import spark.implicits._
               implicit val concurrentUploads: Option[Int] = _concurrentUploads
               spark.withJTS
 
-              val options = Map(Source.BaseURI -> augmentedDiffSource.toString) ++
+              val options = Map(Source.BaseURI -> augmentedDiffSource.toString,
+                                Source.ProcessName -> AppName) ++
+                databaseUrl
+                  .map(x => Map(Source.DatabaseURI -> x.toString))
+                  .getOrElse(Map.empty) ++
                 startSequence
-                  .map(s => Map(Source.StartSequence -> s.toString))
+                  .map(x => Map(Source.StartSequence -> x.toString))
                   .getOrElse(Map.empty) ++
-                endSequence
-                  .map(s => Map(Source.EndSequence -> s.toString))
-                  .getOrElse(Map.empty) ++
-                partitionCount
-                  .map(x => Map(Source.PartitionCount -> x.toString))
+                batchSize
+                  .map(x => Map(Source.BatchSize -> x.toString))
                   .getOrElse(Map.empty)
 
-              val diffs = spark.read.format(Source.AugmentedDiffs).options(options).load.cache
+              val diffs = spark.readStream
+                .format(Source.AugmentedDiffs)
+                .options(options)
+                .load
+                // convert sequence into timestamp
+                .withColumn("watermark", AugmentedDiffSource.sequenceToTimestamp('sequence))
+                .withWatermark("watermark", "0 seconds")
 
               val nodes = diffs
-                .select('sequence,
-                        'id,
-                        'version,
-                        'updated,
-                        when('visible, 'tags).otherwise('prevTags) as 'tags,
-                        'geom,
-                        'visible)
+                .select(
+                  'watermark,
+                  'sequence,
+                  'id,
+                  'version,
+                  'updated,
+                  when('visible, 'tags).otherwise('prevTags) as 'tags,
+                  'geom,
+                  'visible
+                )
                 .where('type === lit(NodeType))
 
               val ways = diffs
-                .select('sequence,
-                        'id,
-                        'updated,
-                        'nds,
-                        when('visible, 'tags).otherwise('prevTags) as 'tags,
-                        'visible)
+                .select(
+                  'watermark,
+                  'sequence,
+                  'id,
+                  'updated,
+                  'nds,
+                  when('visible, 'tags).otherwise('prevTags) as 'tags,
+                  'visible
+                )
                 .where('type === lit(WayType) and 'minorVersion === 0)
 
               val wayTags = diffs
-                .select('sequence,
-                        'id,
-                        explode('nds) as 'ref,
-                        when('visible, 'tags).otherwise('prevTags) as 'tags)
+                .select(
+                  'watermark,
+                  'sequence,
+                  'id,
+                  explode('nds) as 'ref,
+                  when('visible, 'tags).otherwise('prevTags) as 'tags
+                )
                 .where('type === lit(WayType))
 
               // major versions of nodes
               val majorVersions = nodes
                 .withColumnRenamed("id", "ref")
-                .join(wayTags.select('sequence, 'ref, 'tags as 'wayTags),
-                      Seq("sequence", "ref"),
+                .join(wayTags.select('watermark, 'sequence, 'ref, 'tags as 'wayTags),
+                      Seq("sequence", "ref", "watermark"),
                       "left_outer")
                 .select(
+                  'watermark,
                   'sequence,
                   'ref as 'id,
                   'version,
@@ -156,23 +176,32 @@ object FacetedEditHistogramTileUpdater
 
               // minor versions of nodes (without node tags, as they haven't been touched)
               val minorVersions = ways
-                .select('sequence, 'updated, explode('nds) as 'ref, 'tags)
+                .select('watermark, 'sequence, 'updated, explode('nds) as 'ref, 'tags)
                 .join(nodes.select('sequence, 'id as 'ref, 'version, 'geom, 'visible),
                       Seq("sequence", "ref"))
-                .select('sequence,
-                        'ref as 'id,
-                        'version,
-                        lit(true) as 'geometryChanged,
-                        'geom,
-                        'updated,
-                        map() as 'tags,
-                        'tags as 'wayTags,
-                        'tags as 'mergedTags,
-                        'visible)
+                .select(
+                  'watermark,
+                  'sequence,
+                  'ref as 'id,
+                  'version,
+                  lit(true) as 'geometryChanged,
+                  'geom,
+                  'updated,
+                  map() as 'tags,
+                  'tags as 'wayTags,
+                  'tags as 'mergedTags,
+                  'visible
+                )
 
               val processedNodes = majorVersions
                 .union(minorVersions)
-                .groupBy('sequence, 'id, 'version, 'updated)
+                .groupBy(
+                  'watermark,
+                  'sequence,
+                  'id,
+                  'version,
+                  'updated
+                )
                 .agg(
                   first('geom) as 'geom,
                   first('visible) as 'visible,
@@ -225,10 +254,12 @@ object FacetedEditHistogramTileUpdater
                                      tileSource,
                                      baseZoom.getOrElse(EditHistogram.DefaultBaseZoom))
 
-              val lastSequence =
-                points.select(max('sequence) as 'sequence).first.getAs[Int]("sequence")
+              val query = tiledNodes.writeStream
+                .queryName("faceted edit histogram tile updates")
+                .format("console")
+                .start
 
-              println(s"${tiledNodes.count} tiles updated to ${lastSequence}.")
+              query.awaitTermination()
 
               spark.stop()
           }

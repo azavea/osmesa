@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.net.URI
 
@@ -10,21 +10,20 @@ import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
-import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.model.ElementWithSequence
 import vectorpipe.sources.{AugmentedDiffSource, Source}
-import vectorpipe.util.{DBUtils, Geocode}
+import vectorpipe.util.Geocode
 
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.StreamingChangesetStatsUpdater \
- *   ingest/target/scala-2.11/osmesa-analytics.jar \
+ *   --class osmesa.apps.streaming.StreamingChangesetStatsUpdater \
+ *   ingest/target/scala-2.11/osmesa-apps.jar \
  *   --augmented-diff-source s3://somewhere/diffs/ \
  *   --database-url $DATABASE_URL
  */

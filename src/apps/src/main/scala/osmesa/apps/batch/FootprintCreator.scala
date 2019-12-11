@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.batch
 
 import java.net.URI
 import java.nio.file.{Files, Paths}
@@ -15,9 +15,9 @@ import vectorpipe.functions.osm._
 
 import scala.collection.JavaConversions._
 
-object FootprintCommand
+object FootprintCreator
     extends CommandApp(
-      name = "footprint",
+      name = "footprint-creator",
       header = "Create footprint vector tiles",
       main = {
 
