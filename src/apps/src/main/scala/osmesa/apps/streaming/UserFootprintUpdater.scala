@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.io._
 import java.net.URI
@@ -14,11 +14,11 @@ import vectorpipe.sources.Source
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.UserFootprintUpdater \
- *   ingest/target/scala-2.11/osmesa-analytics.jar
+ *   --class osmesa.apps.streaming.UserFootprintUpdater \
+ *   ingest/target/scala-2.11/osmesa-apps.jar
  */
 object UserFootprintUpdater
     extends CommandApp(

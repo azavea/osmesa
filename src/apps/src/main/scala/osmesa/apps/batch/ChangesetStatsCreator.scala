@@ -1,7 +1,6 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.batch
 
 import java.net.URI
-import java.sql._
 
 import cats.implicits._
 import com.monovore.decline.{CommandApp, Opts}
@@ -11,11 +10,12 @@ import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
-import vectorpipe.{internal => ProcessOSM}
+import osmesa.apps.DbUtils
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.sources.{AugmentedDiffSource, ChangesetSource}
-import vectorpipe.util.{DBUtils, Geocode}
+import vectorpipe.util.Geocode
+import vectorpipe.{internal => ProcessOSM}
 
 object ChangesetStatsCreator
     extends CommandApp(
@@ -182,11 +182,11 @@ object ChangesetStatsCreator
             // Distributing these writes to the executors to avoid no suitable driver errors on master node
             logger.warn(s"Writing augmented diff sequence number as $augdiffEndSequence to $databaseUrl")
             spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
-              MergeChangesetUtils.saveLocations("ChangesetStatsUpdater", augdiffEndSequence, uri)
+              DbUtils.saveLocations("ChangesetStatsUpdater", augdiffEndSequence, uri)
             }
             logger.warn(s"Writing changeset stream sequence number as $changesetsEndSequence to $databaseUrl")
             spark.sparkContext.parallelize(Seq(databaseUrl)).foreach { uri =>
-              MergeChangesetUtils.saveLocations("ChangesetMetadataUpdater", changesetsEndSequence, uri)
+              DbUtils.saveLocations("ChangesetMetadataUpdater", changesetsEndSequence, uri)
             }
 
             spark.stop()

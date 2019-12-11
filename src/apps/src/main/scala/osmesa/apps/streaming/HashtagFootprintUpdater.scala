@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.io._
 import java.net.URI
@@ -9,20 +9,20 @@ import geotrellis.vector.{Feature, Geometry}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.analytics.{Analytics, Footprints}
-import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.functions._
 import vectorpipe.functions.osm._
 import vectorpipe.model.ElementWithSequence
 import vectorpipe.sources.Source
+import vectorpipe.{internal => ProcessOSM}
 
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.HashtagFootprintUpdater \
- *   ingest/target/scala-2.11/osmesa-analytics.jar
+ *   --class osmesa.apps.streaming.HashtagFootprintUpdater \
+ *   ingest/target/scala-2.11/osmesa-apps.jar
  */
 object HashtagFootprintUpdater
     extends CommandApp(

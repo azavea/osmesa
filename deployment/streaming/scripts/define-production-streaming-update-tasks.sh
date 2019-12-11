@@ -26,8 +26,8 @@ aws ecs register-task-definition \
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
 	        \"--driver-memory\", \"2048m\",
-	        \"--class\", \"osmesa.analytics.oneoffs.StreamingChangesetStatsUpdater\",
-	        \"/opt/osmesa-analytics.jar\",
+	        \"--class\", \"osmesa.apps.streaming.StreamingChangesetStatsUpdater\",
+	        \"/opt/osmesa-apps.jar\",
 	        \"--augmented-diff-source\", \"${AUGDIFF_SOURCE}\"
 	      ],
 	      \"environment\": [
@@ -51,8 +51,8 @@ aws ecs register-task-definition \
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
 	        \"--driver-memory\", \"2048m\",
-	        \"--class\", \"osmesa.analytics.oneoffs.StreamingChangesetMetadataUpdater\",
-	        \"/opt/osmesa-analytics.jar\",
+	        \"--class\", \"osmesa.apps.streaming.StreamingChangesetMetadataUpdater\",
+	        \"/opt/osmesa-apps.jar\",
 	        \"--changeset-source\", \"${CHANGESET_SOURCE}\"
 	      ],
 	      \"environment\": [

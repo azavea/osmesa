@@ -1,6 +1,6 @@
 import Dependencies._
 
-name := "osmesa-analytics"
+name := "osmesa-apps"
 
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7"
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7"
@@ -29,6 +29,7 @@ libraryDependencies ++= Seq(
   gtSparkTestKit,
   logging,
   scalatest,
+  apacheCommonsEmail,
 
   "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % Provided
 )
@@ -46,7 +47,7 @@ initialCommands in console :=
   """
   """
 
-assemblyJarName in assembly := "osmesa-analytics.jar"
+assemblyJarName in assembly := "osmesa-apps.jar"
 
 assemblyShadeRules in assembly := {
   val shadePackage = "com.azavea.shaded.demo"

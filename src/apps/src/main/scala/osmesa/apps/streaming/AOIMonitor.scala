@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.net.URI
 import java.sql.{Connection, DriverManager, Timestamp}
@@ -20,15 +20,15 @@ import org.locationtech.jts.{geom => jts}
 import org.locationtech.jts.geom.prep._
 import org.locationtech.jts.io.WKBReader
 import osmesa.analytics.Analytics
-import osmesa.analytics.oneoffs.Interval._
 import osmesa.analytics.stats._
+import osmesa.apps.streaming.Interval._
 import vectorpipe.sources.{AugmentedDiffSource, Source}
 
 import collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.util.Properties
 
-object StreamingAOIMonitor
+object AOIMonitor
     extends CommandApp(
       name = "streaming-aoi-monitor",
       header = "Streaming AOI Monitor",
