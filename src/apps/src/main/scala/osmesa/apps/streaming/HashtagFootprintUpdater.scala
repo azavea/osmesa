@@ -18,11 +18,11 @@ import vectorpipe.{internal => ProcessOSM}
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.HashtagFootprintUpdater \
- *   ingest/target/scala-2.11/osmesa-analytics.jar
+ *   --class osmesa.apps.streaming.HashtagFootprintUpdater \
+ *   ingest/target/scala-2.11/osmesa-apps.jar
  */
 object HashtagFootprintUpdater
     extends CommandApp(

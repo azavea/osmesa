@@ -6,6 +6,10 @@ This project is a collection of tools for working with OpenStreetMap (OSM). It i
 large scale batch analytic jobs to run on the latest OSM data, as well as streaming jobs which
 operate on updated with minutely replication files.
 
+All command apps written to perform these batch and streaming jobs live in the `apps` subproject.
+Reusable components that can be used to construct your own batch and stream processors live
+in the `analytics` subproject.
+
 ## Getting Started
 
 This library is a toolkit meant to make the munging and manipulation of
@@ -18,9 +22,9 @@ map of the world.
 
 If you're already fairly comfortable with OSM's model, running one of
 the diagnostic (console printing/debugging) Spark Streaming applications
-provided in the analytics subproject is probably the quickest way to
+provided in the apps subproject is probably the quickest way to
 explore Spark SQL and its usage within this library. To run the
-[change stream processor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangeStreamProcessor.scala)
+[change stream processor](src/apps/src/main/scala/osmesa/apps/streaming/ChangeStreamProcessor.scala)
 application from the beginning of (OSM) time and until cluster failure
 or user termination, try this:
 
@@ -29,19 +33,19 @@ or user termination, try this:
 cd src
 
 # build the jar we'll be submitting to spark
-sbt "project analytics" assembly
+sbt "project apps" assembly
 
 # submit the streaming application to spark for process management
 spark-submit \
-  --class osmesa.analytics.oneoffs.ChangeStreamProcessor \
-  ./analytics/target/scala-2.11/osmesa-analytics.jar \
+  --class osmesa.apps.streaming.ChangeStreamProcessor \
+  ./apps/target/scala-2.11/osmesa-apps.jar \
   --start-sequence 1
 ```
 
 ## Deployment
 
 Utilities are provided in the [deployment directory](deployment) to bring
-up cluster and enable you to push the OSMesa jar to that cluster. The
+up cluster and enable you to push the OSMesa apps jar to that cluster. The
 spawned EMR cluster comes with Apache Zeppelin enabled, which allows
 jars to be registered/loaded for a console-like experience similar to
 Jupyter or IPython notebooks but which will execute spark jobs across the
@@ -132,21 +136,21 @@ and [user_statistics](https://github.com/azavea/osmesa-stat-server/blob/master/s
 
 ### Batch
 
-- [ChangesetStats](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangesetStats.scala)
-will produce an ORCfile with statistics aggregated by changeset
-
-- [ChangesetStatsCreator](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangesetStatsCreator.scala)
+- [ChangesetStatsCreator](src/apps/src/main/scala/osmesa/apps/batch/ChangesetStatsCreator.scala)
 will load aggregated statistics into a PostgreSQL database using JDBC.
+
+- [MergeChangesets](src/apps/src/main/scala/osmesa/apps/batch/MergeChangesets.scala)
+will update a changesets ORC file with the contents of the provided changeset stream.
 
 ### Stream
 
-- [StreamingChangesetStatsUpdater](src/analytics/src/main/scala/osmesa/analytics/oneoffs/StreamingChangesetStatsUpdater.scala)
+- [StreamingChangesetStatsUpdater](src/apps/src/main/scala/osmesa/apps/streaming/StreamingChangesetStatsUpdater.scala)
 updates the tables `changesets`, `users`, and `changesets_countries` using geometries available from the augmented diff stream.
-- [StreamingChangesetMetaUpdater](src/analytics/src/main/scala/osmesa/analytics/oneoffs/StreamingChangesetMetaUpdater.scala)
+- [StreamingChangesetMetaUpdater](src/apps/src/main/scala/osmesa/apps/streaming/StreamingChangesetMetaUpdater.scala)
 updates the tables `changesets`, `changesets_hashtags`, `users`, and `hashtags` using metadata in the changesets stream.
-- [ChangeStreamProcessor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/ChangeStreamProcessor.scala)
+- [ChangeStreamProcessor](src/apps/src/main/scala/osmesa/apps/streaming/ChangeStreamProcessor.scala)
 prints out changes to the console (primarily for debugging)
-- [MergedChangesetStreamProcessor](src/analytics/src/main/scala/osmesa/analytics/oneoffs/MergedChangesetStreamProcessor.scala)
+- [MergedChangesetStreamProcessor](src/apps/src/main/scala/osmesa/apps/streaming/MergedChangesetStreamProcessor.scala)
 prints out changesets to the console (primarily for debugging)
 
 ## Vector Tiles
@@ -159,18 +163,15 @@ hashtag/campaign within OSM
 
 ### Batch
 
-- [FootprintByCampaign](src/analytics/src/main/scala/osmesa/analytics/oneoffs/FootprintByCampaign.scala)
+- [FootprintCreator](src/apps/src/main/scala/osmesa/apps/batch/FootprintByCampaign.scala)
 produces a z/x/y stack of vector tiles corresponding to all changes
-marked with a given hashtag
-- [FootprintByUser](src/analytics/src/main/scala/osmesa/analytics/oneoffs/FootprintByUser.scala)
-produces a z/x/y stack of vector tiles which correspond to a user's
-modifications to OSM
+marked with a given hashtag or user, depending on the CLI options provided.
 
 ### Stream
 
-- [HashtagFootprintUpdater](src/analytics/src/main/scala/osmesa/analytics/oneoffs/HashtagFootprintUpdater.scala)
+- [HashtagFootprintUpdater](src/apps/src/main/scala/osmesa/apps/streaming/HashtagFootprintUpdater.scala)
 updates a z/x/y stack of vector tiles corresponding to all changes
 marked with a given hashtag
-- [UserFootprintUpdater](src/analytics/src/main/scala/osmesa/analytics/oneoffs/UserFootprintUpdater.scala)
+- [UserFootprintUpdater](src/apps/src/main/scala/osmesa/apps/streaming/UserFootprintUpdater.scala)
 updates a z/x/y stack of vector tiles which correspond to a user's
 modifications to OSM
