@@ -14,13 +14,11 @@ import org.apache.commons.mail._
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{collect_set, count, explode, size, udf}
-import org.locationtech.geomesa.spark.jts._
 import org.locationtech.jts.geom.{GeometryFactory, PrecisionModel}
 import org.locationtech.jts.{geom => jts}
 import org.locationtech.jts.geom.prep._
 import org.locationtech.jts.io.WKBReader
 import osmesa.analytics.Analytics
-import osmesa.analytics.stats._
 import osmesa.apps.streaming.Interval._
 import vectorpipe.sources.{AugmentedDiffSource, Source}
 
@@ -172,7 +170,7 @@ object AOIMonitor
             // 2. EXTRACT SALIENT INFO FROM DIFFS
             //    Prepare a dataset of summaries, one for each notification to send.
             val changeSummary = {
-              val stats = diffs.withDelta
+              val stats = diffs
                 .withColumn("osmUser", 'user)
                 .drop('user)
 
@@ -212,46 +210,52 @@ object AOIMonitor
             //    We need to craft an email from each record and queue it for sending
             val aoiInterval = AOIInterval(startTimestamp, endTimestamp, interval)
             val bAoiInterval = spark.sparkContext.broadcast(aoiInterval)
-            val sendResult: NotificationSendResult = messageInfo.map {
-              info =>
-                val subject =
-                  s"${interval.value.capitalize} AOI Summary for ${info.name} ending $endTimestamp"
-                val message = info.toMessageBody(bAoiInterval.value)
-                val fromAddress = AOIEmailConfig.fromAddress
-                if (!fromAddress.isEmpty) {
-                  val toAddress = new InternetAddress(info.email)
-                  val email = new SimpleEmail()
-                  email.setHostName(AOIEmailConfig.smtpHostname)
-                  email.setSmtpPort(AOIEmailConfig.smtpPort)
+            val sendResult: NotificationSendResult = if (messageInfo.count > 0) {
+              messageInfo.map {
+                info =>
+                  val subject =
+                    s"${interval.value.capitalize} AOI Summary for ${info.name} ending $endTimestamp"
+                  val message = info.toMessageBody(bAoiInterval.value)
+                  AOIEmailConfig.fromAddress match {
+                    case Some(fromAddress) => {
+                      val toAddress = new InternetAddress(info.email)
+                      val email = new SimpleEmail()
+                      email.setHostName(AOIEmailConfig.smtpHostname)
+                      email.setSmtpPort(AOIEmailConfig.smtpPort)
 
-                  email.setFrom(AOIEmailConfig.fromAddress)
-                  email.setTo(Seq(toAddress).asJavaCollection)
-                  email.setSubject(subject)
-                  email.setMsg(message)
-                  try {
-                    email.send
-                    NotificationSendResult(1, Array.empty[NotificationSendError])
-                  } catch {
-                    case error: Throwable => {
-                      val msg =
-                        s"""
-                          |ERROR Unable to send message for notification ${info.notificationId}
-                          |Message: ${error.getLocalizedMessage}
-                          |Trace:
-                          |${error.getStackTrace.mkString("\n")}
-                          |""".stripMargin
-                      errorMessage(msg)
-                      NotificationSendResult(
-                        0,
-                        Array(NotificationSendError(info.notificationId, error.getLocalizedMessage))
-                      )
+                      email.setFrom(fromAddress)
+                      email.setTo(Seq(toAddress).asJavaCollection)
+                      email.setSubject(subject)
+                      email.setMsg(message)
+                      try {
+                        email.send
+                        NotificationSendResult(1, Array.empty[NotificationSendError])
+                      } catch {
+                        case error: Throwable => {
+                          val msg =
+                            s"""
+                               |ERROR Unable to send message for notification ${info.notificationId}
+                               |Message: ${error.getLocalizedMessage}
+                               |Trace:
+                               |${error.getStackTrace.mkString("\n")}
+                               |""".stripMargin
+                          errorMessage(msg)
+                          NotificationSendResult(
+                            0,
+                            Array(NotificationSendError(info.notificationId, error.getLocalizedMessage))
+                          )
+                        }
+                      }
+                    }
+                    case None => {
+                      warnMessage(s"Sending Notification for ${info.notificationId}:\n$message")
+                      NotificationSendResult(1, Array.empty[NotificationSendError])
                     }
                   }
-                } else {
-                  warnMessage(s"Sending Notification for ${info.notificationId}:\n$message")
-                  NotificationSendResult(1, Array.empty[NotificationSendError])
-                }
-            }.reduce(_ combine _)
+              }.reduce(_ combine _)
+            } else {
+              NotificationSendResult(0, Array.empty[NotificationSendError])
+            }
             sendAdminStatusMessage(aoiInterval, sendResult)
 
             // 5. SAVE CURRENT END POSITION IN DB FOR NEXT RUN
@@ -460,40 +464,42 @@ object AOIMonitorUtils extends Logging {
     }
 
     val adminEmails = AOIEmailConfig.adminEmails
-    val intervalText = aoiInterval.interval.value.capitalize
-    val subject = s"$errorCount Errors: $intervalText AOI Notification"
-    val message =
-      s"""
-        |Sent ${sendResult.successCount} email notifications for the $intervalText interval:
-        |
-        |${aoiInterval.start} to ${aoiInterval.end}
-        |
-        |The following errors were reported:
-        |$errorString
-        |
-        |""".stripMargin
-    adminEmails.foreach { toAddressString =>
-      val toAddress = new InternetAddress(toAddressString)
-      val email = new SimpleEmail()
-      email.setHostName(AOIEmailConfig.smtpHostname)
-      email.setSmtpPort(AOIEmailConfig.smtpPort)
+    if (adminEmails.isDefined && AOIEmailConfig.fromAddress.isDefined) {
+      val intervalText = aoiInterval.interval.value.capitalize
+      val subject = s"$errorCount Errors: $intervalText AOI Notification"
+      val message =
+        s"""
+           |Sent ${sendResult.successCount} email notifications for the $intervalText interval:
+           |
+           |${aoiInterval.start} to ${aoiInterval.end}
+           |
+           |The following errors were reported:
+           |$errorString
+           |
+           |""".stripMargin
+      adminEmails.get.foreach { toAddressString =>
+        val toAddress = new InternetAddress(toAddressString)
+        val email = new SimpleEmail()
+        email.setHostName(AOIEmailConfig.smtpHostname)
+        email.setSmtpPort(AOIEmailConfig.smtpPort)
 
-      email.setFrom(AOIEmailConfig.fromAddress)
-      email.setTo(Seq(toAddress).asJavaCollection)
-      email.setSubject(subject)
-      email.setMsg(message)
-      try {
-        email.send
-      } catch {
-        case error: Throwable => {
-          val message =
-            s"""
-               |ERROR Unable to send admin status message to ${toAddressString}
-               |Message: ${error.getLocalizedMessage}
-               |Trace:
-               |${error.getStackTrace.mkString("\n")}
-               |""".stripMargin
-          errorMessage(message)
+        email.setFrom(AOIEmailConfig.fromAddress.get)
+        email.setTo(Seq(toAddress).asJavaCollection)
+        email.setSubject(subject)
+        email.setMsg(message)
+        try {
+          email.send
+        } catch {
+          case error: Throwable => {
+            val message =
+              s"""
+                 |ERROR Unable to send admin status message to ${toAddressString}
+                 |Message: ${error.getLocalizedMessage}
+                 |Trace:
+                 |${error.getStackTrace.mkString("\n")}
+                 |""".stripMargin
+            errorMessage(message)
+          }
         }
       }
     }
@@ -574,8 +580,9 @@ object AOIDatabaseConfig {
 object AOIEmailConfig {
   val smtpHostname: String = Properties.envOrElse("AOI_SMTP_HOSTNAME", "localhost")
   val smtpPort: Int = Properties.envOrElse("AOI_SMTP_PORT", "25").toInt
-  val fromAddress: String = Properties.envOrElse("AOI_FROM_ADDRESS", "")
+  val fromAddress: Option[String] = Properties.envOrNone("AOI_FROM_ADDRESS")
 
   // Provide as a comma-separated string of valid email addresses
-  val adminEmails: Seq[String] = Properties.envOrElse("AOI_ADMIN_EMAILS", "").trim.split(",")
+  val adminEmails: Option[Array[String]] =
+    Properties.envOrNone("AOI_ADMIN_EMAILS").map(_.trim.split(","))
 }
