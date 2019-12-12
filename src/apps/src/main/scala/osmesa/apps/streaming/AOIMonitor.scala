@@ -212,46 +212,50 @@ object AOIMonitor
             //    We need to craft an email from each record and queue it for sending
             val aoiInterval = AOIInterval(startTimestamp, endTimestamp, interval)
             val bAoiInterval = spark.sparkContext.broadcast(aoiInterval)
-            val sendResult: NotificationSendResult = messageInfo.map {
-              info =>
-                val subject =
-                  s"${interval.value.capitalize} AOI Summary for ${info.name} ending $endTimestamp"
-                val message = info.toMessageBody(bAoiInterval.value)
-                val fromAddress = AOIEmailConfig.fromAddress
-                if (!fromAddress.isEmpty) {
-                  val toAddress = new InternetAddress(info.email)
-                  val email = new SimpleEmail()
-                  email.setHostName(AOIEmailConfig.smtpHostname)
-                  email.setSmtpPort(AOIEmailConfig.smtpPort)
+            val sendResult: NotificationSendResult = if (messageInfo.count > 0) {
+              messageInfo.map {
+                info =>
+                  val subject =
+                    s"${interval.value.capitalize} AOI Summary for ${info.name} ending $endTimestamp"
+                  val message = info.toMessageBody(bAoiInterval.value)
+                  val fromAddress = AOIEmailConfig.fromAddress
+                  if (!fromAddress.isEmpty) {
+                    val toAddress = new InternetAddress(info.email)
+                    val email = new SimpleEmail()
+                    email.setHostName(AOIEmailConfig.smtpHostname)
+                    email.setSmtpPort(AOIEmailConfig.smtpPort)
 
-                  email.setFrom(AOIEmailConfig.fromAddress)
-                  email.setTo(Seq(toAddress).asJavaCollection)
-                  email.setSubject(subject)
-                  email.setMsg(message)
-                  try {
-                    email.send
-                    NotificationSendResult(1, Array.empty[NotificationSendError])
-                  } catch {
-                    case error: Throwable => {
-                      val msg =
-                        s"""
-                          |ERROR Unable to send message for notification ${info.notificationId}
-                          |Message: ${error.getLocalizedMessage}
-                          |Trace:
-                          |${error.getStackTrace.mkString("\n")}
-                          |""".stripMargin
-                      errorMessage(msg)
-                      NotificationSendResult(
-                        0,
-                        Array(NotificationSendError(info.notificationId, error.getLocalizedMessage))
-                      )
+                    email.setFrom(AOIEmailConfig.fromAddress)
+                    email.setTo(Seq(toAddress).asJavaCollection)
+                    email.setSubject(subject)
+                    email.setMsg(message)
+                    try {
+                      email.send
+                      NotificationSendResult(1, Array.empty[NotificationSendError])
+                    } catch {
+                      case error: Throwable => {
+                        val msg =
+                          s"""
+                             |ERROR Unable to send message for notification ${info.notificationId}
+                             |Message: ${error.getLocalizedMessage}
+                             |Trace:
+                             |${error.getStackTrace.mkString("\n")}
+                             |""".stripMargin
+                        errorMessage(msg)
+                        NotificationSendResult(
+                          0,
+                          Array(NotificationSendError(info.notificationId, error.getLocalizedMessage))
+                        )
+                      }
                     }
+                  } else {
+                    warnMessage(s"Sending Notification for ${info.notificationId}:\n$message")
+                    NotificationSendResult(1, Array.empty[NotificationSendError])
                   }
-                } else {
-                  warnMessage(s"Sending Notification for ${info.notificationId}:\n$message")
-                  NotificationSendResult(1, Array.empty[NotificationSendError])
-                }
-            }.reduce(_ combine _)
+              }.reduce(_ combine _)
+            } else {
+              NotificationSendResult(0, Array.empty[NotificationSendError])
+            }
             sendAdminStatusMessage(aoiInterval, sendResult)
 
             // 5. SAVE CURRENT END POSITION IN DB FOR NEXT RUN
