@@ -19,7 +19,6 @@ import org.locationtech.jts.{geom => jts}
 import org.locationtech.jts.geom.prep._
 import org.locationtech.jts.io.WKBReader
 import osmesa.analytics.Analytics
-import osmesa.analytics.stats._
 import osmesa.apps.streaming.Interval._
 import vectorpipe.sources.{AugmentedDiffSource, Source}
 
@@ -171,7 +170,7 @@ object AOIMonitor
             // 2. EXTRACT SALIENT INFO FROM DIFFS
             //    Prepare a dataset of summaries, one for each notification to send.
             val changeSummary = {
-              val stats = diffs.withDelta
+              val stats = diffs
                 .withColumn("osmUser", 'user)
                 .drop('user)
 
