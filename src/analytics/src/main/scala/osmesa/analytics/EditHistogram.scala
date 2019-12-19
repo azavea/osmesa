@@ -5,7 +5,6 @@ import java.net.URI
 import geotrellis.layer._
 import geotrellis.vector._
 import geotrellis.vectortile.{MVTFeature, VInt64, VectorTile}
->>>>>>> 3e6ea78... WIP: Fewer errors...
 import org.apache.spark.sql._
 import org.locationtech.jts.geom.util.AffineTransformation
 import osmesa.analytics.updater.Implicits._

@@ -4,10 +4,7 @@ import geotrellis.proj4.{LatLng, WebMercator}
 import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.raster.resample.Sum
-<<<<<<< HEAD
 import geotrellis.store.index.zcurve.ZSpatialKeyIndex
-=======
->>>>>>> 3e6ea78... WIP: Fewer errors...
 import geotrellis.vector._
 import geotrellis.vectortile.{MVTFeature, Value}
 import org.apache.spark.internal.Logging
@@ -16,7 +13,6 @@ import osmesa.analytics.vectorgrid._
 import osmesa.analytics.raster.MutableSparseIntTile
 
 import scala.collection.mutable.ArrayBuffer
-import scala.reflect._
 
 object Implicits extends Logging {
 
