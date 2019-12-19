@@ -19,9 +19,9 @@ object Dependencies {
   val scalatest      = "org.scalatest"               %%  "scalatest"                  % Version.scalatest % "test"
   val jaiCore        = "javax.media" % "jai_core" % "1.1.3" % "test" from "http://download.osgeo.org/webdav/geotools/javax/media/jai_core/1.1.3/jai_core-1.1.3.jar"
   val apacheCommonsEmail = "org.apache.commons" % "commons-email" % Version.apacheCommonsEmail
-  val hbaseCommon    = "org.apache.hbase" % "hbase-common" % "1.3.1"
-  val hbaseClient    = "org.apache.hbase" % "hbase-client" % "1.3.1"
-  val hbaseServer    = "org.apache.hbase" % "hbase-server" % "1.3.1"
+  val hbaseCommon    = "org.apache.hbase" % "hbase-common" % "1.4.10"
+  val hbaseClient    = "org.apache.hbase" % "hbase-client" % "1.4.10"
+  val hbaseServer    = "org.apache.hbase" % "hbase-server" % "1.4.10"
   val geomesaHbaseDatastore = "org.locationtech.geomesa" % "geomesa-hbase-datastore_2.11" % Version.geomesa
   val kryo           = "com.esotericsoftware"        % "kryo-shaded"                   % Version.kryo
   val snakeyaml      = "org.yaml"                    % "snakeyaml"                     % Version.snakeyaml
@@ -31,7 +31,7 @@ object Dependencies {
   val circeParser    = "io.circe"                    %% "circe-parser"                 % Version.circe
   val circeOptics    = "io.circe"                    %% "circe-optics"                 % Version.circe
   val circeJava8     = "io.circe"                    %% "circe-java8"                  % Version.circe
-  val circeYaml      = "io.circe"                    %% "circe-yaml"                   % "0.8.0"
+  val circeYaml      = "io.circe"                    %% "circe-yaml"                   % "0.10.1"
   val logging        = "com.typesafe.scala-logging"  %% "scala-logging"                % Version.scalaLogging
   val commonsIO      = "commons-io"                  %  "commons-io"                   % Version.commonsIO
 }
