@@ -11,7 +11,7 @@ import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
-import vectorpipe.functions._
+import vectorpipe.functions.{flatten => _, _}
 import vectorpipe.functions.osm.isTagged
 import vectorpipe.model.ElementWithSequence
 import vectorpipe.sources.Source
