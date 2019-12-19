@@ -7,11 +7,6 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
 libraryDependencies ++= Seq(
-  // Deal with GeoMesa dependency that breaks Spark 2.2 (ARE THESE STILL NEEDED?)
-  "org.json4s" %% "json4s-native" % "3.2.11",
-  "org.json4s" %% "json4s-core" % "3.2.11",
-  "org.json4s" %% "json4s-ast" % "3.2.11",
-
   postgresql,
   decline,
   sparkHive % Provided,
