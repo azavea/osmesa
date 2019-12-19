@@ -2,7 +2,7 @@ object Version {
   val scala = "2.11.12"
   val osmesa = "0.2.0"
   val geotrellis = "3.2.0"
-  val geomesa = "2.3.2"
+  val geomesa = "2.3.1"
   val vectorpipe = "2.1.3"
   val decline = "1.0.0"
   val cats = "1.6.1"
@@ -16,4 +16,5 @@ object Version {
   val commonsIO = "2.5"
   val osmosis = "0.46"
   val apacheCommonsEmail = "1.5"
+  val hbase = "2.2.0"
 }
