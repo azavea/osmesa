@@ -21,7 +21,7 @@ libraryDependencies ++= Seq(
   scalactic,
   gtSparkTestKit,
   logging,
-  scalatest,
+  scalatest
 )
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */

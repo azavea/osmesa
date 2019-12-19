@@ -3,11 +3,12 @@ package osmesa.analytics
 import java.net.URI
 
 import geotrellis.raster.RasterExtent
-import geotrellis.spark.io.index.zcurve.ZSpatialKeyIndex
-import geotrellis.spark.{KeyBounds, SpatialKey}
+import geotrellis.layer._
+import geotrellis.store.index.zcurve.ZSpatialKeyIndex
 import geotrellis.vector._
-import geotrellis.vectortile.{VInt64, Value, VectorTile}
+import geotrellis.vectortile.{MVTFeature, VInt64, Value, VectorTile}
 import org.apache.spark.sql._
+import org.locationtech.jts.geom.util.AffineTransformation
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, write}
 import osmesa.analytics.vectorgrid._
@@ -19,7 +20,6 @@ import scala.concurrent.forkjoin.ForkJoinPool
 
 object EditHistogram extends VectorGrid {
   import Implicits._
-  import implicits._
 
   def create(nodes: DataFrame, tileSource: URI, baseZoom: Int = DefaultBaseZoom)(
       implicit concurrentUploads: Option[Int] = None): DataFrame = {
@@ -95,10 +95,11 @@ object EditHistogram extends VectorGrid {
 
                 // nudge geometries to cover the center of a point rather than the top-left (moving them into the
                 // tile's extent)
+                val x = layer.resolution / 2
+                val y = layer.resolution / 2
+                val affine = new AffineTransformation().translate(x, y)
                 val layerFeatures = layer.features
-                    .map(f =>
-                      f.mapGeom(
-                        _.as[Point].get.translate(layer.resolution / 2, layer.resolution / -2)))
+                    .map(f => MVTFeature(affine.transform(f.geom.asInstanceOf[Point]), f.data))
 
                 val newFeaturesById: Map[Long, Feature[Geometry, Map[String, Long]]] =
                   feats
@@ -116,7 +117,7 @@ object EditHistogram extends VectorGrid {
                 val modifiedFeatures =
                   layerFeatures.filter(f => featureIds.contains(f.data("__id")))
 
-                val replacementFeatures: Seq[Feature[Geometry, Map[String, Value]]] =
+                val replacementFeatures: Seq[MVTFeature[Geometry]] =
                   modifiedFeatures.map(f =>
                     f.mapData(d =>
                       aggregateValues(d.mapValues(_.toLong) ++ newFeaturesById(d("__id")).data)))
@@ -171,13 +172,14 @@ object EditHistogram extends VectorGrid {
   }
 
   def makeFeatures(features: Iterable[PointFeature[Map[String, Long]]])
-    : Iterable[Feature[Point, Map[String, VInt64]]] =
+    : Iterable[MVTFeature[Point]] =
     features
       .map(f => f.mapData(aggregateValues))
       .toSeq
       // put recently-edited features first
       .sortBy(_.data.keys.filter(k => !k.startsWith("__")).max)
       .reverse
+      .map(f => MVTFeature(f.geom, f.data))
 
   def aggregateValues(data: Map[String, Long]): Map[String, VInt64] = {
     val dates = data.filterKeys(k => !k.startsWith("__") && !k.contains(":"))
