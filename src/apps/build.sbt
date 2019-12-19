@@ -12,8 +12,7 @@ libraryDependencies ++= Seq(
   "org.json4s" %% "json4s-core" % "3.2.11",
   "org.json4s" %% "json4s-ast" % "3.2.11",
 
-  "org.postgresql" % "postgresql" % "42.2.2",
-
+  postgresql,
   decline,
   sparkHive % Provided,
   sparkJts,

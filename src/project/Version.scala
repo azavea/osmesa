@@ -12,9 +12,12 @@ object Version {
   val kryo = "4.0.0"
   val snakeyaml = "1.25"
   val circe = "0.11.1"
+  val circeYaml = "0.10.1" // not in sync with circe core
   val scalaLogging = "3.5.0"
   val commonsIO = "2.5"
   val osmosis = "0.46"
   val apacheCommonsEmail = "1.5"
   val hbase = "2.2.0"
+  val jai = "1.1.3"
+  val postgresql = "42.2.9"
 }
