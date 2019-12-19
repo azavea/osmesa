@@ -2,7 +2,7 @@ object Version {
   val scala = "2.11.12"
   val osmesa = "0.2.0"
   val geotrellis = "3.2.0"
-  val geomesa = "2.3.1"
+  val geomesa = "2.3.2"
   val vectorpipe = "2.1.3"
   val decline = "1.0.0"
   val cats = "1.6.1"

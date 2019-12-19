@@ -7,7 +7,7 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
 libraryDependencies ++= Seq(
-  "org.postgresql" % "postgresql" % "42.2.2",
+  "org.postgresql" % "postgresql" % "42.2.9",
 
   decline,
   sparkHive % Provided,
