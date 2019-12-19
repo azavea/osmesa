@@ -1,9 +1,9 @@
 package osmesa.analytics
 
-import org.locationtech.jts.geom.{Coordinate, Geometry, Point}
+import org.locationtech.jts.geom.{Geometry, Point}
 import geotrellis.raster.{Raster, Tile}
-import geotrellis.spark.SpatialKey
-import geotrellis.vector.{Extent, GeomFactory, PointFeature}
+import geotrellis.layer.SpatialKey
+import geotrellis.vector.{Extent, PointFeature}
 import osmesa.analytics.raster._
 
 package object vectorgrid {

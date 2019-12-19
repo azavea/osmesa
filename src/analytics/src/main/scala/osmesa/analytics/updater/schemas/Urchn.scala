@@ -1,6 +1,6 @@
 package osmesa.analytics.updater.schemas
 
-import geotrellis.vector.Feature
+import geotrellis.vector.{Feature, Geometry}
 import geotrellis.vectortile._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater._
@@ -9,7 +9,7 @@ class Urchn(
     override val layer: Layer,
     override val features: Map[String, (Option[AugmentedDiffFeature], AugmentedDiffFeature)])
     extends Schema {
-  override protected lazy val touchedFeatures: Map[String, Seq[VTFeature]] = {
+  override protected lazy val touchedFeatures: Map[String, Seq[MVTFeature[Geometry]]] = {
     val featureIds = features.keySet
 
     layer.features
@@ -31,7 +31,7 @@ class Urchn(
       .mapValues(_.head)
       .mapValues(_.data("__creation"))
 
-  lazy val newFeatures: Seq[VTFeature] =
+  lazy val newFeatures: Seq[MVTFeature[Geometry]] =
     features
       .filter {
         case (id, (_, curr)) =>
@@ -68,7 +68,7 @@ class Urchn(
   private def makeFeature(feature: AugmentedDiffFeature,
                           creation: Long,
                           authors: Set[String],
-                          minorVersion: Option[Int]): Option[VTFeature] = {
+                          minorVersion: Option[Int]): Option[MVTFeature[Geometry]] = {
     val id = feature.data.id
 
     val elementId = feature.data.`type` match {
@@ -81,7 +81,7 @@ class Urchn(
     feature match {
       case _ if Option(feature.geom).isDefined && feature.geom.isValid =>
         Some(
-          Feature(
+          MVTFeature(
             feature.geom, // when features are deleted, this will be the last geometry that was visible
             feature.data.tags.map {
               case (k, v) => (k, VString(v))

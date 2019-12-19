@@ -3,12 +3,12 @@ package osmesa.analytics
 import java.net.{URI, URLEncoder}
 import java.nio.charset.StandardCharsets
 
+import geotrellis.layer.{KeyBounds, SpatialKey}
 import geotrellis.raster._
 import geotrellis.raster.resample.Sum
-import geotrellis.spark.io.index.zcurve.ZSpatialKeyIndex
-import geotrellis.spark.{KeyBounds, SpatialKey}
-import geotrellis.vector.{Extent, Feature, Point, PointFeature, Geometry => GTGeometry}
-import geotrellis.vectortile.{VInt64, Value, VectorTile}
+import geotrellis.store.index.zcurve.ZSpatialKeyIndex
+import geotrellis.vector._
+import geotrellis.vectortile.{MVTFeature, VInt64, Value, VectorTile}
 import org.apache.spark.sql._
 import osmesa.analytics.vectorgrid._
 import osmesa.analytics.updater.Implicits._
@@ -79,7 +79,7 @@ object Footprints extends VectorGrid {
                 // TODO feature construction / updating is very similar to osmesa.analytics.updater.schemas.*; see if the 2
                 // can be merged
 
-                val newFeaturesById: Map[Long, Feature[GTGeometry, (Long, Int)]] =
+                val newFeaturesById: Map[Long, Feature[Geometry, (Long, Int)]] =
                   feats
                     .groupBy(_.data._1)
                     .mapValues(_.head)
@@ -94,18 +94,22 @@ object Footprints extends VectorGrid {
                 val modifiedFeatures =
                   layer.features.filter(f => featureIds.contains(f.data("id")))
 
-                val replacementFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
+                val replacementFeatures: Seq[MVTFeature[Geometry]] =
                   modifiedFeatures.map { f =>
-                    f.mapData { d =>
-                      val prevDensity: Long = d("density")
-                      d.updated("density", VInt64(prevDensity + newFeaturesById(d("id")).data._2))
-                    }
+                    val d = f.data
+                    val prevDensity: Long = d("density")
+                    val newData = d.updated(
+                      "density",
+                      VInt64(prevDensity + newFeaturesById(d("id")).data._2)
+                    )
+                    MVTFeature(f.id, f.geom, newData)
                   }
 
-                val newFeatures: Seq[Feature[GTGeometry, Map[String, Value]]] =
+                val newFeatures: Seq[MVTFeature[Geometry]] =
                   makeFeatures(
                     feats
                       .filterNot(f => existingFeatures.contains(f.data._1)))
+                      .map(f => MVTFeature(None, f.geom, f.data))
 
                 unmodifiedFeatures ++ replacementFeatures ++ newFeatures match {
                   case updatedFeatures if (replacementFeatures.length + newFeatures.length) > 0 =>
@@ -152,13 +156,14 @@ object Footprints extends VectorGrid {
     }
   }
 
-  def makeFeatures(
-      features: Seq[PointFeature[(Long, Int)]]): Seq[Feature[Point, Map[String, VInt64]]] =
-    features.map(f =>
-      f.mapData {
-        case (id, density) =>
-          Map("id" -> VInt64(id), "density" -> VInt64(density))
-    })
+  def makeFeatures(features: Seq[PointFeature[(Long, Int)]]): Seq[MVTFeature[Point]] =
+    features
+      .map(f =>
+        f.mapData {
+          case (id, density) =>
+            Map("id" -> VInt64(id), "density" -> VInt64(density))
+        })
+      .map(f => MVTFeature(f.geom, f.data))
 
   def makeURI(tileSource: URI, key: String, zoom: Int, sk: SpatialKey): URI = {
     val filename =

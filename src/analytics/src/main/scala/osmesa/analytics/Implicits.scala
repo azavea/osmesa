@@ -1,19 +1,36 @@
 package osmesa.analytics
 
 import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.raster.resample.Sum
-import geotrellis.spark.SpatialKey
-import geotrellis.spark.tiling.ZoomedLayoutScheme
-import geotrellis.vector.Geometry
+import geotrellis.vector._
+import geotrellis.vectortile.{MVTFeature, Value}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Dataset
 import osmesa.analytics.vectorgrid._
 import osmesa.analytics.raster.MutableSparseIntTile
 
 import scala.collection.mutable.ArrayBuffer
+import scala.reflect._
 
 object Implicits extends Logging {
+
+  implicit class MVTFeatureMap[+G <: Geometry](val feature: MVTFeature[G]) {
+    /** Method for manipulating this class' geom
+     * @tparam T A subtype of Geometry
+     * @param f A function from G to T
+     */
+    def mapGeom[T <: Geometry](f: G => T): MVTFeature[T] =
+      MVTFeature(f(feature.geom), feature.data)
+
+    /** Method for manipulating this class' data
+     * @param f A function from D to T
+     */
+    def mapData(f: Map[String, Value] => Map[String, Value]): MVTFeature[G] =
+      MVTFeature(feature.geom, f(feature.data))
+  }
+
   implicit class ExtendedPointWithKey(val coords: Dataset[PointWithKey]) {
     import coords.sparkSession.implicits._
 
