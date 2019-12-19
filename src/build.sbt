@@ -23,7 +23,6 @@ lazy val commonSettings = Seq(
     Resolver.bintrayRepo("lonelyplanet", "maven"),
     Resolver.bintrayRepo("kwark", "maven"), // Required for Slick 3.1.1.2, see https://github.com/azavea/raster-foundry/pull/1576
     Resolver.bintrayRepo("bkirwi", "maven"), // Required for `decline` dependency
-    Resolver.bintrayRepo("azavea", "maven"), // Required for `vectorpipe` dependency
     "locationtech-releases" at "https://repo.locationtech.org/content/repositories/releases/",
     "locationtech-snapshots" at "https://repo.locationtech.org/content/repositories/snapshots/",
     "geosolutions" at "http://maven.geo-solutions.it/",
