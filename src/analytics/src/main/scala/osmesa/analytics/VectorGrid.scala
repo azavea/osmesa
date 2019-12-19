@@ -6,7 +6,7 @@ import java.util.zip.GZIPInputStream
 
 import geotrellis.proj4.WebMercator
 import geotrellis.layer.ZoomedLayoutScheme
-import geotrellis.vector.{Extent, PointFeature}
+import geotrellis.vector.Extent
 import geotrellis.vectortile.{Layer, MVTFeature, VInt64, VectorTile}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging

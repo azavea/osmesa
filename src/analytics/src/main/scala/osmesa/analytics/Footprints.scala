@@ -8,7 +8,7 @@ import geotrellis.raster._
 import geotrellis.raster.resample.Sum
 import geotrellis.store.index.zcurve.ZSpatialKeyIndex
 import geotrellis.vector._
-import geotrellis.vectortile.{MVTFeature, VInt64, Value, VectorTile}
+import geotrellis.vectortile.{MVTFeature, VInt64, VectorTile}
 import org.apache.spark.sql._
 import osmesa.analytics.vectorgrid._
 import osmesa.analytics.updater.Implicits._

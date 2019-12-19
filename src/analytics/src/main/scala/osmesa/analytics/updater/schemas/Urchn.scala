@@ -1,6 +1,6 @@
 package osmesa.analytics.updater.schemas
 
-import geotrellis.vector.{Feature, Geometry}
+import geotrellis.vector.Geometry
 import geotrellis.vectortile._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater._

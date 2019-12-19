@@ -31,9 +31,6 @@ package object updater extends Logging {
   private lazy val s3: S3Client = S3ClientProducer.get()
 
   type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
-  type VTFeature = Feature[Geometry, VTProperties]
-  type TypedVTFeature[T <: Geometry] = Feature[T, VTProperties]
-  type VTProperties = Map[String, Value]
 
   val LayoutScheme: ZoomedLayoutScheme = ZoomedLayoutScheme(WebMercator)
 
