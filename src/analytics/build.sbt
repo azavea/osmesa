@@ -17,7 +17,6 @@ libraryDependencies ++= Seq(
   gtSpark,
   gtVector,
   gtVectorTile,
-//  "com.google.protobuf" % "protobuf-java" % "2.5.0",
   vectorpipe,
   cats,
   scalactic,
