@@ -7,8 +7,7 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
 libraryDependencies ++= Seq(
-  "org.postgresql" % "postgresql" % "42.2.9",
-
+  postgresql,
   decline,
   sparkHive % Provided,
   sparkJts,
@@ -41,6 +40,7 @@ initialCommands in console :=
 assemblyJarName in assembly := "osmesa-analytics.jar"
 
 assemblyShadeRules in assembly := {
+  // TODO: Do we still need these shade rules?
   val shadePackage = "com.azavea.shaded.demo"
   Seq(
     ShadeRule.rename("com.google.common.**" -> s"$shadePackage.google.common.@1")
