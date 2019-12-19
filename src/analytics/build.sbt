@@ -12,20 +12,18 @@ libraryDependencies ++= Seq(
   decline,
   sparkHive % Provided,
   sparkJts,
-  gtGeotools exclude("com.google.protobuf", "protobuf-java"),
-  gtS3 exclude("com.google.protobuf", "protobuf-java") exclude("com.amazonaws", "aws-java-sdk-s3"),
-  gtSpark exclude("com.google.protobuf", "protobuf-java"),
-  gtVector exclude("com.google.protobuf", "protobuf-java"),
-  gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
-  "com.google.protobuf" % "protobuf-java" % "2.5.0",
-  vectorpipe exclude("com.google.protobuf", "protobuf-java"),
+  gtGeotools,
+  gtS3,
+  gtSpark,
+  gtVector,
+  gtVectorTile,
+//  "com.google.protobuf" % "protobuf-java" % "2.5.0",
+  vectorpipe,
   cats,
   scalactic,
   gtSparkTestKit,
   logging,
   scalatest,
-
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % Provided
 )
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */
