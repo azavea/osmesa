@@ -34,7 +34,7 @@ aws emr create-cluster \
 	        \"InstanceCount\": 1,
 	        \"BidPrice\": \"OnDemandPrice\",
 	        \"InstanceGroupType\": \"MASTER\",
-	        \"InstanceType\": \"m4.xlarge\",
+	        \"InstanceType\": \"${BATCH_MASTER_INSTANCE_TYPE}\",
 	        \"Name\":\"Master\",
 	        \"EbsConfiguration\": {
 						\"EbsOptimized\": true,
@@ -49,7 +49,7 @@ aws emr create-cluster \
 	        \"InstanceCount\": ${NUM_EXECUTORS},
 	        \"BidPrice\": \"OnDemandPrice\",
 	        \"InstanceGroupType\": \"CORE\",
-	        \"InstanceType\": \"r5.xlarge\",
+	        \"InstanceType\": \"${BATCH_CORE_INSTANCE_TYPE}\",
 	        \"Name\":\"Workers\",
 	        \"EbsConfiguration\": {
 						\"EbsOptimized\": true,
