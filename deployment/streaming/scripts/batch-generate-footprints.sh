@@ -24,13 +24,13 @@ aws emr create-cluster \
 	        "InstanceCount": 1,
 	        "BidPrice": "OnDemandPrice",
 	        "InstanceGroupType": "MASTER",
-	        "InstanceType": "${BATCH_INSTANCE_TYPE}",
+	        "InstanceType": "${BATCH_MASTER_INSTANCE_TYPE}",
 	        "Name":"Master"
 	      }, {
 	        "InstanceCount": 20,
 	        "BidPrice": "OnDemandPrice",
 	        "InstanceGroupType": "CORE",
-	        "InstanceType": "${BATCH_INSTANCE_TYPE}",
+	        "InstanceType": "${BATCH_CORE_INSTANCE_TYPE}",
 	        "Name":"Workers"
 	      }
 	    ]' \

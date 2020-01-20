@@ -64,7 +64,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
       |      GROUP BY key
       |    ) AS _
       |  ),
-      |  total_edits = c.total_edits + EXCLUDED.total_edits,
+      |  total_edits = coalesce(c.total_edits, 0) + coalesce(EXCLUDED.total_edits, 0),
       |  augmented_diffs = coalesce(c.augmented_diffs, ARRAY[]::integer[]) || EXCLUDED.augmented_diffs,
       |  updated_at = current_timestamp
       |WHERE c.id = EXCLUDED.id
