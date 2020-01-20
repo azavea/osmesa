@@ -8,21 +8,20 @@
   {
     "Classification": "spark-defaults",
     "Properties": {
-        "spark.driver.maxResultSize": "3G",
-        "spark.dynamicAllocation.enabled": "true",
-        "spark.shuffle.service.enabled": "true",
-        "spark.shuffle.compress": "true",
-        "spark.shuffle.spill.compress": "true",
-        "spark.sql.shuffle.partitions": "2000",
-        "spark.speculation": "true",
-        "spark.rdd.compress": "true",
-        "spark.executor.memory": "2G",
-        "spark.executor.memoryOverhead": "1G",
-        "spark.driver.cores": "2",
-        "spark.driver.memory": "10G",
-        "spark.driver.memoryOverhead": "1G",
-        "spark.driver.maxResultSize": "3G",
-        "spark.executor.extraJavaOptions" : "-XX:+UseParallelGC -Dgeotrellis.s3.threads.rdd.write=64"
+      "spark.dynamicAllocation.enabled": "true",
+      "spark.shuffle.service.enabled": "true",
+      "spark.shuffle.compress": "true",
+      "spark.shuffle.spill.compress": "true",
+      "spark.sql.shuffle.partitions": "2000",
+      "spark.speculation": "true",
+      "spark.rdd.compress": "true",
+      "spark.executor.memory": "2G",
+      "spark.executor.memoryOverhead": "1G",
+      "spark.driver.cores": "2",
+      "spark.driver.memory": "10G",
+      "spark.driver.memoryOverhead": "1G",
+      "spark.driver.maxResultSize": "3G",
+      "spark.executor.extraJavaOptions" : "-XX:+UseParallelGC -Dgeotrellis.s3.threads.rdd.write=64"
     }
   },
   {
