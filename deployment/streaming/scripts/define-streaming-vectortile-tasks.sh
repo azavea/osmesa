@@ -11,8 +11,8 @@ aws ecs register-task-definition \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
     --requires-compatibilities EC2 FARGATE \
-    --cpu "2 vCPU" \
-    --memory "8 GB" \
+    --cpu "4 vCPU" \
+    --memory "30 GB" \
     --container-definitions "[
 	    {
 	      \"logConfiguration\": {
@@ -25,12 +25,12 @@ aws ecs register-task-definition \
 	      },
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
-	        \"--driver-memory\", \"7G\",
+	        \"--driver-memory\", \"27G\",
 	        \"--class\", \"osmesa.analytics.oneoffs.StreamingFacetedEditHistogramTileUpdater\",
 	        \"/opt/osmesa-analytics.jar\",
 	        \"--augmented-diff-source\", \"${AUGDIFF_SOURCE}\",
 	        \"--tile-source\", \"${HISTOGRAM_VT_LOCATION}\",
-	        \"--batch-size\", \"1\"
+	        \"--batch-size\", \"4\"
 	      ],
 	      \"environment\": [
 	        {
@@ -68,7 +68,7 @@ aws ecs register-task-definition \
 	        \"/opt/osmesa-analytics.jar\",
 	        \"--change-source\", \"${CHANGE_SOURCE}\",
 	        \"--tile-source\", \"${FOOTPRINT_VT_LOCATION}\",
-	        \"--batch-size\", \"1\"
+	        \"--batch-size\", \"4\"
 	      ],
 	      \"environment\": [
 	        {
