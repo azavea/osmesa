@@ -26,3 +26,8 @@ if [[ $DEFINED_GROUPS != *"/ecs/streaming-edit-histogram-tile-updater"* ]]; then
     aws logs create-log-group \
         --log-group-name /ecs/streaming-edit-histogram-tile-updater
 fi
+
+if [[ $DEFINED_GROUPS != *"/ecs/osmesa-streaming-augdiff-producer"* ]]; then
+    aws logs create-log-group \
+        --log-group-name /ecs/osmesa-streaming-augdiff-producer
+fi
