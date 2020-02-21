@@ -90,7 +90,7 @@ deploy-streaming-stats-updaters: stop-streaming-stats-updaters
 	  --scheduling-strategy REPLICA \
 	  --network-configuration ${NETWORK_CONFIGURATION}
 
-deploy-streaming-vectortile-tasks: deploy-footprint-updater deploy-streaming-edit-histogram-updater
+deploy-streaming-vectortile-tasks: deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater
 
 ###################
 # Batch AWS Tasks #
