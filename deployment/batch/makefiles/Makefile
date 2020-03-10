@@ -53,6 +53,28 @@ create-cluster:
 'Name=Workers,${WORKER_BID_PRICE}InstanceCount=${WORKER_COUNT},InstanceGroupType=CORE,InstanceType=${WORKER_INSTANCE}${EMR_ATTRS_CORE}' \
 | tee cluster-id.txt
 
+update-changeset-orc:
+	aws emr add-steps --output text --cluster-id ${CLUSTER_ID} \
+--steps Type=CUSTOM_JAR,Name="Changeset ORC Update",Jar=command-runner.jar,Args=[\
+spark-submit,--master,yarn,--deploy-mode,cluster,\
+--class,osmesa.apps.batch.MergeChangesets,\
+--driver-memory,${DRIVER_MEMORY},\
+--driver-cores,${DRIVER_CORES},\
+--executor-memory,${EXECUTOR_MEMORY},\
+--executor-cores,${EXECUTOR_CORES},\
+--conf,spark.driver.maxResultSize=3g,\
+--conf,spark.dynamicAllocation.enabled=true,\
+--conf,spark.yarn.executor.memoryOverhead=${YARN_OVERHEAD},\
+--conf,spark.yarn.driver.memoryOverhead=${YARN_OVERHEAD},\
+--conf,spark.shuffle.io.numConnectionsPerPeer=4,\
+--conf,spark.shuffle.io.connectionTimeout=18000s,\
+--conf,spark.shuffle.service.enabled=true,\
+${S3_URI}/${APPS_JAR},\
+--changesets=${CHANGESET_URI},\
+${CHANGESET_ORC_SOURCE},\
+${CHANGESET_ORC_DEST}\
+] | cut -f2 | tee last-step-id.txt
+
 upload-apps: ${APPS_ASSEMBLY}
 	@aws s3 cp ${APPS_ASSEMBLY} ${S3_URI}/
 
