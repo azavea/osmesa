@@ -37,7 +37,7 @@ command
    `config-local.mk.example` to `config-local.mk`. These can be configured in a
    moment.
 
-2. Build the osm_analytics container
+2. Build the osm_apps container
 
 ```bash
 make build-container

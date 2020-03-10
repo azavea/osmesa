@@ -24,13 +24,13 @@ aws emr create-cluster \
 	        "InstanceCount": 1,
 	        "BidPrice": "OnDemandPrice",
 	        "InstanceGroupType": "MASTER",
-	        "InstanceType": "${BATCH_INSTANCE_TYPE}",
+	        "InstanceType": "${BATCH_MASTER_INSTANCE_TYPE}",
 	        "Name":"Master"
 	      }, {
 	        "InstanceCount": 20,
 	        "BidPrice": "OnDemandPrice",
 	        "InstanceGroupType": "CORE",
-	        "InstanceType": "${BATCH_INSTANCE_TYPE}",
+	        "InstanceType": "${BATCH_CORE_INSTANCE_TYPE}",
 	        "Name":"Workers"
 	      }
 	    ]' \
@@ -42,11 +42,11 @@ aws emr create-cluster \
 	        "Args": [
 	          "spark-submit",
 	          "--deploy-mode", "cluster",
-	          "--class", "osmesa.analytics.oneoffs.FacetedEditHistogramTileCreator",
+	          "--class", "osmesa.apps.batch.FacetedEditHistogramTileCreator",
 	          "--conf", "spark.executor.memoryOverhead=2g",
 	          "--conf", "spark.sql.shuffle.partitions=2000",
 	          "--conf", "spark.speculation=true",
-	          "${OSMESA_ANALYTICS_JAR}",
+	          "${OSMESA_APPS_JAR}",
 	          "--history", "${HISTORY_ORC}",
 	          "--out", "${HISTOGRAM_VT_LOCATION}"
 	        ],

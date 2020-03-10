@@ -1,10 +1,13 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.batch
+
+import java.net.URI
+import java.sql._
+import java.time.Instant
 
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits._
 import com.monovore.decline._
-import io.circe.generic.auto._
-import io.circe.{yaml, _}
+import io.circe._
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.joda.time.DateTime
@@ -13,19 +16,14 @@ import osmesa.analytics.Analytics
 import vectorpipe.sources.{ChangesetSource, Source}
 import vectorpipe.util.DBUtils
 
-import java.net.URI
-import java.sql._
-import java.time.Instant
-import scalaj.http.Http
-
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.MergeChangesets \
- *   ingest/target/scala-2.11/osmesa-analytics.jar \
+ *   --class osmesa.apps.batch.MergeChangesets \
+ *   ingest/target/scala-2.11/osmesa-apps.jar \
  *   --changesets http://location/of/changeset/replications \
  *   --end-time 1970-01-01T13:00:00Z
  *   s3://path/to/history.orc
@@ -37,8 +35,8 @@ object MergeChangesets
     header = "Bring existing changeset ORC file up to date using changeset stream",
     main = {
 
-      import MergeChangesetUtils._
       import ChangesetSource._
+      import MergeChangesetsImplicits._
 
       val changesetSourceOpt =
         Opts
@@ -123,8 +121,7 @@ object MergeChangesets
       }
     }
 )
-
-object MergeChangesetUtils {
+object MergeChangesetsImplicits {
   implicit val readInstant: Argument[Instant] = new Argument[Instant] {
     override def read(string: String): ValidatedNel[String, Instant] = {
       try { Validated.valid(Instant.parse(string)) }
@@ -138,26 +135,4 @@ object MergeChangesetUtils {
 
   private implicit val dateTimeDecoder: Decoder[DateTime] =
     Decoder.instance(a => a.as[String].map(DateTime.parse(_, formatter)))
-
-  def saveLocations(procName: String, sequence: Int, databaseURI: URI) = {
-    var connection: Connection = null
-    try {
-      connection = DBUtils.getJdbcConnection(databaseURI)
-      val upsertSequence =
-        connection.prepareStatement(
-          """
-          |INSERT INTO checkpoints (proc_name, sequence)
-          |VALUES (?, ?)
-          |ON CONFLICT (proc_name)
-          |DO UPDATE SET sequence = ?
-          """.stripMargin
-        )
-      upsertSequence.setString(1, procName)
-      upsertSequence.setInt(2, sequence)
-      upsertSequence.setInt(3, sequence)
-      upsertSequence.execute()
-    } finally {
-      if (connection != null) connection.close()
-    }
-  }
 }

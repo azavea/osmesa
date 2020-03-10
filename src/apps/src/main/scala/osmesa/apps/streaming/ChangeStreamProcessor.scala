@@ -1,4 +1,4 @@
-package osmesa.analytics.oneoffs
+package osmesa.apps.streaming
 
 import java.net.URI
 
@@ -6,18 +6,18 @@ import cats.implicits._
 import com.monovore.decline._
 import org.apache.spark.sql._
 import osmesa.analytics.Analytics
-import vectorpipe.{internal => ProcessOSM}
 import vectorpipe.sources.Source
+import vectorpipe.{internal => ProcessOSM}
 
 /*
  * Usage example:
  *
- * sbt "project analytics" assembly
+ * sbt "project apps" assembly
  *
  * # Running an infinite stream from the beginning of time
  * spark-submit \
- *   --class osmesa.analytics.oneoffs.ChangeStreamProcessor \
- *   ./analytics/target/scala-2.11/osmesa-analytics.jar \
+ *   --class osmesa.apps.streaming.ChangeStreamProcessor \
+ *   ./analytics/target/scala-2.11/osmesa-apps.jar \
  *   --start-sequence 1
  *
  * This class prints the change stream out to console for debugging

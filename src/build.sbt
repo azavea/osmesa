@@ -64,11 +64,17 @@ lazy val commonSettings = Seq(
 lazy val root = Project("osmesa", file("."))
   .aggregate(
     analytics,
+    apps,
     bm
   ).settings(commonSettings: _*)
 
 lazy val analytics =
   project
+    .settings(commonSettings: _*)
+
+lazy val apps =
+  project
+    .dependsOn(analytics)
     .settings(commonSettings: _*)
 
 lazy val bm =

@@ -32,8 +32,9 @@ export SERVICE_ACCESS_SECURITY_GROUP := ${ECS_SECURITY_GROUP}
 export EMR_MASTER_SECURITY_GROUP :=
 export EMR_SLAVE_SECURITY_GROUP :=
 
-export BATCH_INSTANCE_TYPE := m4.xlarge
-export OSMESA_ANALYTICS_JAR := s3://<bucket>/osmesa-analytics.jar
+export BATCH_CORE_INSTANCE_TYPE := m4.xlarge
+export BATCH_MASTER_INSTANCE_TYPE := m4.xlarge
+export OSMESA_APPS_JAR := s3://<bucket>/osmesa-apps.jar
 
 export HISTORY_ORC :=
 export CHANGESETS_ORC :=

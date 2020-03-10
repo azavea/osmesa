@@ -28,7 +28,7 @@ login-aws-registry:
 	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
 tag-image: build-container
-	docker tag osm_analytics:${VERSION_TAG} ${ECR_IMAGE}:${VERSION_TAG}
+	docker tag osm_apps:${VERSION_TAG} ${ECR_IMAGE}:${VERSION_TAG}
 
 push-image: login-aws-registry tag-image
 	docker push ${ECR_IMAGE}:${VERSION_TAG}
@@ -103,4 +103,6 @@ batch-generate-edit-histograms:
 	./scripts/batch-generate-edit-histograms.sh
 
 batch-generate-db-backfill:
-	./scripts/batch-process.sh "OSMesa Batch Process" "ChangesetStatsCreator" 64 "[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.analytics.oneoffs.ChangesetStatsCreator\", \"--conf\", \"spark.executor.memoryOverhead=2g\", \"--conf\", \"spark.sql.shuffle.partitions=2000\", \"--conf\", \"spark.speculation=true\", \"${OSMESA_ANALYTICS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"]"
+	BATCH_CORE_INSTANCE_TYPE=r5.xlarge BATCH_MASTER_INSTANCE_TYPE=m4.xlarge ./scripts/batch-process.sh \
+	  "OSMesa Batch Process" "ChangesetStatsCreator" 64 \
+		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"${OSMESA_APPS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"]"
