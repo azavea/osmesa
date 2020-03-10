@@ -81,7 +81,7 @@ object MergeChangesets
         import spark.implicits._
 
         val df = spark.read.orc(orcUri.toString)
-        val lastModified = df.select(max(coalesce('closed_at, 'created_at))).first.getAs[Timestamp](0)
+        val lastModified = df.select(max(coalesce('closedAt, 'createdAt))).first.getAs[Timestamp](0)
 
         val startSequence = findSequenceFor(lastModified.toInstant, changesetSource)
         val endSequence = endTime.map(findSequenceFor(_, changesetSource)).getOrElse(getCurrentSequence(changesetSource).get.sequence)

@@ -47,6 +47,9 @@ deployment/terraform/terraform.tfvars
 *.tfstate.backup
 .terraform
 
+# Makefile configs
+*.mk
+
 # Ansible
 deployment/ansible/roles/azavea.*
 
@@ -82,4 +85,3 @@ dist/
 # Temporary credentials
 emr/terraform/auth.json
 
-derby.log
