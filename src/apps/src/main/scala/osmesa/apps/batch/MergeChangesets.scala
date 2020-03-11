@@ -101,15 +101,15 @@ object MergeChangesets
           .union(df.select(
             'id,
             'tags,
-            'created_at as 'createdAt,
+            'createdAt,
             'open,
-            'closed_at as 'closedAt,
-            'comments_count as 'commentsCount,
-            'min_lat as 'minLat,
-            'max_lat as 'maxLat,
-            'min_lon as 'minLon,
-            'max_lon as 'maxLon,
-            'num_changes as 'numChanges,
+            'closedAt,
+            'commentsCount,
+            'minLat,
+            'maxLat,
+            'minLon,
+            'maxLon,
+            'numChanges,
             'uid,
             'user)
           )
