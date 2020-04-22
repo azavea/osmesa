@@ -9,6 +9,10 @@ import vectorpipe.functions.osm._
 import org.locationtech.geomesa.spark.jts._
 
 package object stats {
+
+  @deprecated()
+  def withDelta(df: DataFrame): DataFrame = addLinearDelta(df).withColumnRenamed("linearDelta", "delta")
+
   def addLinearDelta(df: DataFrame): DataFrame = {
     import df.sparkSession.implicits._
 
