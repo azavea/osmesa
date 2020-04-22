@@ -111,7 +111,8 @@ object StreamingChangesetStatsUpdater
                 // if sequences are received sequentially (and atomically), 0 seconds should suffice; anything received with an
                 // earlier timestamp after that point will be dropped
                 .withWatermark("timestamp", "0 seconds")
-                .withDelta
+                .withLinearDelta
+                .withAreaDelta
                 .select(
                   'timestamp,
                   'sequence,
