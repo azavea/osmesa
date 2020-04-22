@@ -8,4 +8,7 @@ export OUTPUT_LOCATION := [TARGET_BUCKET]
 
 export ORC_CACHE_LOCATION := ${S3_URI}/cache
 export VECTORTILE_CATALOG_LOCATION = ${S3_URI}/vectortiles
+
 export CHANGESET_URI := [REPLICATION URL]
+export CHANGESET_ORC_SOURCE := [S3 URI of existing orc]
+export CHANGESET_ORC_DEST := [S3 URI of new orc]
