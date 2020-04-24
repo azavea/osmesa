@@ -1,16 +1,26 @@
 package osmesa.analytics
 
+import geotrellis.proj4.{CRS, LatLng, WebMercator}
+import geotrellis.proj4.util.UTM
+import geotrellis.vector.{Geometry => GTGeometry}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 import org.apache.spark.sql.types.IntegerType
 import org.apache.spark.sql.functions._
+import org.locationtech.geomesa.spark.jts.{udf => _, _}
+import org.locationtech.jts.geom.Geometry
 import osmesa.analytics.stats.functions._
 import vectorpipe.functions.osm._
-import org.locationtech.geomesa.spark.jts._
 
 package object stats {
 
-  @deprecated()
+  val transformLatLngToUtm = udf { g: Geometry =>
+    val centroid = g.getCentroid
+    val utmCrs = UTM.getZoneCrs(centroid.getX, centroid.getY)
+    GTGeometry(g).reproject(LatLng, utmCrs).jtsGeom
+  }
+
+  @deprecated("Prefer withLinearDelta", "0.1.0")
   def withDelta(df: DataFrame): DataFrame = addLinearDelta(df).withColumnRenamed("linearDelta", "delta")
 
   def addLinearDelta(df: DataFrame): DataFrame = {
@@ -28,14 +38,14 @@ package object stats {
   def addAreaDelta(df: DataFrame): DataFrame = {
     import df.sparkSession.implicits._
 
-    df.withColumn("areaDelta",
-      when(isArea('tags),
-        abs(
-          coalesce(when(st_geometryType('geom) === "Polygon", st_area(st_castToPolygon('geom))), lit(0)) -
-            coalesce(when(st_geometryType('prevGeom) === "Polygon", st_area(st_castToPolygon('geom))), lit(0))
-
-        ))
-        .otherwise(lit(0)))
+    df
+      .withColumn("geomUtm", transformLatLngToUtm('geom))
+      .withColumn("prevGeomUtm", transformLatLngToUtm('prevGeom))
+      .withColumn("areaDelta", abs(
+        coalesce(when(!isnull('geom) and st_isValid('geom), st_area('geomUtm)), lit(0)) -
+        coalesce(when(!isnull('prevGeom) and st_isValid('prevGeom), st_area('prevGeomUtm)), lit(0)))
+      )
+      .drop("geomUtm", "prevGeomUtm")
   }
 
   def addPrevGeom(df: DataFrame): DataFrame = {
@@ -111,12 +121,12 @@ package object stats {
       lit("railline_km_added"), (isRailLine('tags) and isNew('version, 'minorVersion)).cast(IntegerType) * 'linearDelta / 1000,
       lit("railline_km_modified"), (isRailLine('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType) * 'linearDelta / 1000,
       lit("railline_km_deleted"), (isRailLine('tags) and !'visible).cast(IntegerType) * 'linearDelta / 1000,
-      lit("landuse_km2_added"), (isLanduse('tags) and isNew('version, 'minorVersion)).cast(IntegerType) * 'areaDelta / 1000,
-      lit("landuse_km2_modified"), (isLanduse('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType) * 'areaDelta / 1000,
-      lit("landuse_km2_deleted"), (isLanduse('tags) and !'visible).cast(IntegerType) * 'areaDelta / 1000,
-      lit("natural_km2_added"), (isNatural('tags) and isNew('version, 'minorVersion)).cast(IntegerType) * 'areaDelta / 1000,
-      lit("natural_km2_modified"), (isNatural('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType) * 'areaDelta / 1000,
-      lit("natural_km2_deleted"), (isNatural('tags) and !'visible).cast(IntegerType) * 'areaDelta / 1000
+      lit("landuse_km2_added"), (isLanduse('tags) and isNew('version, 'minorVersion)).cast(IntegerType) * 'areaDelta / 1000 / 1000,
+      lit("landuse_km2_modified"), (isLanduse('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType) * 'areaDelta / 1000 / 1000,
+      lit("landuse_km2_deleted"), (isLanduse('tags) and !'visible).cast(IntegerType) * 'areaDelta / 1000 / 1000,
+      lit("natural_km2_added"), (isNatural('tags) and isNew('version, 'minorVersion)).cast(IntegerType) * 'areaDelta / 1000 / 1000,
+      lit("natural_km2_modified"), (isNatural('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType) * 'areaDelta / 1000 / 1000,
+      lit("natural_km2_deleted"), (isNatural('tags) and !'visible).cast(IntegerType) * 'areaDelta / 1000 / 1000
     )) as 'measurements
   }
 
