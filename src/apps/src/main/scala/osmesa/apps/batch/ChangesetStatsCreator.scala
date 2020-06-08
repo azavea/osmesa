@@ -84,7 +84,7 @@ object ChangesetStatsCreator
                 )
                 .drop('geometryChanged))
 
-            val augmentedWays = wayGeoms.withPrevGeom.withDelta
+            val augmentedWays = wayGeoms.withPrevGeom.withLinearDelta.withAreaDelta
 
             val wayChangesetStats = augmentedWays
               .select(
