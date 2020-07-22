@@ -119,12 +119,12 @@ Statistics calculation, whether batch or streaming, updates a few tables
 that jointly can be used to discover user or hashtag stats. These are
 the schemas of the tables being updated.
 
-- [changesets](src/analytics/sql/changesets.sql)
-- [changesets_countries](src/analytics/sql/changesets_countries.sql)
-- [changesets_hashtags](src/analytics/sql/changesets_hashtags.sql)
-- [countries](src/analytics/sql/countries.sql)
-- [hashtags](src/analytics/sql/hashtags.sql)
-- [users](src/analytics/sql/users.sql)
+- [changesets](deployment/sql/changesets.sql)
+- [changesets_countries](deployment/sql/changesets_countries.sql)
+- [changesets_hashtags](deployment/sql/changesets_hashtags.sql)
+- [countries](deployment/sql/countries.sql)
+- [hashtags](deployment/sql/hashtags.sql)
+- [users](deployment/sql/users.sql)
 
 
 These tables are fairly normalized and thus not the most efficient for
@@ -146,7 +146,7 @@ will update a changesets ORC file with the contents of the provided changeset st
 
 - [StreamingChangesetStatsUpdater](src/apps/src/main/scala/osmesa/apps/streaming/StreamingChangesetStatsUpdater.scala)
 updates the tables `changesets`, `users`, and `changesets_countries` using geometries available from the augmented diff stream.
-- [StreamingChangesetMetaUpdater](src/apps/src/main/scala/osmesa/apps/streaming/StreamingChangesetMetaUpdater.scala)
+- [StreamingChangesetMetadataUpdater](src/apps/src/main/scala/osmesa/apps/streaming/StreamingChangesetMetadataUpdater.scala)
 updates the tables `changesets`, `changesets_hashtags`, `users`, and `hashtags` using metadata in the changesets stream.
 - [ChangeStreamProcessor](src/apps/src/main/scala/osmesa/apps/streaming/ChangeStreamProcessor.scala)
 prints out changes to the console (primarily for debugging)
@@ -163,7 +163,7 @@ hashtag/campaign within OSM
 
 ### Batch
 
-- [FootprintCreator](src/apps/src/main/scala/osmesa/apps/batch/FootprintByCampaign.scala)
+- [FootprintCreator](src/apps/src/main/scala/osmesa/apps/batch/FootprintCreator.scala)
 produces a z/x/y stack of vector tiles corresponding to all changes
 marked with a given hashtag or user, depending on the CLI options provided.
 
