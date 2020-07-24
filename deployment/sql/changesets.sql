@@ -4,7 +4,9 @@ CREATE TABLE changesets (
     counts jsonb,
     total_edits integer,
     editor text,
-    user_id integer,
+    user_id integer
+        CONSTRAINT changesets_users_id_fk
+		REFERENCES users,
     created_at timestamp with time zone,
     closed_at timestamp with time zone,
     augmented_diffs integer[],
@@ -13,3 +15,13 @@ CREATE TABLE changesets (
 );
 
 CREATE INDEX changesets_user_id ON changesets(user_id);
+
+CREATE INDEX changesets_created_at_index
+    ON changesets (created_at);
+
+CREATE INDEX changesets_closed_at_index
+    ON changesets (closed_at);
+
+CREATE INDEX changesets_updated_at_index
+    ON changesets (updated_at);
+
