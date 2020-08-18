@@ -90,7 +90,7 @@ prepare-bulk-ingest: upload-apps
 --configurations "file://$(CURDIR)/scripts/configurations.json" \
 --log-uri ${S3_URI}/logs \
 --ec2-attributes KeyName=${EC2_KEY},SubnetId=${SUBNET_ID},EmrManagedMasterSecurityGroup=${MASTER_SECURITY_GROUP},EmrManagedSlaveSecurityGroup=${WORKER_SECURITY_GROUP},ServiceAccessSecurityGroup=${SERVICE_ACCESS_SG},AdditionalMasterSecurityGroups=${SANDBOX_SG},AdditionalSlaveSecurityGroups=${SANDBOX_SG} \
---applications Name=Ganglia Name=Hadoop Name=Hue Name=Spark Name=Zeppelin \
+--applications Name=Ganglia Name=Hadoop Name=Hue Name=Spark Name=Zeppelin Name=Hive \
 --instance-groups \
 'Name=Master,${MASTER_BID_PRICE}InstanceCount=1,InstanceGroupType=MASTER,InstanceType=${MASTER_INSTANCE}${EMR_ATTRS_MASTER}' \
 'Name=Workers,${WORKER_BID_PRICE}InstanceCount=1,InstanceGroupType=CORE,InstanceType=${WORKER_INSTANCE}${EMR_ATTRS_CORE}' \
