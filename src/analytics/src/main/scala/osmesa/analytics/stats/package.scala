@@ -16,8 +16,17 @@ package object stats {
 
   val transformLatLngToUtm = udf { g: Geometry =>
     val centroid = g.getCentroid
-    val utmCrs = UTM.getZoneCrs(centroid.getX, centroid.getY)
-    GTGeometry(g).reproject(LatLng, utmCrs).jtsGeom
+    try {
+      val utmCrs = UTM.getZoneCrs(centroid.getX, centroid.getY)
+      GTGeometry(g).reproject(LatLng, utmCrs).jtsGeom
+    } catch {
+      case e: IllegalArgumentException =>
+        //logError(s"Failed to find UTM zone for $g; Returning LatLng geometry")
+        g
+      case e: org.locationtech.proj4j.UnknownAuthorityCodeException =>
+        //logError(s"Encountered invalid UTM zone for $g; Returning LatLng geometry")
+        g
+    }
   }
 
   @deprecated("Prefer withLinearDelta", "0.1.0")
