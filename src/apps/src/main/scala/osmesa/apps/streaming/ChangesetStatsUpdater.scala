@@ -106,7 +106,8 @@ object ChangesetStatsUpdater
             val geoms = ss.read.format(Source.AugmentedDiffs).options(options).load
 
             Geocode(geoms.where(isTagged('tags)))
-              .withDelta
+              .withLinearDelta
+              .withAreaDelta
               .select(
                 'sequence,
                 'changeset,

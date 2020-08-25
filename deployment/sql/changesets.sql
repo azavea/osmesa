@@ -13,3 +13,13 @@ CREATE TABLE changesets (
 );
 
 CREATE INDEX changesets_user_id ON changesets(user_id);
+
+CREATE INDEX changesets_created_at_index
+    ON changesets (created_at);
+
+CREATE INDEX changesets_closed_at_index
+    ON changesets (closed_at);
+
+CREATE INDEX changesets_updated_at_index
+    ON changesets (updated_at);
+
