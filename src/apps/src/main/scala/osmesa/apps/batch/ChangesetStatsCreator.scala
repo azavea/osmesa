@@ -104,7 +104,7 @@ object ChangesetStatsCreator
               .select(
                 'changeset,
                 'countries,
-                pointCounts
+                DefaultCounts
               )
               .groupBy('changeset)
               .agg(
