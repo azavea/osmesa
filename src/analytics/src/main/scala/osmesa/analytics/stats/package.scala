@@ -16,8 +16,19 @@ package object stats {
 
   val transformLatLngToUtm = udf { g: Geometry =>
     val centroid = g.getCentroid
-    val utmCrs = UTM.getZoneCrs(centroid.getX, centroid.getY)
-    GTGeometry(g).reproject(LatLng, utmCrs).jtsGeom
+    try {
+      val utmCrs = UTM.getZoneCrs(centroid.getX, centroid.getY)
+      GTGeometry(g).reproject(LatLng, utmCrs).jtsGeom
+    } catch {
+      case e: IllegalArgumentException =>
+        //logError(s"Failed to find UTM zone for $g; Returning LatLng geometry")
+        g
+      case e: org.locationtech.proj4j.UnknownAuthorityCodeException =>
+        //logError(s"Encountered invalid UTM zone for $g; Returning LatLng geometry")
+        g
+      case e: IllegalStateException =>
+        g
+    }
   }
 
   @deprecated("Prefer withLinearDelta", "0.1.0")
@@ -160,25 +171,6 @@ package object stats {
       lit("landuse_deleted"), (isLanduse('tags) and !'visible).cast(IntegerType),
       lit("natural_added"), (isNatural('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
       lit("natural_modified"), (isNatural('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
-      lit("natural_deleted"), (isNatural('tags) and !'visible).cast(IntegerType),
-      lit("other_added"), (isOther('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
-      lit("other_modified"), (isOther('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
-      lit("other_deleted"), (isOther('tags) and !'visible).cast(IntegerType)
-    )) as 'counts
-  }
-
-  def pointCounts(implicit sparkSession: SparkSession): Column = {
-    import sparkSession.implicits._
-
-    simplify_counts(map(
-      lit("pois_added"), (isPOI('tags) and 'version === 1).cast(IntegerType),
-      lit("pois_modified"), (isPOI('tags) and 'version > 1 and 'visible).cast(IntegerType),
-      lit("pois_deleted"), (isPOI('tags) and !'visible).cast(IntegerType),
-      lit("landuse_added"), (isLanduse('tags) and 'version === 1).cast(IntegerType),
-      lit("landuse_modified"), (isLanduse('tags) and 'version > 1 and 'visible).cast(IntegerType),
-      lit("landuse_deleted"), (isLanduse('tags) and !'visible).cast(IntegerType),
-      lit("natural_added"), (isNatural('tags) and 'version === 1).cast(IntegerType),
-      lit("natural_modified"), (isNatural('tags) and 'version > 1 and 'visible).cast(IntegerType),
       lit("natural_deleted"), (isNatural('tags) and !'visible).cast(IntegerType),
       lit("other_added"), (isOther('tags) and isNew('version, 'minorVersion)).cast(IntegerType),
       lit("other_modified"), (isOther('tags) and not(isNew('version, 'minorVersion)) and 'visible).cast(IntegerType),
