@@ -6,13 +6,30 @@ if [ -z ${VERSION_TAG+x} ]; then
 fi
 
 CLUSTER_NAME=$1
-STEP_NAME=$2
-NUM_EXECUTORS=$3
-ARGS=$4
+NUM_EXECUTORS=$2
+
+shift 2
+
+ARGS=
+while [ "$#" -gt 1 ] ; do
+    ARGS="$ARGS
+      {
+        \"Args\": $2,
+        \"Type\": \"CUSTOM_JAR\",
+        \"ActionOnFailure\": \"CONTINUE\",
+        \"Jar\": \"command-runner.jar\",
+        \"Properties\": \"\",
+        \"Name\": \"$1\"
+      }"
+    if [ "$#" -gt 2 ]; then
+        ARGS="$ARGS,"
+    fi
+    shift 2
+done
 
 set -x
 aws emr create-cluster \
-  --applications Name=Ganglia Name=Spark \
+  --applications Name=Ganglia Name=Spark Name=Hive \
   --log-uri ${S3_LOG_URI} \
   --configurations "file://scripts/emr-configurations/batch-process.json" \
   --ebs-root-volume-size 10 \
@@ -62,16 +79,7 @@ aws emr create-cluster \
         }
       }
     ]" \
-  --scale-down-behavior TERMINATE_AT_TASK_COMPLETION \
-  --auto-terminate \
   --region us-east-1 \
   --steps "[
-      {
-        \"Args\": $ARGS,
-        \"Type\": \"CUSTOM_JAR\",
-        \"ActionOnFailure\": \"TERMINATE_CLUSTER\",
-        \"Jar\": \"command-runner.jar\",
-        \"Properties\": \"\",
-        \"Name\": \"$STEP_NAME\"
-      }
+        $ARGS
     ]"

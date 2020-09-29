@@ -12,6 +12,19 @@ else
 	TASK_SUFFIX=-staging
 endif
 DB_URI=${DB_BASE_URI}/${DATABASE}
+ifndef STATS_SNAPSHOT_ORC
+SNAPSHOT_OPT=
+BATCH_WORKERS=64
+else
+ifndef USE_SNAPSHOT
+SNAPSHOT_OPT=, \"--stats-checkpoint\", \"${STATS_SNAPSHOT_ORC}\"
+BATCH_WORKERS=64
+else
+SNAPSHOT_OPT=, \"--stats-checkpoint\", \"${STATS_SNAPSHOT_ORC}\", \"--use-checkpoint\"
+BATCH_WORKERS=1
+endif
+endif
+
 
 .EXPORT_ALL_VARIABLES:
 
@@ -104,5 +117,8 @@ batch-generate-edit-histograms:
 
 batch-generate-db-backfill:
 	BATCH_CORE_INSTANCE_TYPE=r5.xlarge BATCH_MASTER_INSTANCE_TYPE=m4.xlarge ./scripts/batch-process.sh \
-	  "OSMesa Batch Process" "ChangesetStatsCreator" 64 \
-		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"${OSMESA_APPS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"]"
+	  "OSMesa Batch Process" ${BATCH_WORKERS} \
+		"CopyJarFromS3" \
+		"[\"aws\", \"s3\", \"cp\", \"${OSMESA_APPS_JAR}\", \"/tmp/apps.jar\"]" \
+		"ChangesetStatsCreator" \
+		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"/tmp/apps.jar\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"${SNAPSHOT_OPT}]"
