@@ -1,4 +1,4 @@
-import osmesa.apps.batch
+package osmesa.apps.batch
 
 import cats.implicits._
 import com.monovore.decline.{CommandApp, Opts}
@@ -9,6 +9,57 @@ import vectorpipe.model.ChangesetComment
 
 import java.net.URI
 
+/*
+ * Create an ORC of changeset metadata from tables derived from the OSM DB.
+ *
+ * This module enables the creation of a bulk changeset metadata ORC file.  This
+ * is the authoritative source for changeset-level tags, as well as who created
+ * a changeset and when.  This also associates changeset comments with their
+ * respective changesets.
+ *
+ * Running this process requires access to the target OSM database in order to
+ * export the changesets, changeset_comments, and changeset_tags tables.  If
+ * this is the very first time establishing an OSMesa instance, you will need
+ * access to some information from the users table, otherwise, the existing
+ * users table can be taken in its place.
+ *
+ * There are many possible ways to acquire a CSV of each of the changeset-related
+ * tables, which will be omitted here, but CSVs with the following schemas are
+ * expected:
+ *
+ * changesets
+ *  |-- id: integer (nullable = true)
+ *  |-- user_id: integer (nullable = true)
+ *  |-- created_at: timestamp (nullable = true)
+ *  |-- min_lat: integer (nullable = true)
+ *  |-- max_lat: integer (nullable = true)
+ *  |-- min_lon: integer (nullable = true)
+ *  |-- max_lon: integer (nullable = true)
+ *  |-- closed_at: timestamp (nullable = true)
+ *  |-- num_changes: integer (nullable = true)
+ *
+ * changeset_tags
+ *  |-- changeset_id: string (nullable = true)
+ *  |-- k: string (nullable = true)
+ *  |-- v: string (nullable = true)
+ *
+ * changeset_comments
+ *  |-- id: string (nullable = true)
+ *  |-- changeset_id: string (nullable = true)
+ *  |-- author_id: string (nullable = true)
+ *  |-- body: string (nullable = true)
+ *  |-- created_at: timestamp (nullable = true)
+ *  |-- visible: string (nullable = true)
+ *
+ * users
+ *  |-- id: integer (nullable = true)
+ *  |-- name: string (nullable = true)
+ *
+ * Invocation:
+ *   spark-submit --class osmesa.apps.batch.ChangesetMetadataCreator <jar file> \
+ *   --changesets <CSV URI> --comments <CSV URI> --tags <CSV URI> --users <CSV URI>\
+ *   <target ORC file URI>
+ */
 object ChangesetMetadataCreator
   extends CommandApp(
     name = "changeset-metadata",
@@ -69,7 +120,7 @@ object ChangesetMetadataCreator
           .read
           .format("csv")
           .options(csvOpts)
-          .load(changesetCSV.toString)
+          .load(tagsCSV.toString)
           .groupBy('changeset_id)
           .agg(
             'changeset_id,
@@ -115,6 +166,11 @@ object ChangesetMetadataCreator
             'num_changes as 'numChanges,
             'user_id as 'uid
           )
+
+        logger.info(s"Loaded ${changesets.count} changesets")
+        logger.info(s"Loaded ${tags.count} changeset tags")
+        logger.info(s"Loaded ${comments.count} changeset comments")
+        logger.info(s"Loaded ${users.count} user records")
 
         val complete = changesets
           .join(users.withColumnRenamed("id", "uid"), Seq("uid"), "left")
