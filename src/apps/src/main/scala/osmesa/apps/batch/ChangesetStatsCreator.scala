@@ -5,8 +5,9 @@ import java.net.URI
 import cats.implicits._
 import com.monovore.decline.{CommandApp, Opts}
 import org.apache.spark.TaskContext
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.storage.StorageLevel
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
@@ -39,6 +40,23 @@ object ChangesetStatsCreator
           )
           .validate("Changeset source must have trailing '/'") { _.getPath.endsWith("/") }
 
+        val statsCheckpointOpt =
+          Opts
+            .option[URI](
+              "stats-checkpoint",
+              metavar = "ORC URI",
+              help = "Location to save ORC file of stats derived from history file"
+            )
+            .orNone
+
+        val useCheckpointOpt =
+          Opts
+            .flag(
+              "use-checkpoint",
+              help = "Use saved stats checkpoint; don't process history"
+            )
+            .orFalse
+
         val databaseUrlOpt =
           Opts
             .option[URI](
@@ -49,8 +67,8 @@ object ChangesetStatsCreator
             )
             .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
 
-        (historyOpt, changesetsOpt, changesetBaseOpt, databaseUrlOpt).mapN {
-          (historySource, changesetSource, changesetBaseURI, databaseUrl) =>
+        (historyOpt, changesetsOpt, changesetBaseOpt, databaseUrlOpt, statsCheckpointOpt, useCheckpointOpt).mapN {
+          (historySource, changesetSource, changesetBaseURI, databaseUrl, statsCheckpoint, useCheckpoint) =>
             implicit val spark: SparkSession = Analytics.sparkSession("ChangesetStats")
             import spark.implicits._
 
@@ -63,66 +81,88 @@ object ChangesetStatsCreator
               AugmentedDiffSource.timestampToSequence(t)
             }
 
-            val nodes = ProcessOSM.preprocessNodes(history)
-            val ways = ProcessOSM.preprocessWays(history)
+            val changesetStats =
+              if (!useCheckpoint) {
+                val nodes = ProcessOSM.preprocessNodes(history)
+                val ways = ProcessOSM.preprocessWays(history)
 
-            val pointGeoms = Geocode(
-              ProcessOSM
-                .constructPointGeometries(
-                  // pre-filter to tagged nodes
-                  nodes.where(isTagged('tags))
+                val pointGeoms = Geocode(
+                  ProcessOSM
+                    .constructPointGeometries(
+                    // pre-filter to tagged nodes
+                    nodes.where(isTagged('tags))
+                  )
+                  .withColumn("minorVersion", lit(0)))
+
+                val wayGeoms = Geocode(
+                  ProcessOSM
+                    .reconstructWayGeometries(
+                    // pre-filter to tagged ways
+                    ways.where(isTagged('tags)),
+                    // let reconstructWayGeometries do its thing; nodes are cheap
+                    nodes
+                  )
+                  .drop('geometryChanged))
+
+                val augmentedWays = wayGeoms.withPrevGeom.withLinearDelta.withAreaDelta
+
+                val wayChangesetStats = augmentedWays
+                  .select(
+                  'changeset,
+                  'countries,
+                  DefaultMeasurements,
+                  DefaultCounts
                 )
-                .withColumn("minorVersion", lit(0)))
-
-            val wayGeoms = Geocode(
-              ProcessOSM
-                .reconstructWayGeometries(
-                  // pre-filter to tagged ways
-                  ways.where(isTagged('tags)),
-                  // let reconstructWayGeometries do its thing; nodes are cheap
-                  nodes
+                .groupBy('changeset)
+                .agg(
+                  sum_measurements(collect_list('measurements)) as 'measurements,
+                  sum_counts(collect_list('counts)) as 'counts,
+                  count_values(flatten(collect_list('countries))) as 'countries
                 )
-                .drop('geometryChanged))
 
-            val augmentedWays = wayGeoms.withPrevGeom.withLinearDelta.withAreaDelta
+                val pointChangesetStats = pointGeoms
+                  .select(
+                  'changeset,
+                  'countries,
+                  DefaultCounts
+                )
+                .groupBy('changeset)
+                .agg(
+                  sum_counts(collect_list('counts)) as 'counts,
+                  count_values(flatten(collect_list('countries))) as 'countries
+                )
 
-            val wayChangesetStats = augmentedWays
-              .select(
-                'changeset,
-                'countries,
-                DefaultMeasurements,
-                DefaultCounts
-              )
-              .groupBy('changeset)
-              .agg(
-                sum_measurements(collect_list('measurements)) as 'measurements,
-                sum_counts(collect_list('counts)) as 'counts,
-                count_values(flatten(collect_list('countries))) as 'countries
-              )
+                val stats = wayChangesetStats
+                  .join(pointChangesetStats, Seq("changeset"), "full_outer")
+                  .withColumn("mergedCounts",
+                              merge_counts(wayChangesetStats("counts"), pointChangesetStats("counts")))
+                                .select(
+                  'changeset,
+                  'measurements,
+                  'mergedCounts as 'counts,
+                  sum_count_values('mergedCounts) as 'totalEdits,
+                  merge_counts(wayChangesetStats("countries"), pointChangesetStats("countries")) as 'countries
+                )
+                .persist(StorageLevel.DISK_ONLY)
 
-            val pointChangesetStats = pointGeoms
-              .select(
-                'changeset,
-                'countries,
-                DefaultCounts
-              )
-              .groupBy('changeset)
-              .agg(
-                sum_counts(collect_list('counts)) as 'counts,
-                count_values(flatten(collect_list('countries))) as 'countries
-              )
+                if (statsCheckpoint isDefined) {
+                  stats
+                    .write
+                    .option("orc.compress", "snappy")
+                    .mode(SaveMode.Overwrite)
+                    .orc(statsCheckpoint.get.toString)
+                }
 
-            val changesetStats = wayChangesetStats
-              .join(pointChangesetStats, Seq("changeset"), "full_outer")
-              .withColumn("mergedCounts",
-                          merge_counts(wayChangesetStats("counts"), pointChangesetStats("counts")))
-              .select(
-                'changeset,
-                'measurements,
-                'mergedCounts as 'counts,
-                sum_count_values('mergedCounts) as 'totalEdits,
-                merge_counts(wayChangesetStats("countries"), pointChangesetStats("countries")) as 'countries
-              )
+                stats
+              } else {
+                if (statsCheckpoint isDefined) {
+                  spark
+                    .read
+                    .orc(statsCheckpoint.get.toString)
+                } else {
+                  throw new IllegalArgumentException("No stats checkpoint was defined")
+                }
+              }
 
             val changesets = spark.read.orc(changesetSource)
             val changesetsEndSequence = {

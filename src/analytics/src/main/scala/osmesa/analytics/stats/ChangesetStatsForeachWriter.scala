@@ -10,7 +10,8 @@ import vectorpipe.util.DBUtils
 
 class ChangesetStatsForeachWriter(databaseUri: URI,
                                   shouldUpdateUsernames: Boolean = false,
-                                  batchSize: Int = 1000)
+                                  batchSize: Int = 1000,
+                                  maxAttempts: Int = 3)
     extends ForeachWriter[Row]
     with Logging {
   val UpdateChangesetsQuery: String =
@@ -136,6 +137,8 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
   private var updateUsernames: PreparedStatement = _
   private var updateChangesetCountries: PreparedStatement = _
   private var recordCount = 0
+  private val rowCache = collection.mutable.ListBuffer.empty[Row]
+  private var attempt = 0
 
   def open(partitionId: Long, version: Long): Boolean = {
     // Called when starting to process one partition of new data in the executor. The version is for data
@@ -157,7 +160,7 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
     true
   }
 
-  def process(row: Row): Unit = {
+  def readyBatch(row: Row): Unit = {
     val sequence = if (row.schema.exists(_.name == "sequence")) {
       Option(row.getAs[Int]("sequence"))
     } else {
@@ -220,22 +223,62 @@ class ChangesetStatsForeachWriter(databaseUri: URI,
 
         updateChangesetCountries.addBatch()
     }
+  }
 
-    recordCount += 1
-    if (recordCount % batchSize == 0) {
-      updateChangesets.executeBatch()
+  def attemptBatch(): Boolean = {
+    rowCache.foreach(readyBatch(_))
+    try {
+      connection.setAutoCommit(false)
+
+      val changesetResults = updateChangesets.executeBatch()
       updateUsers.executeBatch()
       updateUsernames.executeBatch()
       updateChangesetCountries.executeBatch()
+
+      if (changesetResults.forall(_==1)) {
+        connection.commit()
+        rowCache.clear
+        attempt = 0
+        logInfo("Wrote batch completely")
+        return true
+      } else {
+        logWarning(s"Batch wrote incompletely (attempt $attempt)")
+        if (attempt < maxAttempts) {
+          connection.rollback
+          attempt += 1
+          return false
+        } else {
+          logError("Failed to write batch!  Failed rows in batch follow:")
+          rowCache.zip(changesetResults).foreach { case (r, v) =>
+            if (v != 1) {
+              logError(s"$r")
+            }
+          }
+          attempt = 0
+          return true
+        }
+      }
+    } finally {
+      connection.setAutoCommit(true)
     }
+  }
+
+  def commitBatch(): Unit = {
+    if (!attemptBatch)
+      commitBatch
+  }
+
+  def process(row: Row): Unit = {
+    rowCache.append(row)
+    recordCount += 1
+
+    if (recordCount % batchSize == 0)
+      commitBatch
   }
 
   def close(errorOrNull: Throwable): Unit = {
     if (Option(errorOrNull).isEmpty) {
-      updateChangesets.executeBatch()
-      updateUsers.executeBatch()
-      updateUsernames.executeBatch()
-      updateChangesetCountries.executeBatch()
+      commitBatch
 
       updateChangesets.close()
       updateUsers.close()
