@@ -37,10 +37,13 @@ push-image: login-aws-registry tag-image
 # Streaming AWS Tasks #
 #######################
 
-.PHONY: create-log-groups define-streaming-vectortile-tasks define-staging-streaming-update-tasks define-production-streaming-update-tasks deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater deploy-streaming-stats-updaters
+.PHONY: create-log-groups define-streaming-augdiff-producer-task define-streaming-vectortile-tasks define-staging-streaming-update-tasks define-production-streaming-update-tasks deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater deploy-streaming-stats-updaters
 
 create-log-groups:
 	./scripts/create-log-groups.sh
+
+define-streaming-augdiff-producer-task:
+	./scripts/define-streaming-augdiff-producer.sh
 
 define-streaming-vectortile-tasks:
 	./scripts/define-streaming-vectortile-tasks.sh
@@ -50,6 +53,16 @@ define-staging-streaming-update-tasks:
 
 define-production-streaming-update-tasks:
 	./scripts/define-production-streaming-update-tasks.sh
+
+deploy-streaming-augdiff-producer:
+	aws ecs create-service \
+	  --cluster "${ECS_CLUSTER}" \
+	  --service-name "overpass-diff-publisher" \
+	  --task-definition "overpass-diff-publisher" \
+	  --desired-count 1 \
+	  --launch-type FARGATE \
+	  --scheduling-strategy REPLICA \
+	  --network-configuration ${NETWORK_CONFIGURATION}
 
 stop-streaming-footprint-updater:
 	./scripts/stop-streaming-service.sh streaming-user-footprint-tile-updater
