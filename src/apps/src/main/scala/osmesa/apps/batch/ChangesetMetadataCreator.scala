@@ -155,7 +155,7 @@ object ChangesetMetadataCreator
           .options(csvOpts)
           .load(changesetCSV.toString)
           .select(
-            'id as 'changeset_id,
+            'id cast("Long") as 'changeset_id,
             'created_at as 'createdAt,
             lit(false) as 'open,
             'closed_at as 'closedAt,
@@ -164,7 +164,7 @@ object ChangesetMetadataCreator
             ('max_lat cast("Double")) / 1e7 as 'maxLat,
             ('max_lon cast("Double")) / 1e7 as 'maxLon,
             'num_changes as 'numChanges,
-            'user_id as 'uid
+            'user_id cast("Long") as 'uid
           )
 
         logger.info(s"Loaded ${changesets.count} changesets")
