@@ -12,3 +12,6 @@ export VECTORTILE_CATALOG_LOCATION = ${S3_URI}/vectortiles
 export CHANGESET_URI := [REPLICATION URL]
 export CHANGESET_ORC_SOURCE := [S3 URI of existing orc]
 export CHANGESET_ORC_DEST := [S3 URI of new orc]
+
+export PLANET_HISTORY_PBF := [S3 URI of target planet history PBF]
+export PLANET_HISTORY_ORC_DIR := [S3 URI of converted planet history ORCs]

@@ -12,7 +12,7 @@ ARGS=$4
 
 set -x
 aws emr create-cluster \
-  --applications Name=Ganglia Name=Spark \
+  --applications Name=Ganglia Name=Spark Name=Hive \
   --log-uri ${S3_LOG_URI} \
   --configurations "file://scripts/emr-configurations/batch-process.json" \
   --ebs-root-volume-size 10 \
