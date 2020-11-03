@@ -53,7 +53,7 @@ import java.net.URI
  *
  * users
  *  |-- id: integer (nullable = true)
- *  |-- name: string (nullable = true)
+ *  |-- display_name: string (nullable = true)
  *
  * Invocation:
  *   spark-submit --class osmesa.apps.batch.ChangesetMetadataCreator <jar file> \
@@ -115,6 +115,7 @@ object ChangesetMetadataCreator
           .format("csv")
           .options(csvOpts)
           .load(usersCSV.toString)
+          .select('id, 'display_name as 'name)
 
         val tags = spark
           .read

@@ -53,11 +53,11 @@ create-cluster:
 'Name=Workers,${WORKER_BID_PRICE}InstanceCount=${WORKER_COUNT},InstanceGroupType=CORE,InstanceType=${WORKER_INSTANCE}${EMR_ATTRS_CORE}' \
 | cut -f2 | tee cluster-id.txt
 
-update-changeset-orc:
+create-changeset-orc:
 	aws emr add-steps --output text --cluster-id ${CLUSTER_ID} \
 --steps Type=CUSTOM_JAR,Name="Changeset ORC Update",Jar=command-runner.jar,Args=[\
 spark-submit,--master,yarn,--deploy-mode,cluster,\
---class,osmesa.apps.batch.MergeChangesets,\
+--class,osmesa.apps.batch.ChangesetMetadataCreator,\
 --driver-memory,${DRIVER_MEMORY},\
 --driver-cores,${DRIVER_CORES},\
 --executor-memory,${EXECUTOR_MEMORY},\
@@ -70,8 +70,10 @@ spark-submit,--master,yarn,--deploy-mode,cluster,\
 --conf,spark.shuffle.io.connectionTimeout=18000s,\
 --conf,spark.shuffle.service.enabled=true,\
 ${S3_URI}/${APPS_JAR},\
---changesets=${CHANGESET_URI},\
-${CHANGESET_ORC_SOURCE},\
+--changesets=${CHANGESET_CSV},\
+--comments=${CHANGESET_COMMENTS_CSV},\
+--tags=${CHANGESET_TAGS_CSV},\
+--users=${USERS_CSV},\
 ${CHANGESET_ORC_DEST}\
 ] | cut -f2 | tee last-step-id.txt
 
@@ -94,9 +96,9 @@ prepare-bulk-ingest: upload-apps
 --instance-groups \
 'Name=Master,${MASTER_BID_PRICE}InstanceCount=1,InstanceGroupType=MASTER,InstanceType=${MASTER_INSTANCE}${EMR_ATTRS_MASTER}' \
 'Name=Workers,${WORKER_BID_PRICE}InstanceCount=1,InstanceGroupType=CORE,InstanceType=${WORKER_INSTANCE}${EMR_ATTRS_CORE}' \
---steps Type=CUSTOM_JAR,ActionOnFailure=CONTINUE,Name="History PBF to ORC",Jar=s3://us-east-1.elasticmapreduce/libs/script-runner/script-runner.jar,Args=["${S3_URI}/scripts/latest-history-to-orc.sh"] Type=CUSTOM_JAR,Name="Changeset ORC Update",Jar=command-runner.jar,Args=[\
+--steps Type=CUSTOM_JAR,ActionOnFailure=CONTINUE,Name="History PBF to ORC",Jar=s3://us-east-1.elasticmapreduce/libs/script-runner/script-runner.jar,Args=["${S3_URI}/scripts/latest-history-to-orc.sh"] Type=CUSTOM_JAR,Name="Changeset ORC Generation",Jar=command-runner.jar,Args=[\
 spark-submit,--master,yarn,--deploy-mode,cluster,\
---class,osmesa.apps.batch.MergeChangesets,\
+--class,osmesa.apps.batch.ChangesetMetadataCreator,\
 --driver-memory,${DRIVER_MEMORY},\
 --driver-cores,${DRIVER_CORES},\
 --executor-memory,${EXECUTOR_MEMORY},\
@@ -109,8 +111,10 @@ spark-submit,--master,yarn,--deploy-mode,cluster,\
 --conf,spark.shuffle.io.connectionTimeout=18000s,\
 --conf,spark.shuffle.service.enabled=true,\
 ${S3_URI}/${APPS_JAR},\
---changesets=${CHANGESET_URI},\
-${CHANGESET_ORC_SOURCE},\
+--changesets=${CHANGESET_CSV},\
+--comments=${CHANGESET_COMMENTS_CSV},\
+--tags=${CHANGESET_TAGS_CSV},\
+--users=${USERS_CSV},\
 ${CHANGESET_ORC_DEST}\
 ]  | cut -f2 | tee cluster-id.txt
 
