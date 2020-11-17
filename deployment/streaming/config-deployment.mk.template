@@ -49,3 +49,9 @@ export CHANGESETS_ORC :=
 
 export FOOTPRINT_VT_LOCATION :=
 export HISTOGRAM_VT_LOCATION :=
+
+# Uncomment the following line to save the processed stats
+# export STATS_SNAPSHOT_ORC :=
+
+# Uncomment the following line to use the above snapshot in lieu of recalculating from history; setting to "no" will not turn feature off
+# export USE_SNAPSHOT := yes
