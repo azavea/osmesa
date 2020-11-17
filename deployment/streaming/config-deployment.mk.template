@@ -9,15 +9,20 @@ export IAM_ACCOUNT :=
 ################################################################################
 #                                                 Streaming resource definitions
 ################################################################################
-export CLUSTER_NAME := osm-stat-stream-cluster
 export STREAMING_INSTANCE_TYPE := m4.xlarge
 export ECR_IMAGE :=
 export AWS_LOG_GROUP := streaming-stats-updater
 export ECS_SUBNET := ${SUBNET}
 export ECS_SECURITY_GROUP :=
 
+export CLUSTER_NAME_DEPLOYMENT :=
+export CLUSTER_NAME_STAGING :=
+
+export AUGDIFF_ECR_IMAGE :=
 export AUGDIFF_SOURCE :=
+export OVERPASS_URI :=
 export CHANGESET_SOURCE :=
+export CHANGE_SOURCE :=
 
 export DB_BASE_URI :=
 export PRODUCTION_DB :=
@@ -28,9 +33,12 @@ export NETWORK_CONFIGURATION="{\"awsvpcConfiguration\": {\"subnets\": [\"${ECS_S
 ################################################################################
 #                                                     Batch resource definitions
 ################################################################################
-export SERVICE_ACCESS_SECURITY_GROUP := ${ECS_SECURITY_GROUP}
-export EMR_MASTER_SECURITY_GROUP :=
-export EMR_SLAVE_SECURITY_GROUP :=
+export MASTER_SECURITY_GROUP :=
+export WORKER_SECURITY_GROUP :=
+export SERVICE_ACCESS_SG :=
+export SANDBOX_SG :=
+
+export S3_LOG_URI :=
 
 export BATCH_CORE_INSTANCE_TYPE := m4.xlarge
 export BATCH_MASTER_INSTANCE_TYPE := m4.xlarge
@@ -41,3 +49,9 @@ export CHANGESETS_ORC :=
 
 export FOOTPRINT_VT_LOCATION :=
 export HISTOGRAM_VT_LOCATION :=
+
+# Uncomment the following line to save the processed stats
+# export STATS_SNAPSHOT_ORC :=
+
+# Uncomment the following line to use the above snapshot in lieu of recalculating from history; setting to "no" will not turn feature off
+# export USE_SNAPSHOT := yes

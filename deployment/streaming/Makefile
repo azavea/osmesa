@@ -12,6 +12,19 @@ else
 	TASK_SUFFIX=-staging
 endif
 DB_URI=${DB_BASE_URI}/${DATABASE}
+ifndef STATS_SNAPSHOT_ORC
+SNAPSHOT_OPT=
+BATCH_WORKERS=64
+else
+ifndef USE_SNAPSHOT
+SNAPSHOT_OPT=, \"--stats-checkpoint\", \"${STATS_SNAPSHOT_ORC}\"
+BATCH_WORKERS=64
+else
+SNAPSHOT_OPT=, \"--stats-checkpoint\", \"${STATS_SNAPSHOT_ORC}\", \"--use-checkpoint\"
+BATCH_WORKERS=1
+endif
+endif
+
 
 .EXPORT_ALL_VARIABLES:
 
@@ -37,10 +50,13 @@ push-image: login-aws-registry tag-image
 # Streaming AWS Tasks #
 #######################
 
-.PHONY: create-log-groups define-streaming-vectortile-tasks define-staging-streaming-update-tasks define-production-streaming-update-tasks deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater deploy-streaming-stats-updaters
+.PHONY: create-log-groups define-streaming-augdiff-producer-task define-streaming-vectortile-tasks define-staging-streaming-update-tasks define-production-streaming-update-tasks deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater deploy-streaming-stats-updaters
 
 create-log-groups:
 	./scripts/create-log-groups.sh
+
+define-streaming-augdiff-producer-task:
+	./scripts/define-streaming-augdiff-producer.sh
 
 define-streaming-vectortile-tasks:
 	./scripts/define-streaming-vectortile-tasks.sh
@@ -50,6 +66,16 @@ define-staging-streaming-update-tasks:
 
 define-production-streaming-update-tasks:
 	./scripts/define-production-streaming-update-tasks.sh
+
+deploy-streaming-augdiff-producer:
+	aws ecs create-service \
+	  --cluster "${ECS_CLUSTER}" \
+	  --service-name "overpass-diff-publisher" \
+	  --task-definition "overpass-diff-publisher" \
+	  --desired-count 1 \
+	  --launch-type FARGATE \
+	  --scheduling-strategy REPLICA \
+	  --network-configuration ${NETWORK_CONFIGURATION}
 
 stop-streaming-footprint-updater:
 	./scripts/stop-streaming-service.sh streaming-user-footprint-tile-updater
@@ -104,5 +130,8 @@ batch-generate-edit-histograms:
 
 batch-generate-db-backfill:
 	BATCH_CORE_INSTANCE_TYPE=r5.xlarge BATCH_MASTER_INSTANCE_TYPE=m4.xlarge ./scripts/batch-process.sh \
-	  "OSMesa Batch Process" "ChangesetStatsCreator" 64 \
-		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"${OSMESA_APPS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"]"
+	  "OSMesa Batch Process" ${BATCH_WORKERS} \
+		"CopyJarFromS3" \
+		"[\"aws\", \"s3\", \"cp\", \"${OSMESA_APPS_JAR}\", \"/tmp/apps.jar\"]" \
+		"ChangesetStatsCreator" \
+		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"/tmp/apps.jar\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"${SNAPSHOT_OPT}]"
