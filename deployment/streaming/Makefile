@@ -70,8 +70,8 @@ define-production-streaming-update-tasks:
 deploy-streaming-augdiff-producer:
 	aws ecs create-service \
 	  --cluster "${ECS_CLUSTER}" \
-	  --service-name "overpass-diff-publisher" \
-	  --task-definition "overpass-diff-publisher" \
+	  --service-name "${AUGDIFF_SERVICE_NAME}" \
+	  --task-definition "${AUGDIFF_SERVICE_NAME}" \
 	  --desired-count 1 \
 	  --launch-type FARGATE \
 	  --scheduling-strategy REPLICA \

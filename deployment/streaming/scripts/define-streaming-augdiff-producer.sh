@@ -6,7 +6,7 @@ if [ -z ${VERSION_TAG+x} ]; then
 fi
 
 aws ecs register-task-definition \
-    --family overpass-diff-publisher \
+    --family "${AUGDIFF_SERVICE_NAME}" \
     --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
@@ -29,10 +29,14 @@ aws ecs register-task-definition \
 	      \"environment\": [
 	        {
 	          \"name\": \"OVERPASS_URL\",
-	          \"value\": \"${OVERPASS_URI}\"
+	          \"value\": \"${OVERPASS_URL}\"
+	        },
+	        {
+	          \"name\": \"ONRAMP_URL\",
+	          \"value\": \"${ONRAMP_URL}\"
 	        }
 	      ],
 	      \"image\": \"${AUGDIFF_ECR_IMAGE}\",
-	      \"name\": \"overpass-augdiff-publisher-${VERSION_TAG}\"
+	      \"name\": \"${AUGDIFF_SERVICE_NAME}\"
 	    }
 	  ]"
