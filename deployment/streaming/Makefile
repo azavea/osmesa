@@ -67,6 +67,12 @@ define-staging-streaming-update-tasks:
 define-production-streaming-update-tasks:
 	./scripts/define-production-streaming-update-tasks.sh
 
+define-production-view-refresher-task:
+	./scripts/define-production-view-refresher.sh
+
+define-staging-view-refresher-task:
+	./scripts/define-staging-view-refresher.sh
+
 deploy-streaming-augdiff-producer:
 	aws ecs create-service \
 	  --cluster "${ECS_CLUSTER}" \
@@ -117,6 +123,12 @@ deploy-streaming-stats-updaters: stop-streaming-stats-updaters
 	  --network-configuration ${NETWORK_CONFIGURATION}
 
 deploy-streaming-vectortile-tasks: deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater
+
+disable-stats-refresher:
+	aws events disable-rule --name "osmesa-stats-view-refresher${TASK_SUFFIX}"
+
+enable-stats-refresher:
+	aws events enable-rule --name "osmesa-stats-view-refresher${TASK_SUFFIX}"
 
 ###################
 # Batch AWS Tasks #
