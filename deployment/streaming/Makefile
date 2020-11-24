@@ -128,10 +128,21 @@ batch-generate-footprints:
 batch-generate-edit-histograms:
 	./scripts/batch-generate-edit-histograms.sh
 
+batch-prepare-bulk-data:
+	@envsubst '$${PLANET_HISTORY_PBF} $${PLANET_HISTORY_ORC_DIR}' < scripts/latest-history-to-orc.sh > /tmp/latest-history-to-orc.sh
+	@aws s3 cp /tmp/latest-history-to-orc.sh ${S3_URI}/scripts/
+
+	BATCH_CORE_INSTANCE_TYPE=m4.xlarge BATCH_MASTER_INSTANCE_TYPE=m4.xlarge PARALLEL=true ./scripts/batch-process.sh \
+	  "OSMesa Ingest Prep" 1 \
+		"Copy scripts" \
+		"[\"aws\", \"s3\", \"cp\", \"${S3_URI}/scripts/latest-history-to-orc.sh\", \"/tmp\"]" \
+		"History PBF to ORC" \
+		"[\"/tmp/latest-history-to-orc.sh\"]" \
+		"Changeset ORC Generation" \
+		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetMetadataCreator\", \"${OSMESA_APPS_JAR\", \"--changesets\", \"${CHANGESET_CSV}\", \"--comments\", \"${CHANGESET_COMMENTS_CSV}\", \"--tags\", \"${CHANGESET_TAGS_CSV}\", \"--users\", \"${USERS_CSV}\", \"${CHANGESETS_ORC}\"]" \
+
 batch-generate-db-backfill:
 	BATCH_CORE_INSTANCE_TYPE=r5.xlarge BATCH_MASTER_INSTANCE_TYPE=m4.xlarge ./scripts/batch-process.sh \
 	  "OSMesa Batch Process" ${BATCH_WORKERS} \
-		"CopyJarFromS3" \
-		"[\"aws\", \"s3\", \"cp\", \"${OSMESA_APPS_JAR}\", \"/tmp/apps.jar\"]" \
 		"ChangesetStatsCreator" \
-		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"/tmp/apps.jar\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"${SNAPSHOT_OPT}]"
+		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"${OSMESA_APPS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"${SNAPSHOT_OPT}]"
