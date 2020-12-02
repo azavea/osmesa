@@ -32,6 +32,9 @@ export STAGING_DB :=
 
 export NETWORK_CONFIGURATION="{\"awsvpcConfiguration\": {\"subnets\": [\"${ECS_SUBNET}\"], \"securityGroups\": [\"${ECS_SECURITY_GROUP}\"], \"assignPublicIp\": \"DISABLED\"}}"
 
+# Uncomment the following to raise resource allocations to get past a large changeset
+#export TURBO_BOOST := yes
+
 ################################################################################
 #                                                     Batch resource definitions
 ################################################################################
@@ -40,13 +43,21 @@ export WORKER_SECURITY_GROUP :=
 export SERVICE_ACCESS_SG :=
 export SANDBOX_SG :=
 
-export S3_LOG_URI :=
+export S3_ROOT_URI :=
+export S3_LOG_URI := ${S3_ROOT_URI}/logs/
 
 export BATCH_CORE_INSTANCE_TYPE := m4.xlarge
 export BATCH_MASTER_INSTANCE_TYPE := m4.xlarge
 export OSMESA_APPS_JAR := s3://<bucket>/osmesa-apps.jar
 
+export PLANET_HISTORY_PBF :=
+export PLANET_HISTORY_ORC_DIR :=
 export HISTORY_ORC :=
+
+export CHANGESET_CSV :=
+export CHANGESET_COMMENTS_CSV :=
+export CHANGESET_TAGS_CSV :=
+export USERS_CSV :=
 export CHANGESETS_ORC :=
 
 export FOOTPRINT_VT_LOCATION :=
