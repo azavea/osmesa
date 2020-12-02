@@ -30,6 +30,10 @@ aws ecs register-task-definition \
                 {
                   \"name\": \"DATABASE_URL\",
 	          \"value\": \"${DB_BASE_URI}/${STAGING_DB}\"
+                },
+                {
+                  \"name\": \"DATABASE_NAME\",
+                  \"value\": \"${STAGING_DB}\"
                 }
               ],
 	      \"image\": \"${ECR_IMAGE}:latest\",

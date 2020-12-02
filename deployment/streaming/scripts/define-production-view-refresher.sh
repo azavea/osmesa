@@ -18,7 +18,7 @@ aws ecs register-task-definition \
               \"logConfiguration\": {
                 \"logDriver\": \"awslogs\",
                 \"options\": {
-	          \"awslogs-group\": \"/ecs/osmesa-stats-server${TASK_SUFFIX}\",
+	          \"awslogs-group\": \"/ecs/${AWS_LOG_GROUP}\",
 	          \"awslogs-region\": \"${AWS_REGION}\",
                   \"awslogs-stream-prefix\": \"ecs\"
                 }

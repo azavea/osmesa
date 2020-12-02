@@ -12,7 +12,7 @@ aws ecs register-task-definition \
     --network-mode awsvpc \
     --requires-compatibilities EC2 FARGATE \
     --cpu "1 vCPU" \
-    --memory "4 GB" \
+    --memory "${ECS_MEMORY} GB" \
     --container-definitions "[
 	    {
 	      \"logConfiguration\": {
@@ -25,7 +25,7 @@ aws ecs register-task-definition \
 	      },
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
-	        \"--driver-memory\", \"2048m\",
+	        \"--driver-memory\", \"${DRIVER_MEMORY}\",
 	        \"--class\", \"osmesa.apps.streaming.StreamingChangesetStatsUpdater\",
 	        \"/opt/osmesa-apps.jar\",
 	        \"--augmented-diff-source\", \"${AUGDIFF_SOURCE}\"
@@ -37,7 +37,7 @@ aws ecs register-task-definition \
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:latest\",
-	      \"name\": \"streaming-augmented-diffs-stats-updater-staging\"
+	      \"name\": \"streaming-changeset-stats-updater-staging\"
 	    },
 	    {
 	      \"logConfiguration\": {
@@ -50,7 +50,7 @@ aws ecs register-task-definition \
 	      },
 	      \"command\": [
 	        \"/spark/bin/spark-submit\",
-	        \"--driver-memory\", \"2048m\",
+	        \"--driver-memory\", \"${DRIVER_MEMORY}\",
 	        \"--class\", \"osmesa.apps.streaming.StreamingChangesetMetadataUpdater\",
 	        \"/opt/osmesa-apps.jar\",
 	        \"--changeset-source\", \"${CHANGESET_SOURCE}\"
@@ -62,6 +62,6 @@ aws ecs register-task-definition \
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:latest\",
-	      \"name\": \"streaming-changesets-stats-updater-staging\"
+	      \"name\": \"streaming-changeset-metadata-updater-staging\"
 	    }
 	  ]"

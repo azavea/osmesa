@@ -11,7 +11,9 @@ else
 	ECS_CLUSTER=${CLUSTER_NAME_STAGING}
 	TASK_SUFFIX=-staging
 endif
+
 DB_URI=${DB_BASE_URI}/${DATABASE}
+
 ifndef STATS_SNAPSHOT_ORC
 SNAPSHOT_OPT=
 BATCH_WORKERS=64
@@ -23,6 +25,18 @@ else
 SNAPSHOT_OPT=, \"--stats-checkpoint\", \"${STATS_SNAPSHOT_ORC}\", \"--use-checkpoint\"
 BATCH_WORKERS=1
 endif
+endif
+
+ifndef TURBO_BOOST
+NODE_OPTIONS=
+DRIVER_MEMORY=2048m
+ECS_MEMORY=4
+AUGDIFF_ECS_MEMORY=2
+else
+NODE_OPTIONS=--max-old-space-size=7168
+DRIVER_MEMORY=8192m
+ECS_MEMORY=8
+AUGDIFF_ECS_MEMORY=8
 endif
 
 
@@ -43,7 +57,7 @@ ${APPS_ASSEMBLY}: $(call rwildcard, ${APPS_SRC_DIR}/src, *.scala) ${APPS_SRC_DIR
 	cd ${APPS_SRC_DIR}/.. && ./sbt "project apps" assembly
 	@touch -m ${APPS_ASSEMBLY}
 
-upload-apps: ${APPS_ASSEMBLY}
+upload-apps-jar: ${APPS_ASSEMBLY}
 	@aws s3 cp ${APPS_ASSEMBLY} ${S3_ROOT_URI}/
 
 build-container: ${APPS_ASSEMBLY}
@@ -135,6 +149,9 @@ deploy-streaming-stats-updaters: stop-streaming-stats-updaters
 	  --network-configuration ${NETWORK_CONFIGURATION}
 
 deploy-streaming-vectortile-tasks: deploy-streaming-footprint-updater deploy-streaming-edit-histogram-updater
+
+deploy-stats-refresher:
+	./scripts/deploy-stats-refresher.sh
 
 disable-stats-refresher:
 	aws events disable-rule --name "osmesa-stats-view-refresher${TASK_SUFFIX}"

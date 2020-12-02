@@ -37,7 +37,7 @@ aws ecs register-task-definition \
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:production\",
-	      \"name\": \"streaming-augmented-diffs-stats-updater\"
+	      \"name\": \"streaming-changeset-stats-updater\"
 	    },
 	    {
 	      \"logConfiguration\": {
@@ -62,6 +62,6 @@ aws ecs register-task-definition \
 	        }
 	      ],
 	      \"image\": \"${ECR_IMAGE}:production\",
-	      \"name\": \"streaming-changesets-stats-updater\"
+	      \"name\": \"streaming-changeset-metadata-updater\"
 	    }
 	  ]"
