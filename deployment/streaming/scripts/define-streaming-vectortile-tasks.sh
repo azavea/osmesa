@@ -38,7 +38,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}:production\",
+	      \"image\": \"${ECR_STATS_IMAGE}:production\",
 	      \"name\": \"streaming-edit-histogram-tile-updater\"
 	    }
 	  ]"
@@ -76,7 +76,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}:production\",
+	      \"image\": \"${ECR_STATS_IMAGE}:production\",
 	      \"name\": \"streaming-user-footprint-tile-updater\"
 	    }
 	  ]"

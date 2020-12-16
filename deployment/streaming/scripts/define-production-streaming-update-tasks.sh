@@ -36,8 +36,8 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}:production\",
-	      \"name\": \"streaming-augmented-diffs-stats-updater\"
+	      \"image\": \"${ECR_STATS_IMAGE}:production\",
+	      \"name\": \"streaming-changeset-stats-updater\"
 	    },
 	    {
 	      \"logConfiguration\": {
@@ -61,7 +61,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}:production\",
-	      \"name\": \"streaming-changesets-stats-updater\"
+	      \"image\": \"${ECR_STATS_IMAGE}:production\",
+	      \"name\": \"streaming-changeset-metadata-updater\"
 	    }
 	  ]"

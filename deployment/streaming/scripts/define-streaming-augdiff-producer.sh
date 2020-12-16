@@ -12,7 +12,7 @@ aws ecs register-task-definition \
     --network-mode awsvpc \
     --requires-compatibilities EC2 FARGATE \
     --cpu "1 vCPU" \
-    --memory "2 GB" \
+    --memory "${AUGDIFF_ECS_MEMORY_GB} GB" \
     --container-definitions "[
 	    {
 	      \"logConfiguration\": {
@@ -34,7 +34,11 @@ aws ecs register-task-definition \
 	        {
 	          \"name\": \"ONRAMP_URL\",
 	          \"value\": \"${ONRAMP_URL}\"
-	        }
+	        },
+                {
+                  \"name\": \"NODE_OPTIONS\",
+                  \"value\": \"${NODE_OPTIONS}\"
+                }
 	      ],
 	      \"image\": \"${AUGDIFF_ECR_IMAGE}\",
 	      \"name\": \"${AUGDIFF_SERVICE_NAME}\"

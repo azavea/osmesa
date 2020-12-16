@@ -10,13 +10,19 @@ export IAM_ACCOUNT :=
 #                                                 Streaming resource definitions
 ################################################################################
 export STREAMING_INSTANCE_TYPE := m4.xlarge
-export ECR_IMAGE :=
+export ECR_STATS_IMAGE :=
+export ECR_REFRESH_IMAGE :=
 export AWS_LOG_GROUP := streaming-stats-updater
 export ECS_SUBNET := ${SUBNET}
 export ECS_SECURITY_GROUP :=
 
 export CLUSTER_NAME_DEPLOYMENT :=
 export CLUSTER_NAME_STAGING :=
+
+export NODE_OPTIONS=--max-old-space-size=7168
+export DRIVER_MEMORY=8192m
+export ECS_MEMORY_GB=8
+export AUGDIFF_ECS_MEMORY_GB=8
 
 export AUGDIFF_SERVICE_NAME := "azavea-overpass-diff-publisher"
 export AUGDIFF_ECR_IMAGE :=
@@ -32,6 +38,9 @@ export STAGING_DB :=
 
 export NETWORK_CONFIGURATION="{\"awsvpcConfiguration\": {\"subnets\": [\"${ECS_SUBNET}\"], \"securityGroups\": [\"${ECS_SECURITY_GROUP}\"], \"assignPublicIp\": \"DISABLED\"}}"
 
+# Uncomment the following to raise resource allocations to get past a large changeset
+#export TURBO_BOOST := yes
+
 ################################################################################
 #                                                     Batch resource definitions
 ################################################################################
@@ -40,13 +49,21 @@ export WORKER_SECURITY_GROUP :=
 export SERVICE_ACCESS_SG :=
 export SANDBOX_SG :=
 
-export S3_LOG_URI :=
+export S3_ROOT_URI :=
+export S3_LOG_URI := ${S3_ROOT_URI}/logs/
 
 export BATCH_CORE_INSTANCE_TYPE := m4.xlarge
 export BATCH_MASTER_INSTANCE_TYPE := m4.xlarge
 export OSMESA_APPS_JAR := s3://<bucket>/osmesa-apps.jar
 
+export PLANET_HISTORY_PBF :=
+export PLANET_HISTORY_ORC_DIR :=
 export HISTORY_ORC :=
+
+export CHANGESET_CSV :=
+export CHANGESET_COMMENTS_CSV :=
+export CHANGESET_TAGS_CSV :=
+export USERS_CSV :=
 export CHANGESETS_ORC :=
 
 export FOOTPRINT_VT_LOCATION :=
