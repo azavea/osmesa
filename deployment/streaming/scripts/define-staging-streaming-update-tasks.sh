@@ -12,7 +12,7 @@ aws ecs register-task-definition \
     --network-mode awsvpc \
     --requires-compatibilities EC2 FARGATE \
     --cpu "1 vCPU" \
-    --memory "${ECS_MEMORY} GB" \
+    --memory "${ECS_MEMORY_GB} GB" \
     --container-definitions "[
 	    {
 	      \"logConfiguration\": {

@@ -19,6 +19,11 @@ export ECS_SECURITY_GROUP :=
 export CLUSTER_NAME_DEPLOYMENT :=
 export CLUSTER_NAME_STAGING :=
 
+export NODE_OPTIONS=--max-old-space-size=7168
+export DRIVER_MEMORY=8192m
+export ECS_MEMORY_GB=8
+export AUGDIFF_ECS_MEMORY_GB=8
+
 export AUGDIFF_SERVICE_NAME := "azavea-overpass-diff-publisher"
 export AUGDIFF_ECR_IMAGE :=
 export AUGDIFF_SOURCE :=
