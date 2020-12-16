@@ -67,10 +67,12 @@ login-aws-registry:
 	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
 tag-image: build-container
-	docker tag osm_apps:${VERSION_TAG} ${ECR_IMAGE}:${VERSION_TAG}
+	docker tag osm_apps:${VERSION_TAG} ${ECR_STATS_IMAGE}:${VERSION_TAG}
+	docker tag osm_refresh:${VERSION_TAG} ${ECR_REFRESH_IMAGE}:${VERSION_TAG}
 
 push-image: login-aws-registry tag-image
-	docker push ${ECR_IMAGE}:${VERSION_TAG}
+	docker push ${ECR_STATS_IMAGE}:${VERSION_TAG}
+	docker push ${ECR_REFRESH_IMAGE}:${VERSION_TAG}
 
 #######################
 # Streaming AWS Tasks #

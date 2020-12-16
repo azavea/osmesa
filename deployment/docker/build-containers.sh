@@ -10,10 +10,11 @@ else
 fi
 
 set -xe
-SBT_DIR="../src"
+SBT_DIR="../../src"
 JAR_DIR=${SBT_DIR}/apps/target/scala-2.11/
 DOCKER_DIR=$(pwd)
 
 cp ${JAR_DIR}/osmesa-apps.jar ${DOCKER_DIR}/osmesa-apps.jar
-docker build -f Dockerfile --tag osm_apps:${VERSION_TAG} ${DOCKER_DIR}
+docker build -f Dockerfile.osm_apps --tag osm_apps:${VERSION_TAG} ${DOCKER_DIR}
+docker build -f Dockerfile.osm_refresh --tag osm_refresh:${VERSION_TAG} ${DOCKER_DIR}
 rm ${DOCKER_DIR}/osmesa-apps.jar

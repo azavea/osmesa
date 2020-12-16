@@ -36,7 +36,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${STAGING_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}:latest\",
+	      \"image\": \"${ECR_STATS_IMAGE}:latest\",
 	      \"name\": \"streaming-changeset-stats-updater-staging\"
 	    },
 	    {
@@ -61,7 +61,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${STAGING_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}:latest\",
+	      \"image\": \"${ECR_STATS_IMAGE}:latest\",
 	      \"name\": \"streaming-changeset-metadata-updater-staging\"
 	    }
 	  ]"

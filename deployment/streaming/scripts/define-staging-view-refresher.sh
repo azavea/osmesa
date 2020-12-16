@@ -36,7 +36,7 @@ aws ecs register-task-definition \
                   \"value\": \"${STAGING_DB}\"
                 }
               ],
-	      \"image\": \"${ECR_IMAGE}:latest\",
+	      \"image\": \"${ECR_REFRESH_IMAGE}:latest\",
               \"name\": \"stats-view-refresher-staging\"
             }
           ]"

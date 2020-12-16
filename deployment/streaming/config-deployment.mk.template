@@ -10,7 +10,8 @@ export IAM_ACCOUNT :=
 #                                                 Streaming resource definitions
 ################################################################################
 export STREAMING_INSTANCE_TYPE := m4.xlarge
-export ECR_IMAGE :=
+export ECR_STATS_IMAGE :=
+export ECR_REFRESH_IMAGE :=
 export AWS_LOG_GROUP := streaming-stats-updater
 export ECS_SUBNET := ${SUBNET}
 export ECS_SECURITY_GROUP :=

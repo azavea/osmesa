@@ -36,7 +36,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}:production\",
+	      \"image\": \"${ECR_STATS_IMAGE}:production\",
 	      \"name\": \"streaming-changeset-stats-updater\"
 	    },
 	    {
@@ -61,7 +61,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${PRODUCTION_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_IMAGE}:production\",
+	      \"image\": \"${ECR_STATS_IMAGE}:production\",
 	      \"name\": \"streaming-changeset-metadata-updater\"
 	    }
 	  ]"

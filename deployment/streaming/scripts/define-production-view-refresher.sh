@@ -36,7 +36,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${PRODUCTION_DB}\"
                 }
               ],
-	      \"image\": \"${ECR_IMAGE}:production\",
+	      \"image\": \"${ECR_REFRESH_IMAGE}:production\",
               \"name\": \"stats-view-refresher\"
             }
           ]"
