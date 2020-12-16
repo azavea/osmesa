@@ -1,6 +1,6 @@
 FROM alpine:3.12
 
-COPY apk update && apk install postgresql-client
+RUN apk update && apk add bash postgresql-client
 COPY refresh-views.sh /usr/local/bin/refresh-views.sh
 
 WORKDIR /opt

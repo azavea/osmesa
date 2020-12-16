@@ -60,13 +60,13 @@ ${APPS_ASSEMBLY}: $(call rwildcard, ${APPS_SRC_DIR}/src, *.scala) ${APPS_SRC_DIR
 upload-apps-jar: ${APPS_ASSEMBLY}
 	@aws s3 cp ${APPS_ASSEMBLY} ${S3_ROOT_URI}/
 
-build-container: ${APPS_ASSEMBLY}
-	cd .. && VERSION_TAG=${VERSION_TAG} ./build-container.sh
+build-containers: ${APPS_ASSEMBLY}
+	cd ../docker && VERSION_TAG=${VERSION_TAG} ./build-containers.sh
 
 login-aws-registry:
 	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
-tag-image: build-container
+tag-image: build-containers
 	docker tag osm_apps:${VERSION_TAG} ${ECR_STATS_IMAGE}:${VERSION_TAG}
 	docker tag osm_refresh:${VERSION_TAG} ${ECR_REFRESH_IMAGE}:${VERSION_TAG}
 
