@@ -57,6 +57,15 @@ object ChangesetStatsCreator
             )
             .orFalse
 
+        val maxConnectionsOpt =
+          Opts
+            .option[Int](
+              "max-connections",
+              metavar = "n connections",
+              help = "Maximum number of PostgreSQL connections to use"
+            )
+            .withDefault(64)
+
         val databaseUrlOpt =
           Opts
             .option[URI](
@@ -67,8 +76,8 @@ object ChangesetStatsCreator
             )
             .orElse(Opts.env[URI]("DATABASE_URL", help = "The URL of the database"))
 
-        (historyOpt, changesetsOpt, changesetBaseOpt, databaseUrlOpt, statsCheckpointOpt, useCheckpointOpt).mapN {
-          (historySource, changesetSource, changesetBaseURI, databaseUrl, statsCheckpoint, useCheckpoint) =>
+        (historyOpt, changesetsOpt, changesetBaseOpt, databaseUrlOpt, statsCheckpointOpt, useCheckpointOpt, maxConnectionsOpt).mapN {
+          (historySource, changesetSource, changesetBaseURI, databaseUrl, statsCheckpoint, useCheckpoint, maxConnections) =>
             implicit val spark: SparkSession = Analytics.sparkSession("ChangesetStats")
             import spark.implicits._
 
@@ -189,7 +198,7 @@ object ChangesetStatsCreator
                 merge_sets(hashtags('comment), hashtags('hashtags)) as 'hashtags
               )
 
-            changesetStats.foreachPartition(rows => {
+            changesetStats.repartition(maxConnections).foreachPartition(rows => {
               val writer = new ChangesetStatsForeachWriter(databaseUrl)
 
               if (writer.open(TaskContext.getPartitionId(), 0)) {
@@ -205,6 +214,7 @@ object ChangesetStatsCreator
 
             changesetMetadata
               .orderBy('hashtags)
+              .repartition(maxConnections)
               .foreachPartition(rows => {
                 val writer = new ChangesetMetadataForeachWriter(databaseUrl)
 
