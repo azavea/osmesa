@@ -36,7 +36,7 @@ endif
 .PHONY: build-container login-aws-registry tag-image push-image
 
 APPS_SRC_DIR := ../../src/apps
-APPS_ASSEMBLY := ${APPS_SRC_DIR}/target/scala-2.11/${OSMESA_APPS_JAR}
+APPS_ASSEMBLY := ${APPS_SRC_DIR}/target/scala-2.11/osmesa-apps.jar
 
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
 
@@ -45,7 +45,7 @@ ${APPS_ASSEMBLY}: $(call rwildcard, ${APPS_SRC_DIR}/src, *.scala) ${APPS_SRC_DIR
 	@touch -m ${APPS_ASSEMBLY}
 
 upload-apps-jar: ${APPS_ASSEMBLY}
-	@aws s3 cp ${APPS_ASSEMBLY} ${S3_ROOT_URI}/
+	@aws s3 cp ${APPS_ASSEMBLY} ${S3_ROOT_URI}/${OSMESA_APPS_JAR}
 
 build-containers: ${APPS_ASSEMBLY}
 	cd ../docker && VERSION_TAG=${VERSION_TAG} ./build-containers.sh
@@ -177,4 +177,4 @@ batch-generate-db-backfill:
 	BATCH_CORE_INSTANCE_TYPE=r5.xlarge BATCH_MASTER_INSTANCE_TYPE=m4.xlarge ./scripts/batch-process.sh \
 	  "OSMesa Batch Process" ${BATCH_WORKERS} \
 		"ChangesetStatsCreator" \
-		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"${S3_ROOT_URI}/${OSMESA_APPS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"${SNAPSHOT_OPT}]"
+		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"${S3_ROOT_URI}/${OSMESA_APPS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\", \"--max-connections\", \"${MAX_PG_CONNECTIONS}\"${SNAPSHOT_OPT}]"

@@ -1,6 +1,6 @@
 package osmesa.analytics
 
-import geotrellis.spark.io.kryo.KryoRegistrator
+import geotrellis.spark.store.kryo.KryoRegistrator
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql._

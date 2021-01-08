@@ -2,7 +2,7 @@ package osmesa.analytics
 
 import geotrellis.proj4.{CRS, LatLng, WebMercator}
 import geotrellis.proj4.util.UTM
-import geotrellis.vector.{Geometry => GTGeometry}
+import geotrellis.vector._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 import org.apache.spark.sql.types.IntegerType
@@ -18,7 +18,7 @@ package object stats {
     val centroid = g.getCentroid
     try {
       val utmCrs = UTM.getZoneCrs(centroid.getX, centroid.getY)
-      GTGeometry(g).reproject(LatLng, utmCrs).jtsGeom
+      g.reproject(LatLng, utmCrs)
     } catch {
       case e: IllegalArgumentException =>
         //logError(s"Failed to find UTM zone for $g; Returning LatLng geometry")

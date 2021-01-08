@@ -105,7 +105,7 @@ object MergedChangesetStreamProcessor
               )
               .set(
                 "spark.kryo.registrator",
-                classOf[geotrellis.spark.io.kryo.KryoRegistrator].getName
+                classOf[geotrellis.spark.store.kryo.KryoRegistrator].getName
               )
 
             implicit val ss: SparkSession = SparkSession.builder

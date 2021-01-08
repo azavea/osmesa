@@ -7,31 +7,22 @@ dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % "2.6.7"
 
 libraryDependencies ++= Seq(
-  // Deal with GeoMesa dependency that breaks Spark 2.2
-  "org.json4s" %% "json4s-native" % "3.2.11",
-  "org.json4s" %% "json4s-core" % "3.2.11",
-  "org.json4s" %% "json4s-ast" % "3.2.11",
-
-  "org.postgresql" % "postgresql" % "42.2.2",
-
+  postgresql,
   decline,
   sparkHive % Provided,
   sparkJts,
-  gtGeotools exclude("com.google.protobuf", "protobuf-java"),
-  gtS3 exclude("com.google.protobuf", "protobuf-java") exclude("com.amazonaws", "aws-java-sdk-s3"),
-  gtSpark exclude("com.google.protobuf", "protobuf-java"),
-  gtVector exclude("com.google.protobuf", "protobuf-java"),
-  gtVectorTile exclude("com.google.protobuf", "protobuf-java"),
-  "com.google.protobuf" % "protobuf-java" % "2.5.0",
-  vectorpipe exclude("com.google.protobuf", "protobuf-java"),
+  gtGeotools,
+  gtS3,
+  gtSpark,
+  gtVector,
+  gtVectorTile,
+  vectorpipe,
   cats,
   scalactic,
   gtSparkTestKit,
   logging,
   scalatest,
   apacheCommonsEmail,
-
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.340" % Provided
 )
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */

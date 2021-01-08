@@ -2,24 +2,21 @@ package osmesa.analytics
 
 import java.net.URI
 
-import geotrellis.raster.RasterExtent
-import geotrellis.spark.io.index.zcurve.ZSpatialKeyIndex
-import geotrellis.spark.{KeyBounds, SpatialKey}
+import geotrellis.layer._
 import geotrellis.vector._
-import geotrellis.vectortile.{VInt64, Value, VectorTile}
+import geotrellis.vectortile.{MVTFeature, VInt64, VectorTile}
 import org.apache.spark.sql._
+import org.locationtech.jts.geom.util.AffineTransformation
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater.{makeLayer, path, write}
 import osmesa.analytics.vectorgrid._
 
-import scala.collection.mutable.ArrayBuffer
 import scala.collection.parallel.{ForkJoinTaskSupport, TaskSupport}
 import scala.collection.{GenIterable, GenMap}
 import scala.concurrent.forkjoin.ForkJoinPool
 
 object EditHistogram extends VectorGrid {
   import Implicits._
-  import implicits._
 
   def create(nodes: DataFrame, tileSource: URI, baseZoom: Int = DefaultBaseZoom)(
       implicit concurrentUploads: Option[Int] = None): DataFrame = {
@@ -95,10 +92,11 @@ object EditHistogram extends VectorGrid {
 
                 // nudge geometries to cover the center of a point rather than the top-left (moving them into the
                 // tile's extent)
+                val x = layer.resolution / 2
+                val y = layer.resolution / 2
+                val affine = new AffineTransformation().translate(x, y)
                 val layerFeatures = layer.features
-                    .map(f =>
-                      f.mapGeom(
-                        _.as[Point].get.translate(layer.resolution / 2, layer.resolution / -2)))
+                    .map(f => MVTFeature(affine.transform(f.geom.asInstanceOf[Point]), f.data))
 
                 val newFeaturesById: Map[Long, Feature[Geometry, Map[String, Long]]] =
                   feats
@@ -116,7 +114,7 @@ object EditHistogram extends VectorGrid {
                 val modifiedFeatures =
                   layerFeatures.filter(f => featureIds.contains(f.data("__id")))
 
-                val replacementFeatures: Seq[Feature[Geometry, Map[String, Value]]] =
+                val replacementFeatures: Seq[MVTFeature[Geometry]] =
                   modifiedFeatures.map(f =>
                     f.mapData(d =>
                       aggregateValues(d.mapValues(_.toLong) ++ newFeaturesById(d("__id")).data)))
@@ -171,13 +169,14 @@ object EditHistogram extends VectorGrid {
   }
 
   def makeFeatures(features: Iterable[PointFeature[Map[String, Long]]])
-    : Iterable[Feature[Point, Map[String, VInt64]]] =
+    : Iterable[MVTFeature[Point]] =
     features
       .map(f => f.mapData(aggregateValues))
       .toSeq
       // put recently-edited features first
       .sortBy(_.data.keys.filter(k => !k.startsWith("__")).max)
       .reverse
+      .map(f => MVTFeature(f.geom, f.data))
 
   def aggregateValues(data: Map[String, Long]): Map[String, VInt64] = {
     val dates = data.filterKeys(k => !k.startsWith("__") && !k.contains(":"))
@@ -304,85 +303,4 @@ object EditHistogram extends VectorGrid {
       }
       .filterNot(x => x.features.isEmpty)
 
-  object implicits {
-    implicit class ExtendedPointFeatureTraversableOnce(
-        val features: TraversableOnce[PointFeature[Map[String, Long]]]) {
-
-      /**
-        * Merge features that are part of the same vectorized tile and contain distinct properties.
-        *
-        * @return Merged features
-        */
-      def merge(): Seq[PointFeature[Map[String, Long]]] =
-        features
-          .foldLeft(Map.empty[Long, PointFeature[Map[String, Long]]]) {
-            case (acc, feat) =>
-              val sk = feat.data("__id")
-
-              val merged = acc.get(sk) match {
-                case Some(f) => f.mapData(d => d ++ feat.data)
-                case None    => feat
-              }
-
-              acc.updated(sk, merged)
-          }
-          .values
-          .toVector // materialize iterator
-    }
-
-    implicit class RasterTileWithKeyExtension(tiles: Dataset[RasterTileWithKey]) {
-      import tiles.sparkSession.implicits._
-
-      def vectorize: Dataset[VectorTileWithKey] =
-        tiles.map { tile =>
-          // convert into features
-          val raster = tile.raster
-          val rasterExtent =
-            RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
-          val index = new ZSpatialKeyIndex(
-            KeyBounds(SpatialKey(0, 0), SpatialKey(raster.tile.cols - 1, raster.tile.rows - 1)))
-
-          val features = ArrayBuffer[PointFeature[Map[String, Long]]]()
-
-          raster.tile.foreach { (c: Int, r: Int, value: Int) =>
-            if (value > 0) {
-              features.append(
-                PointFeature(Point(rasterExtent.gridToMap(c, r)),
-                             Map(tile.key -> value,
-                                 "__id" -> index.toIndex(SpatialKey(c, r)).toLong)))
-            }
-          }
-
-          VectorTileWithKey(tile.key, tile.zoom, tile.sk, features)
-        }
-    }
-
-    implicit class RasterTileWithKeyAndSequenceExtension(
-        tiles: Dataset[RasterTileWithKeyAndSequence]) {
-      import tiles.sparkSession.implicits._
-
-      def vectorize: Dataset[VectorTileWithKeyAndSequence] =
-        tiles.map { tile =>
-          // convert into features
-          val raster = tile.raster
-          val rasterExtent =
-            RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
-          val index = new ZSpatialKeyIndex(
-            KeyBounds(SpatialKey(0, 0), SpatialKey(raster.tile.cols - 1, raster.tile.rows - 1)))
-
-          val features = ArrayBuffer[PointFeature[Map[String, Long]]]()
-
-          raster.tile.foreach { (c: Int, r: Int, value: Int) =>
-            if (value > 0) {
-              features.append(
-                PointFeature(Point(rasterExtent.gridToMap(c, r)),
-                             Map(tile.key -> value,
-                                 "__id" -> index.toIndex(SpatialKey(c, r)).toLong)))
-            }
-          }
-
-          VectorTileWithKeyAndSequence(tile.sequence, tile.key, tile.zoom, tile.sk, features)
-        }
-    }
-  }
 }

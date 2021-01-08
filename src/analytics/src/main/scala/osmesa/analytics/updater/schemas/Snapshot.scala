@@ -1,14 +1,14 @@
 package osmesa.analytics.updater.schemas
 
-import geotrellis.vector.Feature
-import geotrellis.vectortile.{Layer, VInt64, VString}
+import geotrellis.vector.Geometry
+import geotrellis.vectortile.{Layer, MVTFeature, VInt64, VString}
 import osmesa.analytics.updater._
 
 class Snapshot(
     override val layer: Layer,
     override val features: Map[String, (Option[AugmentedDiffFeature], AugmentedDiffFeature)])
     extends Schema {
-  lazy val newFeatures: Seq[VTFeature] =
+  lazy val newFeatures: Seq[MVTFeature[Geometry]] =
     features.values
       .map(_._2)
       .filter(_.data.visible.getOrElse(true))
@@ -17,7 +17,7 @@ class Snapshot(
       .map(_.get)
       .toSeq
 
-  private def makeFeature(feature: AugmentedDiffFeature): Option[VTFeature] = {
+  private def makeFeature(feature: AugmentedDiffFeature): Option[MVTFeature[Geometry]] = {
     val id = feature.data.id
 
     val elementId = feature.data.`type` match {
@@ -30,7 +30,7 @@ class Snapshot(
     feature match {
       case _ if feature.geom.isValid =>
         Some(
-          Feature(
+          MVTFeature(
             feature.geom,
             feature.data.tags.map {
               case (k, v) => (k, VString(v))
