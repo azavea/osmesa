@@ -6,10 +6,19 @@ ifeq ($(VERSION_TAG), production)
 	DATABASE=${PRODUCTION_DB}
 	ECS_CLUSTER=${CLUSTER_NAME_DEPLOYMENT}
 	TASK_SUFFIX=
+	CONTAINER_TAG=production
 else
+ifeq ($(VERSION_TAG), staging)
 	DATABASE=${STAGING_DB}
 	ECS_CLUSTER=${CLUSTER_NAME_STAGING}
 	TASK_SUFFIX=-staging
+	CONTAINER_TAG=latest
+else
+	DATABASE=${STAGING_DB}
+	ECS_CLUSTER=${CLUSTER_NAME_STAGING}
+	TASK_SUFFIX=-${VERSION_TAG}
+	CONTAINER_TAG=${VERSION_TAG}
+endif
 endif
 
 DB_URI=${DB_BASE_URI}/${DATABASE}
@@ -35,13 +44,13 @@ endif
 
 .PHONY: build-container login-aws-registry tag-image push-image
 
-APPS_SRC_DIR := ../../src/apps
-APPS_ASSEMBLY := ${APPS_SRC_DIR}/target/scala-2.11/osmesa-apps.jar
+OSMESA_SRC_DIR := ../../src
+APPS_ASSEMBLY := ${OSMESA_SRC_DIR}/apps/target/scala-2.11/osmesa-apps.jar
 
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
 
-${APPS_ASSEMBLY}: $(call rwildcard, ${APPS_SRC_DIR}/src, *.scala) ${APPS_SRC_DIR}/build.sbt
-	cd ${APPS_SRC_DIR}/.. && ./sbt "project apps" assembly
+${APPS_ASSEMBLY}: $(call rwildcard, ${OSMESA_SRC_DIR}/apps/src/main/scala, *.scala) $(call rwildcard, ${OSMESA_SRC_DIR}/analytics/src/main/scala, *.scala) $(call rwildcard, ${OSMESA_SRC_DIR}/project, *.scala) ${OSMESA_SRC_DIR}/build.sbt
+	cd ${OSMESA_SRC_DIR} && ./sbt "project apps" assembly
 	@touch -m ${APPS_ASSEMBLY}
 
 upload-apps-jar: ${APPS_ASSEMBLY}
@@ -54,12 +63,12 @@ login-aws-registry:
 	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
 tag-image: build-containers
-	docker tag osm_apps:${VERSION_TAG} ${ECR_STATS_IMAGE}:${VERSION_TAG}
-	docker tag osm_refresh:${VERSION_TAG} ${ECR_REFRESH_IMAGE}:${VERSION_TAG}
+	docker tag osm_apps:${VERSION_TAG} ${ECR_STATS_IMAGE}:${CONTAINER_TAG}
+	docker tag osm_refresh:${VERSION_TAG} ${ECR_REFRESH_IMAGE}:${CONTAINER_TAG}
 
 push-image: login-aws-registry tag-image
-	docker push ${ECR_STATS_IMAGE}:${VERSION_TAG}
-	docker push ${ECR_REFRESH_IMAGE}:${VERSION_TAG}
+	docker push ${ECR_STATS_IMAGE}:${CONTAINER_TAG}
+	docker push ${ECR_REFRESH_IMAGE}:${CONTAINER_TAG}
 
 #######################
 # Streaming AWS Tasks #
