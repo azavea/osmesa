@@ -69,6 +69,8 @@ export CHANGESETS_ORC :=
 export FOOTPRINT_VT_LOCATION :=
 export HISTOGRAM_VT_LOCATION :=
 
+export MAX_PG_CONNECTIONS := 64
+
 # Uncomment the following line to save the processed stats
 # export STATS_SNAPSHOT_ORC :=
 

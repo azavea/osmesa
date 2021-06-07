@@ -3,7 +3,7 @@ package osmesa.analytics.updater.schemas
 import java.sql.Timestamp
 import java.time.Instant
 
-import geotrellis.vector.Feature
+import geotrellis.vector.Geometry
 import geotrellis.vectortile._
 import osmesa.analytics.updater.Implicits._
 import osmesa.analytics.updater._
@@ -12,7 +12,7 @@ class History(
     override val layer: Layer,
     override val features: Map[String, (Option[AugmentedDiffFeature], AugmentedDiffFeature)])
     extends Schema {
-  override protected lazy val touchedFeatures: Map[String, Seq[VTFeature]] = {
+  override protected lazy val touchedFeatures: Map[String, Seq[MVTFeature[Geometry]]] = {
     val featureIds = features.keySet
 
     layer.features
@@ -24,7 +24,7 @@ class History(
             .sortWith(_.data("__version") < _.data("__version")))
   }
 
-  lazy val newFeatures: Seq[VTFeature] =
+  lazy val newFeatures: Seq[MVTFeature[Geometry]] =
     features
       .filter {
         case (id, (_, curr)) =>
@@ -46,7 +46,7 @@ class History(
       .map(_.get)
       .toSeq
 
-  override lazy val replacementFeatures: Seq[VTFeature] = {
+  override lazy val replacementFeatures: Seq[MVTFeature[Geometry]] = {
     val activeFeatures = touchedFeatures
       .filter {
         case (id, fs) =>
@@ -68,7 +68,7 @@ class History(
     replacedFeatures
   }
 
-  override lazy val retainedFeatures: Seq[VTFeature] = {
+  override lazy val retainedFeatures: Seq[MVTFeature[Geometry]] = {
     val activeFeatures = touchedFeatures
       .filter {
         case (id, fs) =>
@@ -85,7 +85,7 @@ class History(
 
   private def makeFeature(feature: AugmentedDiffFeature,
                           minorVersion: Option[Int],
-                          validUntil: Option[Long] = None): Option[VTFeature] = {
+                          validUntil: Option[Long] = None): Option[MVTFeature[Geometry]] = {
     val id = feature.data.id
 
     val elementId = feature.data.`type` match {
@@ -98,7 +98,7 @@ class History(
     feature match {
       case _ if feature.geom.isValid =>
         Some(
-          Feature(
+          MVTFeature(
             feature.geom, // when features are deleted, this will be the last geometry that was visible
             feature.data.tags.map {
               case (k, v) => (k, VString(v))
@@ -120,8 +120,8 @@ class History(
     }
   }
 
-  private def updateFeature(feature: VTFeature, validUntil: Timestamp): VTFeature = {
-    Feature(
+  private def updateFeature(feature: MVTFeature[Geometry], validUntil: Timestamp): MVTFeature[Geometry] = {
+    MVTFeature(
       feature.geom,
       feature.data.updated("__validUntil", VInt64(validUntil.getTime))
     )

@@ -12,9 +12,9 @@ if [[ $DEFINED_GROUPS != *"/ecs/${AWS_LOG_GROUP}"* ]]; then
         --log-group-name /ecs/${AWS_LOG_GROUP}
 fi
 
-if [[ $DEFINED_GROUPS != *"/ecs/${AWS_LOG_GROUP}-staging"* ]]; then
+if [[ $DEFINED_GROUPS != *"/ecs/${AWS_LOG_GROUP}${TASK_SUFFIX}"* ]]; then
     aws logs create-log-group \
-        --log-group-name /ecs/${AWS_LOG_GROUP}-staging
+        --log-group-name /ecs/${AWS_LOG_GROUP}${TASK_SUFFIX}
 fi
 
 if [[ $DEFINED_GROUPS != *"/ecs/streaming-user-footprint-tile-updater"* ]]; then

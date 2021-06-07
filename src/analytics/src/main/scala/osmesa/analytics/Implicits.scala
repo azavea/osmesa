@@ -1,11 +1,12 @@
 package osmesa.analytics
 
 import geotrellis.proj4.{LatLng, WebMercator}
+import geotrellis.layer._
 import geotrellis.raster._
 import geotrellis.raster.resample.Sum
-import geotrellis.spark.SpatialKey
-import geotrellis.spark.tiling.ZoomedLayoutScheme
-import geotrellis.vector.Geometry
+import geotrellis.store.index.zcurve.ZSpatialKeyIndex
+import geotrellis.vector._
+import geotrellis.vectortile.{MVTFeature, Value}
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.Dataset
 import osmesa.analytics.vectorgrid._
@@ -14,6 +15,45 @@ import osmesa.analytics.raster.MutableSparseIntTile
 import scala.collection.mutable.ArrayBuffer
 
 object Implicits extends Logging {
+
+  implicit class MVTFeatureMap[+G <: Geometry](val feature: MVTFeature[G]) {
+    /** Method for manipulating this class' geom
+     * @tparam T A subtype of Geometry
+     * @param f A function from G to T
+     */
+    def mapGeom[T <: Geometry](f: G => T): MVTFeature[T] =
+      MVTFeature(f(feature.geom), feature.data)
+
+    /** Method for manipulating this class' data
+     * @param f A function from D to T
+     */
+    def mapData(f: Map[String, Value] => Map[String, Value]): MVTFeature[G] =
+      MVTFeature(feature.geom, f(feature.data))
+  }
+
+  implicit class ExtendedPointFeatureTraversableOnce(val features: TraversableOnce[PointFeature[Map[String, Long]]]) {
+    /**
+     * Merge features that are part of the same vectorized tile and contain distinct properties.
+     *
+     * @return Merged features
+     */
+    def merge(): Seq[PointFeature[Map[String, Long]]] =
+      features
+        .foldLeft(Map.empty[Long, PointFeature[Map[String, Long]]]) {
+          case (acc, feat) =>
+            val sk = feat.data("__id")
+
+            val merged = acc.get(sk) match {
+              case Some(f) => f.mapData(d => d ++ feat.data)
+              case None    => feat
+            }
+
+            acc.updated(sk, merged)
+        }
+        .values
+        .toVector // materialize iterator
+  }
+
   implicit class ExtendedPointWithKey(val coords: Dataset[PointWithKey]) {
     import coords.sparkSession.implicits._
 
@@ -25,15 +65,15 @@ object Implicits extends Logging {
 
       coords
         .flatMap { point =>
-          Option(point.geom).map(Geometry(_)).map(_.reproject(LatLng, WebMercator)) match {
+          Option(point.geom).map(_.reproject(LatLng, WebMercator)) match {
             case Some(g) if g.isValid =>
               layout.mapTransform
                 .keysForGeometry(g)
                 .flatMap { sk =>
-                  g.intersection(sk.extent(layout)).toGeometry match {
-                    case Some(clipped) if clipped.isValid =>
+                  g.intersection(sk.extent(layout)) match {
+                    case clipped: Geometry if clipped.isValid =>
                       if (xs.contains(sk.col) && ys.contains(sk.row)) {
-                        Seq(GeometryTileWithKey(point.key, baseZoom, sk, clipped.jtsGeom))
+                        Seq(GeometryTileWithKey(point.key, baseZoom, sk, clipped))
                       } else {
                         // TODO figure out why this happens (0/0/-5)
                         // it might be features extending outside Web Mercator bounds, in which case those features
@@ -61,41 +101,41 @@ object Implicits extends Logging {
       val xs = 0 until layout.layoutCols
       val ys = 0 until layout.layoutRows
 
-      coords
-        .flatMap { point =>
-          Option(point.geom).map(Geometry(_)).map(_.reproject(LatLng, WebMercator)) match {
-            case Some(g) if g.isValid =>
-              layout.mapTransform
-                .keysForGeometry(g)
-                .flatMap { sk =>
-                  g.intersection(sk.extent(layout)).toGeometry match {
-                    case Some(clipped) if clipped.isValid =>
-                      if (xs.contains(sk.col) && ys.contains(sk.row)) {
-                        // TODO if source geometry isn't a point, facet values should be redistributed
-                        // create a tile for each facet
-                        point.facets.filter(_._2 > 0).map {
-                          case (facet, value) =>
-                            GeometryTileWithKey(s"${point.key}:${facet}",
-                                                baseZoom,
-                                                sk,
-                                                clipped.jtsGeom,
-                                                value)
-                        }.toVector :+ GeometryTileWithKey(point.key, baseZoom, sk, clipped.jtsGeom)
-                      } else {
-                        // TODO figure out why this happens (0/0/-5)
-                        // it might be features extending outside Web Mercator bounds, in which case those features
-                        // belong in valid tiles (but need to have their coordinates adjusted to account for that)
-                        log.warn(
-                          s"Out of range: ${baseZoom}/${sk.col}/${sk.row}, ${clipped} (${point.geom})")
-                        Seq.empty
-                      }
-                    case _ =>
-                      Seq.empty
+      coords.flatMap { point =>
+        val g = point.geom.reproject(LatLng, WebMercator)
+        if (g.isValid) {
+          layout.mapTransform
+            .keysForGeometry(g)
+            .flatMap { sk =>
+              g.intersection(sk.extent(layout)) match {
+                case clipped: Geometry if clipped.isValid =>
+                  if (xs.contains(sk.col) && ys.contains(sk.row)) {
+                    // TODO if source geometry isn't a point, facet values should be redistributed
+                    // create a tile for each facet
+                    point.facets.filter(_._2 > 0).map {
+                      case (facet, value) =>
+                        GeometryTileWithKey(s"${point.key}:${facet}",
+                          baseZoom,
+                          sk,
+                          clipped,
+                          value)
+                    }.toVector :+ GeometryTileWithKey(point.key, baseZoom, sk, clipped)
+                  } else {
+                    // TODO figure out why this happens (0/0/-5)
+                    // it might be features extending outside Web Mercator bounds, in which case those featu
+                    // belong in valid tiles (but need to have their coordinates adjusted to account for th
+                    log.warn(
+                      s"Out of range: ${baseZoom}/${sk.col}/${sk.row}, ${clipped} (${point.geom})")
+                    Seq.empty
                   }
-                }
-            case _ => Seq.empty
-          }
+                case _ =>
+                  Seq.empty
+              }
+            }
+        } else {
+          Seq.empty
         }
+      }
     }
   }
 
@@ -178,10 +218,33 @@ object Implicits extends Logging {
           } else {
             Seq(tile)
         })
+
+    def vectorize: Dataset[VectorTileWithKey] =
+      rasterTiles.map { tile =>
+        // convert into features
+        val raster = tile.raster
+        val rasterExtent =
+          RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
+        val index = new ZSpatialKeyIndex(
+          KeyBounds(SpatialKey(0, 0), SpatialKey(raster.tile.cols - 1, raster.tile.rows - 1)))
+
+        val features = ArrayBuffer[PointFeature[Map[String, Long]]]()
+
+        raster.tile.foreach { (c: Int, r: Int, value: Int) =>
+          if (value > 0) {
+            features.append(
+              PointFeature(Point(rasterExtent.gridToMap(c, r)),
+                Map(tile.key -> value,
+                  "__id" -> index.toIndex(SpatialKey(c, r)).toLong)))
+          }
+        }
+
+        VectorTileWithKey(tile.key, tile.zoom, tile.sk, features)
+      }
   }
 
   implicit class ExtendedRasterTileWithKeyAndSequence(
-      val rasterTiles: Dataset[RasterTileWithKeyAndSequence]) {
+                                                       val rasterTiles: Dataset[RasterTileWithKeyAndSequence]) {
     import rasterTiles.sparkSession.implicits._
 
     def pyramid(baseZoom: Int)(implicit layoutScheme: ZoomedLayoutScheme,
@@ -260,6 +323,29 @@ object Implicits extends Logging {
             RasterTileWithKeyAndSequence(sequence, k, z, sk, Raster[Tile](merged, mergedExtent))
         }
     }
+
+    def vectorize: Dataset[VectorTileWithKeyAndSequence] =
+      rasterTiles.map { tile =>
+        // convert into features
+        val raster = tile.raster
+        val rasterExtent =
+          RasterExtent(raster.extent, raster.tile.cols, raster.tile.rows)
+        val index = new ZSpatialKeyIndex(
+          KeyBounds(SpatialKey(0, 0), SpatialKey(raster.tile.cols - 1, raster.tile.rows - 1)))
+
+        val features = ArrayBuffer[PointFeature[Map[String, Long]]]()
+
+        raster.tile.foreach { (c: Int, r: Int, value: Int) =>
+          if (value > 0) {
+            features.append(
+              PointFeature(Point(rasterExtent.gridToMap(c, r)),
+                Map(tile.key -> value,
+                  "__id" -> index.toIndex(SpatialKey(c, r)).toLong)))
+          }
+        }
+
+        VectorTileWithKeyAndSequence(tile.sequence, tile.key, tile.zoom, tile.sk, features)
+      }
   }
 
   implicit class ExtendedGeometryTileWithKey(val geometryTiles: Dataset[GeometryTileWithKey]) {
@@ -278,7 +364,7 @@ object Implicits extends Logging {
 
             geoms.foreach {
               case (g, value) =>
-                Geometry(g).foreach(rasterExtent) { (c, r) =>
+                g.foreach(rasterExtent) { (c, r) =>
                   tile.get(c, r) match {
                     case v if isData(v) => tile.set(c, r, v + value)
                     case _              => tile.set(c, r, value)
@@ -308,7 +394,7 @@ object Implicits extends Logging {
 
             geoms.foreach {
               case (g, value) =>
-                Geometry(g).foreach(rasterExtent) { (c, r) =>
+                g.foreach(rasterExtent) { (c, r) =>
                   tile.get(c, r) match {
                     case v if isData(v) => tile.set(c, r, v + value)
                     case _              => tile.set(c, r, value)
@@ -330,38 +416,36 @@ object Implicits extends Logging {
       val xs = 0 until layout.layoutCols
       val ys = 0 until layout.layoutRows
 
-      coords
-        .flatMap { point =>
-          val geom = point.geom
-
-          Option(geom).map(Geometry(_)).map(_.reproject(LatLng, WebMercator)) match {
-            case Some(g) if g.isValid =>
-              layout.mapTransform
-                .keysForGeometry(g)
-                .flatMap { sk =>
-                  g.intersection(sk.extent(layout)).toGeometry match {
-                    case Some(clipped) if clipped.isValid =>
-                      if (xs.contains(sk.col) && ys.contains(sk.row)) {
-                        Seq(
-                          GeometryTileWithKeyAndSequence(point.sequence,
-                                                         point.key,
-                                                         baseZoom,
-                                                         sk,
-                                                         clipped.jtsGeom))
-                      } else {
-                        // TODO figure out why this happens
-                        // it might be features extending outside Web Mercator bounds, in which case those features
-                        // belong in valid tiles (but need to have their coordinates adjusted to account for that)
-                        log.warn(
-                          s"Out of range: ${baseZoom}/${sk.col}/${sk.row}, ${clipped} (${point.geom})")
-                        Seq.empty
-                      }
-                    case _ => Seq.empty
+      coords.flatMap { point =>
+        val g = point.geom.reproject(LatLng, WebMercator)
+        if (g.isValid) {
+          layout.mapTransform
+            .keysForGeometry(g)
+            .flatMap { sk =>
+              g.intersection(sk.extent(layout)) match {
+                case clipped: Geometry if clipped.isValid =>
+                  if (xs.contains(sk.col) && ys.contains(sk.row)) {
+                    Seq(
+                      GeometryTileWithKeyAndSequence(point.sequence,
+                        point.key,
+                        baseZoom,
+                        sk,
+                        clipped))
+                  } else {
+                    // TODO figure out why this happens
+                    // it might be features extending outside Web Mercator bounds, in which case those featus
+                    // belong in valid tiles (but need to have their coordinates adjusted to account for that
+                    log.warn(
+                      s"Out of range: ${baseZoom}/${sk.col}/${sk.row}, ${clipped} (${point.geom})")
+                    Seq.empty
                   }
-                }
-            case _ => Seq.empty
-          }
+                case _ => Seq.empty
+              }
+            }
+        } else {
+          Seq.empty
         }
+      }
     }
   }
 
@@ -375,46 +459,46 @@ object Implicits extends Logging {
       val xs = 0 until layout.layoutCols
       val ys = 0 until layout.layoutRows
 
-      coords
-        .flatMap { point =>
-          Option(Geometry(point.geom)).map(_.reproject(LatLng, WebMercator)) match {
-            case Some(g) if g.isValid =>
-              layout.mapTransform
-                .keysForGeometry(g)
-                .flatMap { sk =>
-                  g.intersection(sk.extent(layout)).toGeometry match {
-                    case Some(clipped) if clipped.isValid =>
-                      if (xs.contains(sk.col) && ys.contains(sk.row)) {
-                        // TODO if source geometry isn't a point, facet values should be redistributed
-                        // create a tile for each facet
-                        point.facets.filter(_._2 > 0).map {
-                          case (facet, value) =>
-                            GeometryTileWithKeyAndSequence(point.sequence,
-                                                           s"${point.key}:${facet}",
-                                                           baseZoom,
-                                                           sk,
-                                                           clipped.jtsGeom,
-                                                           value)
-                        }.toVector :+ GeometryTileWithKeyAndSequence(point.sequence,
-                                                                     point.key,
-                                                                     baseZoom,
-                                                                     sk,
-                                                                     clipped.jtsGeom)
-                      } else {
-                        // TODO figure out why this happens (0/0/-5)
-                        // it might be features extending outside Web Mercator bounds, in which case those features
-                        // belong in valid tiles (but need to have their coordinates adjusted to account for that)
-                        log.warn(
-                          s"Out of range: ${baseZoom}/${sk.col}/${sk.row}, ${clipped} (${point.geom})")
-                        Seq.empty
-                      }
-                    case _ =>
-                      Seq.empty
+      coords.flatMap { point =>
+        val g = point.geom.reproject(LatLng, WebMercator)
+        if (g.isValid) {
+          layout.mapTransform
+            .keysForGeometry(g)
+            .flatMap { sk =>
+              g.intersection(sk.extent(layout)) match {
+                case clipped: Geometry if clipped.isValid =>
+                  if (xs.contains(sk.col) && ys.contains(sk.row)) {
+                    // TODO if source geometry isn't a point, facet values should be redistributed
+                    // create a tile for each facet
+                    point.facets.filter(_._2 > 0).map {
+                      case (facet, value) =>
+                        GeometryTileWithKeyAndSequence(point.sequence,
+                          s"${point.key}:${facet}",
+                          baseZoom,
+                          sk,
+                          clipped,
+                          value)
+                    }.toVector :+ GeometryTileWithKeyAndSequence(point.sequence,
+                      point.key,
+                      baseZoom,
+                      sk,
+                      clipped)
+                  } else {
+                    // TODO figure out why this happens (0/0/-5)
+                    // it might be features extending outside Web Mercator bounds, in which case those features
+                    // belong in valid tiles (but need to have their coordinates adjusted to account for that)
+                    log.warn(
+                      s"Out of range: ${baseZoom}/${sk.col}/${sk.row}, ${clipped} (${point.geom})")
+                    Seq.empty
                   }
-                }
-            case _ => Seq.empty
-          }
+                case _ =>
+                  Seq.empty
+              }
+            }
+        } else {
+          Seq.empty
         }
+      }
     }
   }
 }

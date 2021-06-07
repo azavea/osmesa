@@ -12,7 +12,11 @@ if [ "$(git branch | grep '* master')" = "* master" ]; then
         break
     done
 else
-    VERSION_TAG="latest"
+    if [ -z ${OVERRIDE_TAG+x} ]; then
+        VERSION_TAG="latest"
+    else
+        VERSION_TAG=${OVERRIDE_TAG}
+    fi
 fi
 
 echo -n "${VERSION_TAG}"
