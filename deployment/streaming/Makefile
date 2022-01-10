@@ -6,10 +6,19 @@ ifeq ($(VERSION_TAG), production)
 	DATABASE=${PRODUCTION_DB}
 	ECS_CLUSTER=${CLUSTER_NAME_DEPLOYMENT}
 	TASK_SUFFIX=
+	CONTAINER_TAG=production
 else
+ifeq ($(VERSION_TAG), staging)
 	DATABASE=${STAGING_DB}
 	ECS_CLUSTER=${CLUSTER_NAME_STAGING}
 	TASK_SUFFIX=-staging
+	CONTAINER_TAG=latest
+else
+	DATABASE=${STAGING_DB}
+	ECS_CLUSTER=${CLUSTER_NAME_STAGING}
+	TASK_SUFFIX=-${VERSION_TAG}
+	CONTAINER_TAG=${VERSION_TAG}
+endif
 endif
 
 DB_URI=${DB_BASE_URI}/${DATABASE}
@@ -35,17 +44,17 @@ endif
 
 .PHONY: build-container login-aws-registry tag-image push-image
 
-APPS_SRC_DIR := ../../src/apps
-APPS_ASSEMBLY := ${APPS_SRC_DIR}/target/scala-2.11/${OSMESA_APPS_JAR}
+OSMESA_SRC_DIR := ../../src
+APPS_ASSEMBLY := ${OSMESA_SRC_DIR}/apps/target/scala-2.11/osmesa-apps.jar
 
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
 
-${APPS_ASSEMBLY}: $(call rwildcard, ${APPS_SRC_DIR}/src, *.scala) ${APPS_SRC_DIR}/build.sbt
-	cd ${APPS_SRC_DIR}/.. && ./sbt "project apps" assembly
+${APPS_ASSEMBLY}: $(call rwildcard, ${OSMESA_SRC_DIR}/apps/src/main/scala, *.scala) $(call rwildcard, ${OSMESA_SRC_DIR}/analytics/src/main/scala, *.scala) $(call rwildcard, ${OSMESA_SRC_DIR}/project, *.scala) ${OSMESA_SRC_DIR}/build.sbt
+	cd ${OSMESA_SRC_DIR} && ./sbt "project apps" assembly
 	@touch -m ${APPS_ASSEMBLY}
 
 upload-apps-jar: ${APPS_ASSEMBLY}
-	@aws s3 cp ${APPS_ASSEMBLY} ${S3_ROOT_URI}/
+	@aws s3 cp ${APPS_ASSEMBLY} ${S3_ROOT_URI}/${OSMESA_APPS_JAR}
 
 build-containers: ${APPS_ASSEMBLY}
 	cd ../docker && VERSION_TAG=${VERSION_TAG} ./build-containers.sh
@@ -54,12 +63,12 @@ login-aws-registry:
 	eval `aws ecr get-login --no-include-email --region ${AWS_REGION}`
 
 tag-image: build-containers
-	docker tag osm_apps:${VERSION_TAG} ${ECR_STATS_IMAGE}:${VERSION_TAG}
-	docker tag osm_refresh:${VERSION_TAG} ${ECR_REFRESH_IMAGE}:${VERSION_TAG}
+	docker tag osm_apps:${VERSION_TAG} ${ECR_STATS_IMAGE}:${CONTAINER_TAG}
+	docker tag osm_refresh:${VERSION_TAG} ${ECR_REFRESH_IMAGE}:${CONTAINER_TAG}
 
 push-image: login-aws-registry tag-image
-	docker push ${ECR_STATS_IMAGE}:${VERSION_TAG}
-	docker push ${ECR_REFRESH_IMAGE}:${VERSION_TAG}
+	docker push ${ECR_STATS_IMAGE}:${CONTAINER_TAG}
+	docker push ${ECR_REFRESH_IMAGE}:${CONTAINER_TAG}
 
 #######################
 # Streaming AWS Tasks #
@@ -92,11 +101,14 @@ deploy-streaming-augdiff-producer:
 	aws ecs create-service \
 	  --cluster "${ECS_CLUSTER}" \
 	  --service-name "${AUGDIFF_SERVICE_NAME}" \
-	  --task-definition "${AUGDIFF_SERVICE_NAME}" \
+	  --task-definition "${AUGDIFF_SERVICE_NAME}${TASK_SUFFIX}" \
 	  --desired-count 1 \
 	  --launch-type FARGATE \
 	  --scheduling-strategy REPLICA \
 	  --network-configuration ${NETWORK_CONFIGURATION}
+
+stop-streaming-augdiff-producer:
+	./scripts/stop-streaming-service.sh "${AUGDIFF_SERVICE_NAME}"
 
 stop-streaming-footprint-updater:
 	./scripts/stop-streaming-service.sh streaming-user-footprint-tile-updater
@@ -177,4 +189,4 @@ batch-generate-db-backfill:
 	BATCH_CORE_INSTANCE_TYPE=r5.xlarge BATCH_MASTER_INSTANCE_TYPE=m4.xlarge ./scripts/batch-process.sh \
 	  "OSMesa Batch Process" ${BATCH_WORKERS} \
 		"ChangesetStatsCreator" \
-		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"${S3_ROOT_URI}/${OSMESA_APPS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\"${SNAPSHOT_OPT}]"
+		"[\"spark-submit\", \"--deploy-mode\", \"cluster\", \"--class\", \"osmesa.apps.batch.ChangesetStatsCreator\", \"${S3_ROOT_URI}/${OSMESA_APPS_JAR}\", \"--history\", \"${HISTORY_ORC}\", \"--changesets\", \"${CHANGESETS_ORC}\", \"--changeset-stream\", \"${CHANGESET_SOURCE}\", \"--database-url\", \"${DB_URI}\", \"--max-connections\", \"${MAX_PG_CONNECTIONS}\"${SNAPSHOT_OPT}]"

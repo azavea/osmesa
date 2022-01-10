@@ -6,7 +6,7 @@ if [ -z ${VERSION_TAG+x} ]; then
 fi
 
 aws ecs register-task-definition \
-    --family streaming-stats-updater-staging \
+    --family streaming-stats-updater${TASK_SUFFIX} \
     --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
@@ -18,7 +18,7 @@ aws ecs register-task-definition \
 	      \"logConfiguration\": {
 	        \"logDriver\": \"awslogs\",
 	        \"options\": {
-	          \"awslogs-group\": \"/ecs/${AWS_LOG_GROUP}-staging\",
+	          \"awslogs-group\": \"/ecs/${AWS_LOG_GROUP}${TASK_SUFFIX}\",
 	          \"awslogs-region\": \"${AWS_REGION}\",
 	          \"awslogs-stream-prefix\": \"ecs\"
 	        }
@@ -36,14 +36,14 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${STAGING_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_STATS_IMAGE}:latest\",
-	      \"name\": \"streaming-changeset-stats-updater-staging\"
+	      \"image\": \"${ECR_STATS_IMAGE}:${CONTAINER_TAG}\",
+	      \"name\": \"streaming-changeset-stats-updater${TASK_SUFFIX}\"
 	    },
 	    {
 	      \"logConfiguration\": {
 	        \"logDriver\": \"awslogs\",
 	        \"options\": {
-	          \"awslogs-group\": \"/ecs/${AWS_LOG_GROUP}-staging\",
+	          \"awslogs-group\": \"/ecs/${AWS_LOG_GROUP}${TASK_SUFFIX}\",
 	          \"awslogs-region\": \"${AWS_REGION}\",
 	          \"awslogs-stream-prefix\": \"ecs\"
 	        }
@@ -61,7 +61,7 @@ aws ecs register-task-definition \
 	          \"value\": \"${DB_BASE_URI}/${STAGING_DB}\"
 	        }
 	      ],
-	      \"image\": \"${ECR_STATS_IMAGE}:latest\",
-	      \"name\": \"streaming-changeset-metadata-updater-staging\"
+	      \"image\": \"${ECR_STATS_IMAGE}:${CONTAINER_TAG}\",
+	      \"name\": \"streaming-changeset-metadata-updater${TASK_SUFFIX}\"
 	    }
 	  ]"

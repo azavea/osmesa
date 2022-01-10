@@ -6,7 +6,7 @@ if [ -z ${VERSION_TAG+x} ]; then
 fi
 
 aws ecs register-task-definition \
-    --family osmesa-stats-view-refresher-staging \
+    --family osmesa-stats-view-refresher${TASK_SUFFIX} \
     --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
@@ -18,7 +18,7 @@ aws ecs register-task-definition \
               \"logConfiguration\": {
                 \"logDriver\": \"awslogs\",
                 \"options\": {
-	          \"awslogs-group\": \"/ecs/${AWS_LOG_GROUP}-staging\",
+	          \"awslogs-group\": \"/ecs/${AWS_LOG_GROUP}${TASK_SUFFIX}\",
 	          \"awslogs-region\": \"${AWS_REGION}\",
                   \"awslogs-stream-prefix\": \"ecs\"
                 }
@@ -36,7 +36,7 @@ aws ecs register-task-definition \
                   \"value\": \"${STAGING_DB}\"
                 }
               ],
-	      \"image\": \"${ECR_REFRESH_IMAGE}:latest\",
-              \"name\": \"stats-view-refresher-staging\"
+	      \"image\": \"${ECR_REFRESH_IMAGE}:${CONTAINER_TAG}\",
+              \"name\": \"stats-view-refresher${TASK_SUFFIX}\"
             }
           ]"

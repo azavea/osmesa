@@ -44,7 +44,7 @@ aws emr create-cluster \
       \"AdditionalSlaveSecurityGroups\": [\"${SANDBOX_SG}\"]
     }" \
   --service-role EMR_DefaultRole \
-  --release-label emr-5.19.0 \
+  --release-label emr-5.29.0 \
   --name "$CLUSTER_NAME" \
   --instance-groups "[
       {

@@ -5,16 +5,19 @@ import java.net.URI
 import cats.implicits._
 import com.monovore.decline._
 import geotrellis.vector.{Feature, Geometry}
+import _root_.io.circe._
+import _root_.io.circe.syntax._
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import osmesa.analytics.Analytics
 import osmesa.analytics.stats._
 import osmesa.analytics.stats.functions._
-import vectorpipe.functions._
+import vectorpipe.functions.{flatten => _, _}
 import vectorpipe.functions.osm._
-import vectorpipe.model.ElementWithSequence
-import vectorpipe.sources.{AugmentedDiffSource, Source}
-import vectorpipe.util.Geocode
+import vectorpipe.model.{AugmentedDiff, ElementWithSequence}
+import vectorpipe.sources.{AugmentedDiffSource, AugmentedDiffSourceErrorHandler, Source}
+import vectorpipe.util.{DBUtils, Geocode, RobustFeature}
 
 /*
  * Usage example:
@@ -89,7 +92,8 @@ object StreamingChangesetStatsUpdater
               val options = Map(
                 Source.BaseURI -> augmentedDiffSource.toString,
                 Source.DatabaseURI -> databaseUri.toString,
-                Source.ProcessName -> "ChangesetStatsUpdater"
+                Source.ProcessName -> "ChangesetStatsUpdater",
+                Source.ErrorHandler -> "osmesa.apps.streaming.LogErringFeatures"
               ) ++
                 startSequence
                   .map(s => Map(Source.StartSequence -> s.toString))
@@ -141,3 +145,72 @@ object StreamingChangesetStatsUpdater
           }
       }
     )
+
+class LogErringFeatures extends AugmentedDiffSourceErrorHandler with Logging {
+
+  val updateErrorLog: String =
+    """
+      |WITH data AS (
+      |  SELECT
+      |    ? AS id,
+      |    ? as type,
+      |    ? as sequence,
+      |    ?::jsonb as tags,
+      |    ? as nds,
+      |    ? as changeset,
+      |    ? as uid,
+      |    ? as "user",
+      |    ?::timestamp with time zone as updated,
+      |    ? as visible,
+      |    ? as version
+      |)
+      |INSERT INTO errors AS c (
+      |  id,
+      |  type,
+      |  sequence,
+      |  tags,
+      |  nds,
+      |  changeset,
+      |  uid,
+      |  "user",
+      |  updated,
+      |  visible,
+      |  version
+      |) SELECT * FROM data
+      |ON CONFLICT DO NOTHING
+    """.stripMargin
+
+  var databaseUri: URI = null
+
+  override def setOptions(options: Map[String, String]): Unit = {
+    databaseUri = options.get(Source.DatabaseURI).map(new URI(_)).getOrElse(null)
+  }
+
+  override def handle(sequence: Int, feature: RobustFeature[Geometry, ElementWithSequence]): Unit = {
+    logError(s"Found erring feature in sequence ${sequence}: ${feature}")
+    if (databaseUri != null) {
+      val connection = DBUtils.getJdbcConnection(databaseUri)
+      val statement = connection.prepareStatement(updateErrorLog)
+      val adiff = AugmentedDiff(sequence, None, feature.toFeature)
+
+      statement.setLong(1, adiff.id)
+      statement.setShort(2, adiff.`type`)
+      statement.setInt(3, adiff.sequence)
+      statement.setString(4, adiff.tags.asJson.noSpaces)
+
+      val nodes = connection.createArrayOf("bigint", adiff.nds.map(_.underlying).toArray)
+
+      statement.setArray(5, nodes)
+      statement.setLong(6, adiff.changeset)
+      statement.setLong(7, adiff.uid)
+      statement.setString(8, adiff.user)
+      statement.setTimestamp(9, adiff.updated)
+      statement.setBoolean(10, adiff.visible)
+      statement.setInt(11, adiff.version)
+      statement.addBatch()
+
+      if (statement.executeBatch().exists(_ == 0))
+        logError(s"Failed to add feature to error table!!")
+    }
+  }
+}

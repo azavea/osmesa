@@ -6,18 +6,21 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 import java.util.zip.GZIPOutputStream
 
-import com.amazonaws.services.s3.model.{AmazonS3Exception, ObjectMetadata}
 import geotrellis.proj4.{LatLng, WebMercator}
-import geotrellis.spark.SpatialKey
-import geotrellis.spark.io.s3.{AmazonS3Client, S3Client}
-import geotrellis.spark.tiling.{LayoutDefinition, ZoomedLayoutScheme}
-import geotrellis.vector.io._
+import geotrellis.layer.SpatialKey
+import geotrellis.layer.{LayoutDefinition, ZoomedLayoutScheme}
+import geotrellis.store.s3.S3ClientProducer
+import geotrellis.vector._
 import geotrellis.vector.io.json.JsonFeatureCollectionMap
-import geotrellis.vector.{Extent, Feature, Geometry, Line, MultiLine, MultiPoint, MultiPolygon, Point, Polygon}
 import geotrellis.vectortile._
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import osmesa.analytics.updater.Implicits._
+import software.amazon.awssdk.core.sync.RequestBody
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.{
+  GetObjectRequest, NoSuchKeyException, PutObjectRequest, S3Exception
+}
 import vectorpipe.model.ElementWithSequence
 
 import scala.collection.mutable.ListBuffer
@@ -25,43 +28,33 @@ import scala.io.Source
 import scala.util.{Failure, Success, Try}
 
 package object updater extends Logging {
-  private lazy val s3: AmazonS3Client = S3Client.DEFAULT
+  private lazy val s3: S3Client = S3ClientProducer.get()
 
   type AugmentedDiffFeature = Feature[Geometry, ElementWithSequence]
-  type VTFeature = Feature[Geometry, VTProperties]
-  type TypedVTFeature[T <: Geometry] = Feature[T, VTProperties]
-  type VTProperties = Map[String, Value]
 
   val LayoutScheme: ZoomedLayoutScheme = ZoomedLayoutScheme(WebMercator)
 
-  private def createMetadata(contentLength: Int, encoding: Option[String]): ObjectMetadata = {
-    val meta = new ObjectMetadata()
-
-    meta.setContentLength(contentLength)
-    encoding.foreach(meta.setContentEncoding)
-
-    meta
-  }
-
   def read(uri: URI): Option[Array[Byte]] = {
     uri.getScheme match {
-      case "s3" =>
-        Try(
-          IOUtils.toByteArray(
-            s3.getObject(uri.getHost,
-                         URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString))
-              .getObjectContent)) match {
+      case "s3" => {
+        val key = URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString)
+        val request = GetObjectRequest.builder()
+          .bucket(uri.getHost)
+          .key(key)
+          .build()
+        Try(IOUtils.toByteArray(s3.getObjectAsBytes(request).asInputStream)) match {
           case Success(bytes) => Some(bytes)
           case Failure(e) =>
             e match {
-              case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" => None
-
-              // treat these exceptions as fatal, as treating tiles as None has the potential to corrupt the tileset
+              case _: NoSuchKeyException => None
+              // treat these exceptions as fatal, as treating tiles as None has
+              // the potential to corrupt the tileset
               case _ =>
                 logWarning(s"Could not read $uri: ${e.getMessage}", e)
                 throw e
             }
         }
+      }
       case "file" =>
         val path = Paths.get(uri)
 
@@ -75,23 +68,26 @@ package object updater extends Logging {
 
   def readFeatures(uri: URI): Option[Seq[(Option[AugmentedDiffFeature], AugmentedDiffFeature)]] = {
     val lines: Option[Seq[String]] = uri.getScheme match {
-      case "s3" =>
-        Try(
-          IOUtils.toString(
-            s3.getObject(uri.getHost,
-                         URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString)).getObjectContent)) match {
+      case "s3" => {
+        val utf8 = StandardCharsets.UTF_8
+        val key = URLDecoder.decode(uri.getPath.drop(1), utf8.toString)
+        val request = GetObjectRequest.builder()
+          .bucket(uri.getHost)
+          .key(key)
+          .build()
+        Try(IOUtils.toString(s3.getObjectAsBytes(request).asInputStream, utf8)) match {
           case Success(content) => Some(content.split("\n"))
           case Failure(e) =>
             e match {
-              case ex: AmazonS3Exception if ex.getErrorCode == "NoSuchKey" =>
-              case ex: AmazonS3Exception =>
+              case _: NoSuchKeyException =>
+              case ex: S3Exception =>
                 logWarning(s"Could not read $uri: ${ex.getMessage}")
               case _ =>
                 logWarning(s"Could not read $uri: $e")
             }
-
             None
         }
+      }
       case "file" =>
         val path = Paths.get(uri)
 
@@ -133,21 +129,28 @@ package object updater extends Logging {
 
   def write(uri: URI, bytes: Array[Byte], encoding: Option[String] = None): Any =
     uri.getScheme match {
-      case "s3" =>
-        Try(
-          s3.putObject(uri.getHost,
-                       URLDecoder.decode(uri.getPath.drop(1), StandardCharsets.UTF_8.toString),
-                       new ByteArrayInputStream(bytes),
-                       createMetadata(bytes.length, encoding))) match {
+      case "s3" => {
+        val utf8 = StandardCharsets.UTF_8
+        val key = URLDecoder.decode(uri.getPath.drop(1), utf8.toString)
+        val builder = PutObjectRequest.builder()
+          .bucket(uri.getHost)
+          .key(key)
+          .contentLength(bytes.length.toLong)
+        if (encoding.isDefined) {
+          builder.contentEncoding(encoding.get)
+        }
+        Try(s3.putObject(builder.build, RequestBody.fromBytes(bytes))) match {
           case Success(_) =>
           case Failure(e) =>
             e match {
-              case ex: AmazonS3Exception =>
+              case ex: S3Exception =>
                 logWarning(s"Could not write $uri: ${ex.getMessage}")
               case _ =>
                 logWarning(s"Could not write $uri: $e")
             }
         }
+
+      }
       case "file" =>
         Files.write(Paths.get(uri), bytes)
     }
@@ -198,8 +201,9 @@ package object updater extends Logging {
           (prevKeys ++ currKeys)
             .map { sk =>
               (sk,
-               (prev.map(_.mapGeom(_.intersection(sk.extent(layout)).toGeometry.orNull)),
-                curr.mapGeom(_.intersection(sk.extent(layout)).toGeometry.orNull)))
+               // TODO: Error check intersection computations
+               (prev.map(_.mapGeom(_.intersection(sk.extent(layout)))),
+                curr.mapGeom(_.intersection(sk.extent(layout)))))
             }
       }
       .groupBy(_._1)
@@ -287,35 +291,38 @@ package object updater extends Logging {
       }
   }
 
-  def segregate(features: Iterable[VTFeature]): (Seq[TypedVTFeature[Point]],
-                                                 Seq[TypedVTFeature[MultiPoint]],
-                                                 Seq[TypedVTFeature[Line]],
-                                                 Seq[TypedVTFeature[MultiLine]],
-                                                 Seq[TypedVTFeature[Polygon]],
-                                                 Seq[TypedVTFeature[MultiPolygon]]) = {
-    val points = ListBuffer[TypedVTFeature[Point]]()
-    val multiPoints = ListBuffer[TypedVTFeature[MultiPoint]]()
-    val lines = ListBuffer[TypedVTFeature[Line]]()
-    val multiLines = ListBuffer[TypedVTFeature[MultiLine]]()
-    val polygons = ListBuffer[TypedVTFeature[Polygon]]()
-    val multiPolygons = ListBuffer[TypedVTFeature[MultiPolygon]]()
+  def segregate(features: Iterable[MVTFeature[Geometry]]): (Seq[MVTFeature[Point]],
+                                                 Seq[MVTFeature[MultiPoint]],
+                                                 Seq[MVTFeature[LineString]],
+                                                 Seq[MVTFeature[MultiLineString]],
+                                                 Seq[MVTFeature[Polygon]],
+                                                 Seq[MVTFeature[MultiPolygon]]) = {
+    val points = ListBuffer[MVTFeature[Point]]()
+    val multiPoints = ListBuffer[MVTFeature[MultiPoint]]()
+    val lines = ListBuffer[MVTFeature[LineString]]()
+    val multiLines = ListBuffer[MVTFeature[MultiLineString]]()
+    val polygons = ListBuffer[MVTFeature[Polygon]]()
+    val multiPolygons = ListBuffer[MVTFeature[MultiPolygon]]()
 
     features.foreach {
-      case f @ Feature(g: Point, _: Any) => points += f.mapGeom[Point](_.as[Point].get)
-      case f @ Feature(g: MultiPoint, _: Any) =>
-        multiPoints += f.mapGeom[MultiPoint](_.as[MultiPoint].get)
-      case f @ Feature(g: Line, _: Any) => lines += f.mapGeom[Line](_.as[Line].get)
-      case f @ Feature(g: MultiLine, _: Any) =>
-        multiLines += f.mapGeom[MultiLine](_.as[MultiLine].get)
-      case f @ Feature(g: Polygon, _: Any) => polygons += f.mapGeom[Polygon](_.as[Polygon].get)
-      case f @ Feature(g: MultiPolygon, _: Any) =>
-        multiPolygons += f.mapGeom[MultiPolygon](_.as[MultiPolygon].get)
+      case f @ MVTFeature(i, g: Point, d: Map[String, Value]) =>
+        points += MVTFeature(i, g.asInstanceOf[Point], d)
+      case f @ MVTFeature(i, g: MultiPoint, d: Map[String, Value]) =>
+        multiPoints += MVTFeature(i, g.asInstanceOf[MultiPoint], d)
+      case f @ MVTFeature(i, g: LineString, d: Map[String, Value]) =>
+        lines += MVTFeature(i, g.asInstanceOf[LineString], d)
+      case f @ MVTFeature(i, g: MultiLineString, d: Map[String, Value]) =>
+        multiLines += MVTFeature(i, g.asInstanceOf[MultiLineString], d)
+      case f @ MVTFeature(i, g: Polygon, d: Map[String, Value]) =>
+        polygons += MVTFeature(i, g.asInstanceOf[Polygon], d)
+      case f @ MVTFeature(i, g: MultiPolygon, d: Map[String, Value]) =>
+        multiPolygons += MVTFeature(i, g.asInstanceOf[MultiPolygon], d)
     }
 
     (points, multiPoints, lines, multiLines, polygons, multiPolygons)
   }
 
-  def makeLayer(name: String, extent: Extent, features: Iterable[VTFeature], tileWidth: Int = 4096): (String, Layer) = {
+  def makeLayer(name: String, extent: Extent, features: Iterable[MVTFeature[Geometry]], tileWidth: Int = 4096): (String, Layer) = {
     val (points, multiPoints, lines, multiLines, polygons, multiPolygons) = segregate(features)
 
     name -> StrictLayer(

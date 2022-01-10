@@ -6,7 +6,7 @@ if [ -z ${VERSION_TAG+x} ]; then
 fi
 
 aws ecs register-task-definition \
-    --family "${AUGDIFF_SERVICE_NAME}" \
+    --family "${AUGDIFF_SERVICE_NAME}${TASK_SUFFIX}" \
     --task-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ECSTaskS3" \
     --execution-role-arn "arn:aws:iam::${IAM_ACCOUNT}:role/ecsTaskExecutionRole" \
     --network-mode awsvpc \
@@ -24,6 +24,8 @@ aws ecs register-task-definition \
 	        }
 	      },
 	      \"command\": [
+                \"-s\",
+                \"onramp\",
 	        \"${AUGDIFF_SOURCE}\"
 	      ],
 	      \"environment\": [

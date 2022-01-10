@@ -5,9 +5,9 @@ import java.net.URI
 import java.util.zip.GZIPInputStream
 
 import geotrellis.proj4.WebMercator
-import geotrellis.spark.tiling.ZoomedLayoutScheme
-import geotrellis.vector.{Extent, PointFeature}
-import geotrellis.vectortile.{Layer, VInt64, VectorTile}
+import geotrellis.layer.ZoomedLayoutScheme
+import geotrellis.vector.Extent
+import geotrellis.vectortile.{Layer, MVTFeature, VInt64, VectorTile}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.internal.Logging
 import osmesa.analytics.updater.Implicits._
@@ -54,7 +54,7 @@ trait VectorGrid extends Logging {
         }
         .toMap
 
-    val sequenceFeature = PointFeature(extent.center, updatedSequences)
+    val sequenceFeature = MVTFeature(extent.center, updatedSequences)
 
     makeLayer(SequenceLayerName, extent, Seq(sequenceFeature), tileWidth)
   }
