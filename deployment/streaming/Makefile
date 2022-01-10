@@ -101,11 +101,14 @@ deploy-streaming-augdiff-producer:
 	aws ecs create-service \
 	  --cluster "${ECS_CLUSTER}" \
 	  --service-name "${AUGDIFF_SERVICE_NAME}" \
-	  --task-definition "${AUGDIFF_SERVICE_NAME}" \
+	  --task-definition "${AUGDIFF_SERVICE_NAME}${TASK_SUFFIX}" \
 	  --desired-count 1 \
 	  --launch-type FARGATE \
 	  --scheduling-strategy REPLICA \
 	  --network-configuration ${NETWORK_CONFIGURATION}
+
+stop-streaming-augdiff-producer:
+	./scripts/stop-streaming-service.sh "${AUGDIFF_SERVICE_NAME}"
 
 stop-streaming-footprint-updater:
 	./scripts/stop-streaming-service.sh streaming-user-footprint-tile-updater
