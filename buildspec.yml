@@ -1,0 +1,16 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      docker: 18
+      java: openjdk11
+    commands:
+      - docker -v
+      - java -version
+  build:
+    commands:
+      - pushd src && ./sbt apps/assembly && popd
+  artifacts:
+    files:
+      - src/apps/target/scala-2.11/osmesa-apps.jar

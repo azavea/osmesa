@@ -1,0 +1,6 @@
+FROM alpine:3.12
+
+RUN apk update && apk add bash postgresql-client
+COPY docker/refresh-views.sh /usr/local/bin/refresh-views.sh
+
+WORKDIR /opt

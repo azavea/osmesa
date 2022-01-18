@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -e
+
+if [[ -n "${OSMESA_DEBUG}" ]]; then
+    set -x
+fi
+
+if [ -n ${VERSION_TAG+x} ]; then
+    VERSION_TAG="$(git rev-parse --short HEAD)"
+    echo "VERSION_TAG was unset; using ${VERSION_TAG}"
+fi
+
+DIR="$(dirname "$0")/../"
+
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    if [ "${1:-}" = "--help" ]; then
+        usage
+    else
+        echo "Building Scala assembly JAR"
+        pushd "${DIR}/src"
+        ./sbt "apps/assembly"
+        popd
+    fi
+
+    VERSION_TAG="${VERSION_TAG}" docker-compose \
+        -f docker-compose.yml \
+        build backend refresher
+fi
