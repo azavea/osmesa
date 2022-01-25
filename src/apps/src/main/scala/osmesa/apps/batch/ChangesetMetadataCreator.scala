@@ -107,7 +107,9 @@ object ChangesetMetadataCreator
         val csvOpts = Map(
           "header" -> "true",
           "inferSchema" -> "true",
-          "multiline" -> "true"
+          "multiline" -> "true",
+          "quote" -> "\"",
+          "escape" -> "\""
         )
 
         val users = spark
