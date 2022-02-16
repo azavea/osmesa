@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -e
+
+if [[ -n "${OSMESA_DEBUG}" ]]; then
+    set -x
+fi
+
+if [ -n ${VERSION_TAG+x} ]; then
+    VERSION_TAG="$(git rev-parse --short HEAD)"
+    echo "VERSION_TAG was unset; using ${VERSION_TAG}"
+fi
+
+DIR="$(dirname "$0")/../"
+
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+   mkdir osmesa-dist
+   cp src/apps/target/scala-2.11/osmesa-apps.jar osmesa-dist
+   cp -r deployment/sql osmesa-dist
+
+   docker tag "osmesa-streaming-stats:${VERSION_TAG}" "${APP_IMAGE_ECR_ENDPOINT}:${VERSION_TAG}"
+   docker tag "osmesa-stats-refresher:${VERSION_TAG}" "${REFRESHER_IMAGE_ECR_ENDPOINT}:${VERSION_TAG}"
+
+   eval "$(aws ecr get-login --no-include-email)"
+   docker push "${APP_IMAGE_ECR_ENDPOINT}:${VERSION_TAG}"
+   docker push "${REFRESHER_IMAGE_ECR_ENDPOINT}:${VERSION_TAG}"
+fi

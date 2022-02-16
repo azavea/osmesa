@@ -11,15 +11,8 @@ phases:
   build:
     commands:
       - ls -lh
-      - pushd src && ./sbt apps/assembly && popd
-      - mkdir osmesa-dist
-      - cp src/apps/target/scala-2.11/osmesa-apps.jar osmesa-dist
-      - cp -r deployment/sql osmesa-dist
-      - docker build -f src/Dockerfile.apps -t "${ECR_ENDPOINT}/${APP_IMAGE_NAME}:${VERSION_TAG}" src
-      - docker build -f src/Dockerfile.refresh -t "${ECR_ENDPOINT}/${REFRESHER_IMAGE_NAME}:${VERSION_TAG}" src
-      - eval "$(aws ecr get-login --no-include-email)"
-      - docker push "${ECR_ENDPOINT}/${APP_IMAGE_NAME}:${VERSION_TAG}"
-      - docker push "${ECR_ENDPOINT}/${REFRESHER_IMAGE_NAME}:${VERSION_TAG}"
+      - ./scripts/cibuild
+      - ./scripts/cipublish
 artifacts:
   files:
     - osmesa-dist/**/*

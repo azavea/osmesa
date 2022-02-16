@@ -14,14 +14,10 @@ fi
 DIR="$(dirname "$0")/../"
 
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-    if [ "${1:-}" = "--help" ]; then
-        usage
-    else
-        echo "Building Scala assembly JAR"
-        pushd "${DIR}/src"
-        ./sbt "apps/assembly"
-        popd
-    fi
+    echo "Building Scala assembly JAR"
+    pushd "${DIR}/src"
+    ./sbt "apps/assembly"
+    popd
 
     VERSION_TAG="${VERSION_TAG}" docker-compose \
         -f docker-compose.yml \
