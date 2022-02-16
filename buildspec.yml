@@ -10,6 +10,7 @@ phases:
       - java -version
   build:
     commands:
+      - ls -lh
       - pushd src && ./sbt apps/assembly && popd
       - mkdir osmesa-dist
       - cp src/apps/target/scala-2.11/osmesa-apps.jar osmesa-dist
