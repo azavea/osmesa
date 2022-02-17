@@ -3,3 +3,4 @@
 -J-XX:+UseConcMarkSweepGC
 -Djava.awt.headless=true
 -Dsun.io.serialization.extendedDebugInfo=true
+-Dhttps.protocols=TLSv1,TLSv1.1,TLSv1.2
