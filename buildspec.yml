@@ -10,7 +10,9 @@ phases:
       - java -version
   build:
     commands:
-      - ls -lh
+      - mkdir -p /root/.sbt/launchers/1.2.8/
+      - curl -L -o /root/.sbt/launchers/1.2.8/sbt-launch.jar https://repo.scala-sbt.org/scalasbt/maven-releases/org/scala-sbt/sbt-launch/1.2.8/sbt-launch.jar
+      - ls -lh /root/.sbt/launchers/1.2.8
       - ./scripts/cibuild
       - ./scripts/cipublish
 artifacts:
