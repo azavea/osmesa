@@ -21,6 +21,7 @@ libraryDependencies ++= Seq(
   scalactic,
   gtSparkTestKit,
   logging,
+  log4j2,
   scalatest
 )
 
