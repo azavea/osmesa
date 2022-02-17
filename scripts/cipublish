@@ -6,7 +6,7 @@ if [[ -n "${OSMESA_DEBUG}" ]]; then
     set -x
 fi
 
-if [ -n ${VERSION_TAG+x} ]; then
+if [ -z ${VERSION_TAG+x} ]; then
     VERSION_TAG="$(git rev-parse --short HEAD)"
     echo "VERSION_TAG was unset; using ${VERSION_TAG}"
 fi
