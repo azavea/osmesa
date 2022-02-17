@@ -23,7 +23,9 @@ libraryDependencies ++= Seq(
   logging,
   scalatest,
   apacheCommonsEmail,
-)
+).map(_ excludeAll(excludedDependencies: _*))
+
+libraryDependencies += jaiCore
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */
 fork in run := true

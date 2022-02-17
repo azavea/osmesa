@@ -17,7 +17,7 @@ object Dependencies {
   val cats           = "org.typelevel"               %% "cats-core"                   % Version.cats
   val scalactic      = "org.scalactic"               %% "scalactic"                   % Version.scalactic
   val scalatest      = "org.scalatest"               %%  "scalatest"                  % Version.scalatest % "test"
-  val jaiCore        = "javax.media" % "jai_core" % Version.jai % "test" from s"http://download.osgeo.org/webdav/geotools/javax/media/jai_core/${Version.jai}/jai_core-${Version.jai}.jar"
+  val jaiCore        = "javax.media" % "jai_core" % Version.jai % Provided
   val apacheCommonsEmail = "org.apache.commons" % "commons-email" % Version.apacheCommonsEmail
   val hbaseCommon    = "org.apache.hbase" % "hbase-common" % Version.hbase
   val hbaseClient    = "org.apache.hbase" % "hbase-client" % Version.hbase
@@ -35,4 +35,11 @@ object Dependencies {
   val logging        = "com.typesafe.scala-logging"  %% "scala-logging"                % Version.scalaLogging
   val commonsIO      = "commons-io"                  %  "commons-io"                   % Version.commonsIO
   val postgresql = "org.postgresql" % "postgresql" % Version.postgresql
+
+  lazy val excludedDependencies = List(
+    ExclusionRule("javax.media", "jai_core"),
+    ExclusionRule("javax.media", "jai_codec"),
+    ExclusionRule("javax.media", "jai_imageio"),
+    ExclusionRule("it.geosolutions.imageio-ext"),
+  )
 }

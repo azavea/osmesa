@@ -22,7 +22,9 @@ libraryDependencies ++= Seq(
   gtSparkTestKit,
   logging,
   scalatest
-)
+).map(_ excludeAll(excludedDependencies: _*))
+
+libraryDependencies += jaiCore
 
 /* Fixes Spark breakage with `sbt run` as of sbt-1.0.2 */
 fork in run := true
