@@ -35,11 +35,4 @@ object Dependencies {
   val logging        = "com.typesafe.scala-logging"  %% "scala-logging"                % Version.scalaLogging
   val commonsIO      = "commons-io"                  %  "commons-io"                   % Version.commonsIO
   val postgresql = "org.postgresql" % "postgresql" % Version.postgresql
-
-  lazy val excludedDependencies = List(
-    ExclusionRule("javax.media", "jai_core"),
-    ExclusionRule("javax.media", "jai_codec"),
-    ExclusionRule("javax.media", "jai_imageio"),
-    ExclusionRule("it.geosolutions.imageio-ext"),
-  )
 }

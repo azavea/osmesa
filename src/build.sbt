@@ -19,13 +19,16 @@ lazy val commonSettings = Seq(
     "-Ypartial-unification",
     "-Ypatmat-exhaust-depth", "100"
   ),
-  resolvers ++= Seq(
-    "locationtech-releases" at "https://repo.locationtech.org/content/repositories/releases/",
-    "locationtech-snapshots" at "https://repo.locationtech.org/content/repositories/snapshots/",
-    "geosolutions" at "http://maven.geo-solutions.it/",
-    "osgeo-releases" at "https://repo.osgeo.org/repository/release/",
-    "apache.commons.io" at "https://mvnrepository.com/artifact/commons-io/commons-io"
-  ),
+
+  // resolvers ++= Seq(
+  //   "locationtech-releases" at "https://repo.locationtech.org/content/repositories/releases/",
+  //   "locationtech-snapshots" at "https://repo.locationtech.org/content/repositories/snapshots/",
+  //   "geosolutions" at "http://maven.geo-solutions.it/",
+  //   "osgeo-releases" at "https://repo.osgeo.org/repository/release/",
+  //   "apache.commons.io" at "https://mvnrepository.com/artifact/commons-io/commons-io"
+  // ),
+  externalResolvers := Settings.Repositories.all,
+
   updateOptions := updateOptions.value.withGigahorse(false),
   shellPrompt := { s => Project.extract(s).currentProject.id + " > " },
   assemblyMergeStrategy in assembly := {
