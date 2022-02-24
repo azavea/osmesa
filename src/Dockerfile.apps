@@ -1,6 +1,8 @@
-FROM bde2020/spark-submit:2.4.4-hadoop2.7
+FROM bde2020/spark-master:2.4.4-hadoop2.7
 
 COPY apps/target/scala-2.11/osmesa-apps.jar /opt/osmesa-apps.jar
 COPY docker/log4j.properties /spark/conf/
+ENV PATH=$PATH:/spark/bin
 
 WORKDIR /opt
+ENTRYPOINT ["spark-submit"]
