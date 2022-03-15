@@ -1,0 +1,28 @@
+version: '2.3'
+services:
+  backend:
+    image: "osmesa-streaming-stats:${VERSION_TAG}"
+    build:
+      context: ./src
+      dockerfile: Dockerfile.apps
+
+  refresher:
+    image: "osmesa-stats-refresher:${VERSION_TAG}"
+    build:
+      context: ./src
+      dockerfile: Dockerfile.refresh
+
+  database:
+    image: quay.io/azavea/postgis:2.4-postgres10.6-slim
+    environment:
+      - POSTGRES_USER=osmesa_stats
+      - POSTGRES_PASSWORD=osmesa_stats
+      - POSTGRES_DB=osmesa_stats
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "osmesa_stats"]
+      interval: 3s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    ports:
+      - 5433:5432
